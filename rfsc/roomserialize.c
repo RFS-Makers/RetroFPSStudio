@@ -123,7 +123,7 @@ static int _extract_apply_tex_props(
         rtex->tex_scrollspeedx = 0;
         rtex->tex_scrollspeedy = 0;
     }
-    return 0;
+    return 1;
 }
 
 int roomserialize_lua_DeserializeRoomGeometries(

@@ -22,12 +22,17 @@ function rfseditor.titlescene.load_demo_level()
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={
             {corner_x=-(rfseditor.defaults.one_meter_units * 5),
-             corner_y=-(rfseditor.defaults.one_meter_units * 5)},
+             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+             texpath="rfslua/res/default-game-res/texture/brick1"},
             {corner_x=(rfseditor.defaults.one_meter_units * 5),
-             corner_y=-(rfseditor.defaults.one_meter_units * 5)},
+             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+             texpath="rfslua/res/default-game-res/texture/brick1"},
             {corner_x=(0 * 5),
-             corner_y=(rfseditor.defaults.one_meter_units * 5)},
+             corner_y=(rfseditor.defaults.one_meter_units * 5),
+             texpath="rfslua/res/default-game-res/texture/brick1"},
         },
+        ceiling={texpath="rfslua/res/default-game-res/texture/wood1"},
+        floor={texpath="rfslua/res/default-game-res/texture/wood1"},
     }})
     rfseditor._demolevel = lvl
     if rfseditor._democam == nil then
