@@ -1,0 +1,9 @@
+/docker-rfs2-build/*.md5.txt
+/docker-rfs2-build/*.exe
+/docker-rfs2-build/*.bin
+*.bin
+/RFS2
+/RFS2.exe
+*.o
+/coreapi.rfspak
+*~
