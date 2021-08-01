@@ -177,6 +177,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
         if (lua_isinteger(l, -1)) room_id = lua_tointeger(l, -1);
             else room_id = round(lua_tonumber(l, -1));
         lua_pop(l, 1);
+
+        // Make sure the room we're about to add doesn't exist yet:
         room *r = room_ById(lr, room_id);
         if (r) {
             char buf[256];
@@ -193,13 +195,22 @@ int roomserialize_lua_DeserializeRoomGeometries(
             return 0;
         }
         previousroom = r;
+        
+        // Clear out all the corners & wall info the room
+        // has set by default:
         int i2 = 0;
         while (i2 < r->corners) {
             if (r->wall[i2].wall_tex.tex)
                 roomlayer_UnmakeTexRef(r->wall[i2].wall_tex.tex);
             i2++;
         }
+        roomlayer_UnmakeTexRef(r->floor_tex.tex);
+        r->floor_tex.tex = NULL;
+        roomlayer_UnmakeTexRef(r->ceiling_tex.tex);
+        r->ceiling_tex.tex = NULL;
         r->corners = 0;
+
+        // Now, read out actual corners/walls geometry:
         lua_pushstring(l, "walls");
         lua_gettable(l, -2);
         if (lua_type(l, -1) != LUA_TTABLE) {
@@ -220,6 +231,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 if (lua_type(l, -1) == LUA_TNIL) {
                     break;
                 }
+                // Ensure we don't have excess corners already:
                 if (r->corners >= ROOM_MAX_CORNERS) {
                     room_Destroy(r); previousroom = NULL;
                     char buf[256];
@@ -230,6 +242,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     lua_settop(l, startstack);
                     return 0;
                 }
+                // Make sure wall info is a table:
                 if (lua_type(l, -1) != LUA_TTABLE) {
                     room_Destroy(r); previousroom = NULL;
                     char buf[256];
@@ -240,6 +253,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     lua_settop(l, startstack);
                     return 0;
                 }
+                // Extract the two corner coordinates:
                 int64_t corner_x = 0;
                 lua_pushstring(l, "corner_x");
                 lua_gettable(l, -2);
@@ -277,6 +291,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     else corner_y = round(lua_tonumber(l, -1));
                 lua_pop(l, 1);
                 lua_pop(l, 1);  // Remove "walls"[k + 1] entry
+
+                // Set corner data, now that we verified everything:
                 r->corners++;
                 memset(&r->wall[r->corners - 1], 0, sizeof(*r->wall));
                 r->wall[r->corners - 1].wall_tex.tex_scaleintx = (
@@ -287,6 +303,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 );
                 r->corner_x[r->corners - 1] = corner_x;
                 r->corner_y[r->corners - 1] = corner_y;
+
                 k++;
             }
         }
@@ -304,17 +321,21 @@ int roomserialize_lua_DeserializeRoomGeometries(
         }
         i++;
     }
+
     // Now, iterate again for the portals:
     i = 1;
     while (1) {
+        // Get i'th room:
         lua_pushinteger(l, i);
         lua_gettable(l, tblindex);
         assert(lua_type(l, -1) == LUA_TTABLE ||
             lua_type(l, -1) == LUA_TNIL);  // checked in loop above
         if (lua_type(l, -1) == LUA_TNIL) {
+            // End of room list.
             lua_settop(l, startstack);
             break;
         }
+        // Get room id:
         uint64_t room_id = -1;
         lua_pushstring(l, "id");
         lua_gettable(l, -2);
@@ -323,12 +344,16 @@ int roomserialize_lua_DeserializeRoomGeometries(
         if (lua_isinteger(l, -1)) room_id = lua_tointeger(l, -1);
             else room_id = round(lua_tonumber(l, -1));
         lua_pop(l, 1);
+
+        // Obtain the corresponding room
         room *r = room_ById(lr, room_id);
-        assert(r != NULL);  // was created in loop above
+        assert(r != NULL);  // Was created in loop above,
+                            // so it should really exist.
         lua_pushstring(l, "walls");
         lua_gettable(l, -2);
         assert(lua_type(l, -1) == LUA_TTABLE); // checked in loop above
-        // Read "walls" property
+
+        // Iterate over "walls" property:
         int nextk = 1;
         int k = 0;
         while (1) {
@@ -338,6 +363,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 break;
             }
             assert(lua_type(l, -1) == LUA_TTABLE);
+
+            // Try to load up "portal_to" property:
             lua_pushstring(l, "portal_to");
             lua_gettable(l, -2);
             if (lua_type(l, -1) != LUA_TNUMBER &&
@@ -351,6 +378,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 lua_settop(l, startstack);
                 return 0;
             } else if (lua_type(l, -1) == LUA_TNUMBER) {
+                // Extract room id for portal target:
                 uint64_t portal_target_id = -1;
                 if (lua_isinteger(l, -1))
                     portal_target_id = lua_tointeger(l, -1);
@@ -369,6 +397,9 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     lua_settop(l, startstack);
                     return 0;
                 }
+
+                // Find the matching wall in the target room:
+                // (we don't store this in the serialized data)
                 int opposite_portal_wall_idx = -1;
                 int nextj = 1;
                 int j = 0;
@@ -389,6 +420,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                         nextj = 0;
                     j++;
                 }
+                // Ensure we found the target wall:
                 if (opposite_portal_wall_idx < 0) {
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
@@ -401,6 +433,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     lua_settop(l, startstack);
                     return 0;
                 }
+                // Ensure there is not already a conflicting portal
+                // heading back our way:
                 if (portal_target->wall[opposite_portal_wall_idx].
                         has_portal &&
                         portal_target->wall[opposite_portal_wall_idx].
@@ -418,6 +452,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     lua_settop(l, startstack);
                     return 0;
                 }
+                // Finally, set the portal info on both ends:
                 r->wall[k].has_portal = 1;
                 r->wall[k].portal_targetroom = portal_target;
                 r->wall[k].portal_targetwall = (
