@@ -24,6 +24,10 @@ function rfseditor.titlescene.load_demo_level()
             {corner_x=-(rfseditor.defaults.one_meter_units * 5),
              corner_y=-(rfseditor.defaults.one_meter_units * 5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
+            {corner_x=(rfseditor.defaults.one_meter_units * 1),
+             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+             texpath="rfslua/res/default-game-res/texture/brick1",
+             portal_to=2},
             {corner_x=(rfseditor.defaults.one_meter_units * 5),
              corner_y=-(rfseditor.defaults.one_meter_units * 5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
@@ -33,6 +37,23 @@ function rfseditor.titlescene.load_demo_level()
         },
         ceiling={texpath="rfslua/res/default-game-res/texture/wood1"},
         floor={texpath="rfslua/res/default-game-res/texture/wood1"},
+    }, {
+        id=2,
+        floor_z=-(rfseditor.defaults.one_meter_units * 0.8),
+        height=(rfseditor.defaults.one_meter_units * 2),
+        walls={
+            {corner_x=(rfseditor.defaults.one_meter_units * 5),
+             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+             texpath="rfslua/res/default-game-res/texture/brick1"},
+            {corner_x=(rfseditor.defaults.one_meter_units * 1),
+             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+             texpath="rfslua/res/default-game-res/texture/brick1"},
+            {corner_x=(rfseditor.defaults.one_meter_units * 3),
+             corner_y=-(rfseditor.defaults.one_meter_units * 15),
+             texpath="rfslua/res/default-game-res/texture/brick1"},
+        },
+        ceiling={texpath="rfslua/res/default-game-res/texture/wood1"},
+        floor={texpath="rfslua/res/default-game-res/texture/wood1"},  
     }})
     rfseditor._demolevel = lvl
     if rfseditor._democam == nil then

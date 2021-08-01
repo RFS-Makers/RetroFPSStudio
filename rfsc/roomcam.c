@@ -319,6 +319,8 @@ void roomcam_WallCubeMapping(
         nextwallid = 0;
     if (llabs(r->corner_x[wallid] - r->corner_x[nextwallid]) >
             llabs(r->corner_y[wallid] - r->corner_y[nextwallid])) {
+        if (r->wall[wallid].normal_y < 0)
+            wx = -wx;
         int64_t reference_x = (
             (wx + (int64_t)relevantinfo->
                 tex_gamestate_scrollx + (int64_t)relevantinfo->
@@ -334,6 +336,8 @@ void roomcam_WallCubeMapping(
             );
         }
     } else {
+        if (r->wall[wallid].normal_x > 0)
+            wy = -wy;
         int64_t reference_x = (
             (wy + (int64_t)relevantinfo->
                 tex_gamestate_scrollx + (int64_t)relevantinfo->
@@ -398,6 +402,90 @@ void roomcam_WallCubeMapping(
     );
 }
 
+static int roomcam_DrawWallSlice(
+        rfssurf *rendertarget,
+        room *r, int wallno, int64_t hit_x, int64_t hit_y,
+        int screentop, int screenbottom,
+        int64_t topworldz, int64_t bottomworldz,
+        int x, int y, int h
+        ) {
+    rfs2tex *t = roomlayer_GetTexOfRef(
+        r->wall[wallno].wall_tex.tex
+    );
+    rfssurf *srf = (
+        t ? graphics_GetTexSideways(t) : NULL
+    );
+    if (!srf) {
+        if (!graphics_DrawRectangle(
+                0.8, 0.2, 0.7, 1,
+                x,
+                y + screentop,
+                1, screenbottom - y - screentop
+                ))
+            return 0;
+    } else {
+        int64_t tx, ty1, ty2, ty;
+        assert(bottomworldz <= topworldz);
+        roomcam_WallCubeMapping(
+            r, wallno, hit_x, hit_y,
+            0, topworldz, topworldz - bottomworldz,
+            &tx, &ty1, &ty2
+        );
+        const int targetw = rendertarget->w;
+        uint8_t *tgpixels = rendertarget->pixels;
+        const uint8_t *srcpixels = srf->pixels;
+        const int rendertargetcopylen = (
+            rendertarget->hasalpha ? 4 : 3
+        );
+        const int srccopylen = (
+            srf->hasalpha ? 4 : 3
+        );
+        int sourcey = srf->h - (
+            srf->h * (tx % TEX_COORD_SCALER) / TEX_COORD_SCALER
+        );
+        if (sourcey < 0) sourcey = 0;
+        if (sourcey >= srf->h) sourcey = srf->h - 1;
+        int sourcey_multiplied_w = sourcey * srf->w;
+        int k = screentop;
+        assert(screenbottom >= screentop);
+        assert(screenbottom <= h);
+        assert(screentop >= 0);
+        if (screenbottom == h)
+            screenbottom--;
+        while (k < screenbottom) {
+            ty = (
+                ty1 + ((ty2 - ty1) * (screenbottom - k) /
+                    (screenbottom - screentop))
+            );
+            assert(ty >= 0);
+            // Remember, we're using the sideways tex.
+            int sourcex = (
+                (srf->w * (TEX_COORD_SCALER - 1 - (ty % TEX_COORD_SCALER)))
+                / TEX_COORD_SCALER
+            );
+            const int tgoffset = (
+                (x + (y + k) * targetw) *
+                rendertargetcopylen
+            );
+            const int srcoffset = (
+                sourcex + sourcey_multiplied_w) *
+                srccopylen;
+            assert(srcoffset >= 0 &&
+                srcoffset < srf->w * srf->h * srccopylen);
+            int r = srcpixels[srcoffset + 0];
+            int g = srcpixels[srcoffset + 1];
+            int b = srcpixels[srcoffset + 2];
+            tgpixels[tgoffset + 0] = r;
+            tgpixels[tgoffset + 1] = g;
+            tgpixels[tgoffset + 2] = b;
+            if (rendertarget->hasalpha)
+                tgpixels[tgoffset + 3] = 255;
+            k++;
+        }
+    }
+    return 1;
+}
+ 
 int roomcam_RenderRoom(
         roomcam *cam, room *r, int x, int y, int w, int h,
         int xoffset, int nestdepth
@@ -496,78 +584,12 @@ int roomcam_RenderRoom(
             }
 
             // Draw slice:
-            rfs2tex *t = roomlayer_GetTexOfRef(
-                r->wall[wallno].wall_tex.tex
-            );
-            rfssurf *srf = (
-                t ? graphics_GetTexSideways(t) : NULL
-            );
-            //printf("SRF: %p, t: %p, texref: %p\n", srf, t,
-            //    r->wall[wallno].wall_tex.tex);
-            if (!srf) {
-                if (!graphics_DrawRectangle(
-                        0.8, 0.2, 0.7, 1,
-                        x + col + xoffset,
-                        y + top,
-                        1, bottom - y - top
-                        ))
-                    return -1;
-            } else {
-                int64_t tx, ty1, ty2, ty;
-                assert(bottomworldz <= topworldz);
-                roomcam_WallCubeMapping(
-                    r, wallno, hit_x, hit_y, 0,
-                    topworldz, topworldz - bottomworldz,
-                    &tx, &ty1, &ty2
-                );
-                const int targetw = rendertarget->w;
-                uint8_t *tgpixels = rendertarget->pixels;
-                const uint8_t *srcpixels = srf->pixels;
-                int srccopylen = (
-                    srf->hasalpha ? 4 : 3
-                );
-                int sourcey = srf->h - (
-                    srf->h * (tx % TEX_COORD_SCALER) / TEX_COORD_SCALER
-                );
-                if (sourcey < 0) sourcey = 0;
-                if (sourcey >= srf->h) sourcey = srf->h - 1;
-                int sourcey_multiplied_w = sourcey * srf->w;
-                int k = top;
-                assert(bottom >= top);
-                assert(bottom <= h);
-                assert(top >= 0);
-                if (bottom == h)
-                    bottom--;
-                while (k < bottom) {
-                    ty = (
-                        ty1 + ((ty2 - ty1) * (bottom - k) / (bottom - top))
-                    );
-                    assert(ty >= 0);
-                    // Remember, we're using the sideways tex.
-                    int sourcex = (
-                        (srf->w * (TEX_COORD_SCALER - 1 - (ty % TEX_COORD_SCALER)))
-                        / TEX_COORD_SCALER
-                    );
-                    const int tgoffset = (
-                        (x + xoffset + col + (y + k) * targetw) *
-                        rendertargetcopylen
-                    );
-                    const int srcoffset = (
-                        sourcex + sourcey_multiplied_w) *
-                        srccopylen;
-                    assert(srcoffset >= 0 &&
-                        srcoffset < srf->w * srf->h * srccopylen);
-                    int r = srcpixels[srcoffset + 0];
-                    int g = srcpixels[srcoffset + 1];
-                    int b = srcpixels[srcoffset + 2];
-                    tgpixels[tgoffset + 0] = r;
-                    tgpixels[tgoffset + 1] = g;
-                    tgpixels[tgoffset + 2] = b;
-                    if (rendertarget->hasalpha)
-                        tgpixels[tgoffset + 3] = 255;
-                    k++;
-                }
-            }
+            if (!roomcam_DrawWallSlice(
+                    rendertarget, r, wallno, hit_x, hit_y,
+                    top, bottom, topworldz, bottomworldz,
+                    x + xoffset + col, y, h
+                    ))
+                return -1;
         }
 
         // Call ceiling + floor render:

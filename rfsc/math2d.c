@@ -362,6 +362,26 @@ static __attribute__((constructor)) void _test_math_polycontains2d() {
     assert(!result);
 }
 
+int math_vecsopposite2di(
+        int64_t v1x, int64_t v1y, int64_t v2x, int64_t v2y
+        ) {
+    int64_t result = (v1x * v2x + v1y * v2y);
+    return (result < 0);
+}
+
+static __attribute__((constructor))
+        void _test_math_vecsopposite2di() {
+    int result;
+    result = math_vecsopposite2di(
+        1, 0, -1, -1
+    );
+    assert(result != 0);
+    result = math_vecsopposite2di(
+        1, 0, 1, -1
+    );
+    assert(result == 0);
+}
+
 int math_polyintersect2di(
         int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
         int corner_count, const int64_t *cx, const int64_t *cy,

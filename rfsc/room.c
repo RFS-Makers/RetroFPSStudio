@@ -91,6 +91,35 @@ int room_RecomputePosExtent(room *r) {
         r->parentlayer->colmap, r
     );
     #endif
+
+    int inext = 1;
+    i = 0;
+    while (i < r->corners) {
+        int64_t tx = (r->corner_x[inext] - r->corner_x[i]);
+        int64_t ty = (r->corner_y[inext] - r->corner_y[i]);
+        int64_t normal_x = ty;
+        int64_t normal_y = -tx;
+        int64_t wallcenter_x = r->corner_x[i] + tx / 2;
+        int64_t wallcenter_y = r->corner_y[i] + ty / 2;
+        int64_t wall_to_roomcenter_x = (
+            r->center_x - wallcenter_x
+        );
+        int64_t wall_to_roomcenter_y = (
+            r->center_y - wallcenter_y
+        );
+        if (math_vecsopposite2di(
+                wall_to_roomcenter_x, wall_to_roomcenter_y,
+                normal_x, normal_y)) {
+            normal_x = -normal_x;
+            normal_y = -normal_y;
+        }
+        r->wall[i].normal_x = normal_x;
+        r->wall[i].normal_y = normal_y;
+        inext++;
+        if (inext >= r->corners)
+            inext = 0;
+        i++;
+    }
     return 1;
 }
 

@@ -143,8 +143,16 @@ int roomserialize_lua_DeserializeRoomGeometries(
         lua_settop(l, startstack);
         return 0;
     }
+    room *previousroom = NULL;
     int i = 1;
     while (1) {
+        // If we successfully dealt with a previous room,
+        // make sure it's properly registered:
+        if (previousroom) {
+            room_RecomputePosExtent(previousroom);
+            previousroom = NULL;
+        }
+        // Get info on next room to be added:
         lua_pushinteger(l, i);
         lua_gettable(l, tblindex);
         if (lua_type(l, -1) != LUA_TTABLE &&
@@ -184,6 +192,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
             lua_settop(l, startstack);
             return 0;
         }
+        previousroom = r;
         int i2 = 0;
         while (i2 < r->corners) {
             if (r->wall[i2].wall_tex.tex)
@@ -193,8 +202,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
         r->corners = 0;
         lua_pushstring(l, "walls");
         lua_gettable(l, -2);
-        if (lua_type(l, -1) != LUA_TTABLE &&
-                lua_type(l, -1) != LUA_TNIL) {
+        if (lua_type(l, -1) != LUA_TTABLE) {
+            room_Destroy(r); previousroom = NULL;
             char buf[256];
             snprintf(buf, sizeof(buf) - 1,
                 "room with id %" PRIu64 " has \"walls\" "
@@ -202,7 +211,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
             *err = strdup(buf);
             lua_settop(l, startstack);
             return 0;
-        } else if (lua_type(l, -1) == LUA_TTABLE) {
+        } else {
             // Read "walls" property
             int k = 0;
             while (1) {
@@ -212,7 +221,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     break;
                 }
                 if (r->corners >= ROOM_MAX_CORNERS) {
-                    room_Destroy(r);
+                    room_Destroy(r); previousroom = NULL;
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "room with id %" PRIu64 " has too "
@@ -222,7 +231,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     return 0;
                 }
                 if (lua_type(l, -1) != LUA_TTABLE) {
-                    room_Destroy(r);
+                    room_Destroy(r); previousroom = NULL;
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "room with id %" PRIu64 " has \"walls\"[%d] "
@@ -235,7 +244,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 lua_pushstring(l, "corner_x");
                 lua_gettable(l, -2);
                 if (lua_type(l, -1) != LUA_TNUMBER) {
-                    room_Destroy(r);
+                    room_Destroy(r); previousroom = NULL;
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "room with id %" PRIu64 " has invalid "
@@ -253,7 +262,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 lua_pushstring(l, "corner_y");
                 lua_gettable(l, -2);
                 if (lua_type(l, -1) != LUA_TNUMBER) {
-                    room_Destroy(r);
+                    room_Destroy(r); previousroom = NULL;
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "room with id %" PRIu64 " has invalid "
@@ -282,8 +291,9 @@ int roomserialize_lua_DeserializeRoomGeometries(
             }
         }
         lua_pop(l, 1);  // Remove "walls" property
+        lua_pop(l, 1);  // Remove room[i]
         if (r->corners < 3) {
-            room_Destroy(r);
+            room_Destroy(r); previousroom = NULL;
             char buf[256];
             snprintf(buf, sizeof(buf) - 1,
                 "room with id %" PRIu64 " has too few "
@@ -292,6 +302,143 @@ int roomserialize_lua_DeserializeRoomGeometries(
             lua_settop(l, startstack);
             return 0;
         }
+        i++;
+    }
+    // Now, iterate again for the portals:
+    i = 1;
+    while (1) {
+        lua_pushinteger(l, i);
+        lua_gettable(l, tblindex);
+        assert(lua_type(l, -1) == LUA_TTABLE ||
+            lua_type(l, -1) == LUA_TNIL);  // checked in loop above
+        if (lua_type(l, -1) == LUA_TNIL) {
+            lua_settop(l, startstack);
+            break;
+        }
+        uint64_t room_id = -1;
+        lua_pushstring(l, "id");
+        lua_gettable(l, -2);
+        assert(lua_type(l, -1) == LUA_TNUMBER &&
+            lua_tonumber(l, -1) >= 1);  // checked in loop above;
+        if (lua_isinteger(l, -1)) room_id = lua_tointeger(l, -1);
+            else room_id = round(lua_tonumber(l, -1));
+        lua_pop(l, 1);
+        room *r = room_ById(lr, room_id);
+        assert(r != NULL);  // was created in loop above
+        lua_pushstring(l, "walls");
+        lua_gettable(l, -2);
+        assert(lua_type(l, -1) == LUA_TTABLE); // checked in loop above
+        // Read "walls" property
+        int nextk = 1;
+        int k = 0;
+        while (1) {
+            lua_pushinteger(l, k + 1);
+            lua_gettable(l, -2);
+            if (lua_type(l, -1) == LUA_TNIL) {
+                break;
+            }
+            assert(lua_type(l, -1) == LUA_TTABLE);
+            lua_pushstring(l, "portal_to");
+            lua_gettable(l, -2);
+            if (lua_type(l, -1) != LUA_TNUMBER &&
+                    lua_type(l, -1) != LUA_TNIL) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "room with id %" PRIu64 " has invalid "
+                    "type for \"portal_to\" for wall %d\n",
+                    room_id, k + 1);
+                *err = strdup(buf);
+                lua_settop(l, startstack);
+                return 0;
+            } else if (lua_type(l, -1) == LUA_TNUMBER) {
+                uint64_t portal_target_id = -1;
+                if (lua_isinteger(l, -1))
+                    portal_target_id = lua_tointeger(l, -1);
+                    else portal_target_id = round(lua_tonumber(l, -1));
+                room *portal_target = NULL;
+                if (portal_target_id < 1 ||
+                        (portal_target = room_ById(lr, portal_target_id))
+                        == NULL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "room with id %" PRIu64 " has invalid "
+                        "portal target for wall %d - target room "
+                        "with id %" PRId64 " not found", room_id,
+                        k + 1, portal_target_id);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                int opposite_portal_wall_idx = -1;
+                int nextj = 1;
+                int j = 0;
+                while (j < portal_target->corners) {
+                    if (portal_target->corner_x[j] ==
+                            r->corner_x[nextk] &&
+                            portal_target->corner_y[j] ==
+                            r->corner_y[nextk] &&
+                            portal_target->corner_x[nextj] ==
+                            r->corner_x[k] &&
+                            portal_target->corner_y[nextj] ==
+                            r->corner_y[k]) {
+                        opposite_portal_wall_idx = j;
+                        break;
+                    }
+                    nextj++;
+                    if (nextj >= portal_target->corners)
+                        nextj = 0;
+                    j++;
+                }
+                if (opposite_portal_wall_idx < 0) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "room with id %" PRIu64 " has invalid "
+                        "portal target for wall %d - target room "
+                        "with id %" PRId64 " "
+                        "has no matching wall lined up", room_id,
+                        k + 1, portal_target_id);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                if (portal_target->wall[opposite_portal_wall_idx].
+                        has_portal &&
+                        portal_target->wall[opposite_portal_wall_idx].
+                        portal_targetroom != r) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "room with id %" PRIu64 " has invalid "
+                        "portal target for wall %d - target room "
+                        "with id %" PRId64 " "
+                        "already has portal elsewhere on lined up "
+                        "opposite wall %d", room_id,
+                        k + 1, portal_target_id,
+                        opposite_portal_wall_idx + 1);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                r->wall[k].has_portal = 1;
+                r->wall[k].portal_targetroom = portal_target;
+                r->wall[k].portal_targetwall = (
+                    opposite_portal_wall_idx
+                );
+                portal_target->wall[opposite_portal_wall_idx].
+                    has_portal = 1;
+                portal_target->wall[opposite_portal_wall_idx].
+                    portal_targetroom = r;
+                portal_target->wall[opposite_portal_wall_idx].
+                    portal_targetwall = k;
+            }
+            lua_pop(l, 1);  // Remove "portal_target_id"
+            lua_pop(l, 1);  // Remove wall[k + 1]
+            nextk++;
+            if (nextk >= r->corners)
+                nextk = 0;
+            k++;
+        }
+        lua_pop(l, 1);  // Remove "walls" property
+        lua_pop(l, 1);  // Remove room[i]
         i++;
     }
     return 1;
@@ -461,6 +608,7 @@ int roomserialize_lua_SetRoomProperties(
             }
             lua_pop(l, 1);
         }
+        lua_pop(l, 1);  // Remove room[i + 1]
         i++;
     }
     return 1;

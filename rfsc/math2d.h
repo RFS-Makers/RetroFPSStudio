@@ -53,5 +53,9 @@ int math_polycontains2di(
     int corner_count, const int64_t *cx, const int64_t *cy
 );
 
+int math_vecsopposite2di(
+    int64_t v1x, int64_t v1y, int64_t v2x, int64_t v2y
+);
+
 #endif  // RFS2_MATH2D_H_
 

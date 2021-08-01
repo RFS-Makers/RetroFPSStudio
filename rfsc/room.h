@@ -35,6 +35,8 @@ typedef struct roomdecal {
 } roomdecal;
 
 typedef struct roomwall {
+    int64_t normal_x, normal_y;
+
     roomtexinfo wall_tex, aboveportal_tex;
     uint8_t has_portal, has_aboveportal_tex;
     room *portal_targetroom;
