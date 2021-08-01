@@ -5,6 +5,7 @@
 #include "compileconfig.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -259,13 +260,50 @@ int outputwindow_PresentSurface() {
     );
     if (!srf)
         return 0;
-    SDL_Rect dest = {0};
-    dest.w = rfswindoww;
-    dest.h = rfswindowh;
-    SDL_RenderCopy(rfsrenderer, srf, NULL, &dest);
-    SDL_DestroyTexture(srf);
-    SDL_RenderPresent(rfsrenderer);
-    return 1;
+    double aspect_ratios_max_mismatch = fabs(
+        (100.0/100.0) - (100.0/101.0)
+    );
+    double windowaspect = (
+        (double)rfswindoww / (double)rfswindowh
+    );
+    double forcerenderaspect = (
+        (forcedoutputw >= 0 && forcedoutputh >= 0) ?
+        ((double)forcedoutputw / (double)forcedoutputh) :
+        windowaspect
+    );
+    if (forcedoutputw >= 0 && forcedoutputh >= 0 &&
+            fabs(windowaspect - forcerenderaspect) >
+                aspect_ratios_max_mismatch) {
+        SDL_SetRenderDrawColor(rfsrenderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(rfsrenderer, NULL);
+        SDL_SetRenderDrawColor(rfsrenderer, 255, 255, 255, 255);
+        SDL_Rect dest = {0};
+        if (windowaspect > forcerenderaspect) {
+            dest.h = rfswindowh;
+            dest.w = forcedoutputw * (
+                (double)rfswindowh / (double)forcedoutputh
+            );
+            dest.x = (rfswindoww - dest.w) / 2;
+        } else {
+            dest.w = rfswindoww;
+            dest.h = forcedoutputh * (
+                (double)rfswindoww / (double)forcedoutputw
+            );
+            dest.y = (rfswindowh - dest.h) / 2;
+        }
+        SDL_RenderCopy(rfsrenderer, srf, NULL, &dest);
+        SDL_DestroyTexture(srf);
+        SDL_RenderPresent(rfsrenderer);
+        return 1;
+    } else {
+        SDL_Rect dest = {0};
+        dest.w = rfswindoww;
+        dest.h = rfswindowh;
+        SDL_RenderCopy(rfsrenderer, srf, NULL, &dest);
+        SDL_DestroyTexture(srf);
+        SDL_RenderPresent(rfsrenderer);
+        return 1;
+    }
 }
 
 void outputwindow_CloseWindow() {

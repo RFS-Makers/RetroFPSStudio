@@ -198,19 +198,37 @@ rfssurf *graphics_GetTexSideways(rfs2tex *tex) {
     tex->_internal_srfsideways = rfssurf_Create(
         src->h, src->w, 0
     );
+    const int targetpixellen = (
+        tex->_internal_srfsideways->hasalpha ? 4 : 3
+    );
+    const int srcpixellen = (
+        src->hasalpha ? 4 : 3
+    );
     int y = 0;
     while (y < src->w) {
         int x = 0;
         while (x < src->h) {
+            assert(x < tex->_internal_srfsideways->w);
+            assert(y < tex->_internal_srfsideways->h);
+            assert(y >= 0 && y < src->w && src->w - y - 1 < src->w);
             int srcoffset = (
-                (src->w - y) + x * src->w
+                ((src->w - y - 1) + x * src->w) * srcpixellen
             );
+            assert(srcoffset >= 0 && srcoffset <
+                src->w * src->h * srcpixellen);
             int targetoffset = (
-                x + y * src->h
+                (x + y * tex->_internal_srfsideways->w) *
+                    targetpixellen
             );
-            memcpy(&src->pixels[srcoffset],
-                &tex->_internal_srfsideways[targetoffset],
+            assert(targetoffset <
+                tex->_internal_srfsideways->w *
+                tex->_internal_srfsideways->h * targetpixellen);
+            memcpy(&tex->_internal_srfsideways->pixels[targetoffset],
+                &src->pixels[srcoffset],
                 3);
+            if (targetpixellen == 4)
+                tex->_internal_srfsideways->pixels[targetoffset + 3] =
+                    255;
             x++;
         }
         y++;

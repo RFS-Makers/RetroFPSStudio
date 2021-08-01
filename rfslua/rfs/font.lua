@@ -150,10 +150,9 @@ function rfs.font.classtable.calcwidth(self, pt_size, text)
     if pt_size < 1 then
         return 0
     end
-    local fac = (pt_size / self._data.letterHeight)
-    if fac >= 1 then
-        fac = math.round(fac)
-    end
+    local fac = math.round(math.max(
+        1, pt_size / self._data.letterHeight
+    ))
     local lines = self:splitlines(text)
     local width = 0
     for _, line in ipairs(lines) do
@@ -176,10 +175,9 @@ function rfs.font.classtable.textwrap(self, pt_size, text, width)
     if pt_size < 1 or width == nil then
         return self:splitlines(text)
     end
-    local fac = (pt_size / self._data.letterHeight)
-    if fac >= 1 then
-        fac = math.round(fac)
-    end
+    local fac = math.round(math.max(
+        1, pt_size / self._data.letterHeight
+    ))
     local lettersPerLine = 1
     local remainingW = width - math.max(
         1, math.round(self._data.letterWidth * fac)
@@ -244,10 +242,9 @@ function rfs.font.classtable.calcheight(self, pt_size, text, width)
     local lines = (
         self:textwrap(pt_size, text, width)
     )
-    local fac = (pt_size / self._data.letterHeight)
-    if fac >= 1 then
-        fac = math.round(fac)
-    end
+    local fac = math.round(math.max(
+        1, pt_size / self._data.letterHeight
+    ))
     local lineHeight = math.max(
         1, math.round(self._data.letterHeight * fac)
     )
@@ -273,10 +270,9 @@ function rfs.font.classtable.draw(
         lines = self:splitlines(text)
     end
     pt_size = math.round(pt_size)
-    local fac = (pt_size / self._data.letterHeight)
-    if fac >= 1 then
-        fac = math.round(fac)
-    end
+    local fac = math.round(math.max(
+        1, pt_size / self._data.letterHeight
+    ))
     local origx = x
     local currentx = origx
     local currenty = y

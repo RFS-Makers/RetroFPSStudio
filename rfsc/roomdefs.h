@@ -27,9 +27,9 @@
 #define TEX_REPEAT_UNITS (ONE_METER_IN_UNITS * 1LL)
 
 // Default textures:
-#define ROOM_DEF_WALL_TEX "rfslua/res/default-game-res/texture/brick1.png"
-#define ROOM_DEF_CEILING_TEX "rfslua/res/default-game-res/texture/wood1.png"
-#define ROOM_DEF_FLOOR_TEX "rfslua/res/default-game-res/texture/wood1.png"
+#define ROOM_DEF_WALL_TEX "rfslua/res/default-game-res/texture/brick1"
+#define ROOM_DEF_CEILING_TEX "rfslua/res/default-game-res/texture/wood1"
+#define ROOM_DEF_FLOOR_TEX "rfslua/res/default-game-res/texture/wood1"
 
 // Collision:
 #define SMALLEST_COLLIDER_UNITS (ONE_METER_IN_UNITS/4LL)

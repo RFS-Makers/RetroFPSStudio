@@ -206,7 +206,7 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
 
 int roomcam_SliceHeight(
         roomcam *cam, room *r, int h, int64_t ix, int64_t iy,
-        int xoffset, int32_t *topworldz, int32_t *bottomworldz,
+        int xoffset, int64_t *topworldz, int64_t *bottomworldz,
         int32_t *topoffset, int32_t *bottomoffset
         ) {
     int64_t dist = math_veclen(
@@ -242,7 +242,6 @@ int roomcam_SliceHeight(
         (screentopatwall >= r->floor_z + r->height) ?
         (r->floor_z + r->height) : screentopatwall);
     if (topoff_world < 0) {
-        _topworldz += topoff_world;
         topoff_world = 0;
     }
     int64_t topoff_screen = (
@@ -254,31 +253,36 @@ int roomcam_SliceHeight(
     int64_t bottomoff_screen = (
         (bottomoff_world * world_to_pixel_scalar) / 100000L
     );
-    int64_t _bottomworldz = (
-        (screentopatwall - screenheightatwall <= r->floor_z) ?
-        r->floor_z : (screentopatwall - screenheightatwall));
+    assert(bottomoff_world >= 0);
     if (bottomoff_screen > h) {
-        int64_t moveup_worldcoords = (
-            (bottomoff_screen - h) * 100000L / world_to_pixel_scalar
-        );
-        bottomoff_world += moveup_worldcoords;
         bottomoff_screen = h;
-        _bottomworldz += moveup_worldcoords;
+        bottomoff_world = screentopatwall - screenheightatwall;
     }
+    int64_t _bottomworldz = (_topworldz -
+        ((bottomoff_screen - topoff_screen) * 100000L)
+        / world_to_pixel_scalar
+    );
     if (topoff_screen > bottomoff_screen)
         return 0;
-    /*printf("render res %dx%d, screen top at wall: %d, "
-        "world_to_pixel: %d, "
-        "top offset world: %d, bottom offset world: %d, "
-        "top offset screen: %d, bottom offset screen: %d, "
-        "wall height world: %d, cam z: %d, floor z: %d\n",
-        (int)-1, (int)h,
-        (int)screentopatwall, (int)world_to_pixel_scalar,
-        (int)topoff_world,
-        (int)bottomoff_world,
-        (int)topoff_screen, (int)bottomoff_screen,
-        (int)r->height,
-        (int)cam->obj->z, (int)r->floor_z);*/
+    /*if (topoff_screen == 0 && 0)
+        printf("render res %dx%d, screen top at wall: %d, "
+            "screen height at wall: %d, "
+            "world_to_pixel: %d, "
+            "top offset world: %d, bottom offset world: %d, "
+            "top offset screen: %d, bottom offset screen: %d, "
+            "wall height world: %d, cam z: %d, floor z: %d, "
+            "top world z: %d, bottom world z: %d,"
+            "top world z below screen plane top: %d\n",
+            (int)-1, (int)h,
+            (int)screentopatwall, (int)screenheightatwall,
+            (int)world_to_pixel_scalar,
+            (int)topoff_world,
+            (int)bottomoff_world,
+            (int)topoff_screen, (int)bottomoff_screen,
+            (int)r->height,
+            (int)cam->obj->z, (int)r->floor_z, (int)_topworldz,
+            (int)_bottomworldz,
+            (int)(screentopatwall - _topworldz));*/
     if (topoff_screen >= h || bottomoff_screen < 0)
         return 0;  // off-screen.
     *topoffset = topoff_screen;
@@ -300,30 +304,25 @@ void roomcam_WallCubeMapping(
         &r->wall[wallid].aboveportal_tex :
         &r->wall[wallid].wall_tex
     );
-    int64_t repeat_units_x = (
-        TEX_REPEAT_UNITS * (
-            ((int64_t)relevantinfo->tex_scaleintx) /
-            TEX_FULLSCALE_INT
-        )
-    );
+    int64_t repeat_units_x = (TEX_REPEAT_UNITS * (
+        ((int64_t)relevantinfo->tex_scaleintx) /
+        TEX_FULLSCALE_INT
+    ));
     if (repeat_units_x < 1) repeat_units_x = 1;
-    int64_t repeat_units_y = (
-        TEX_REPEAT_UNITS * (
-            ((int64_t)relevantinfo->tex_scaleinty) /
-            TEX_FULLSCALE_INT
-        )
-    );
+    int64_t repeat_units_y = (TEX_REPEAT_UNITS * (
+        ((int64_t)relevantinfo->tex_scaleinty) /
+        TEX_FULLSCALE_INT
+    ));
     if (repeat_units_y < 1) repeat_units_y = 1;
-    int prevwallid = wallid - 1;
-    if (prevwallid < 0)
-        prevwallid = r->corners - 1;
-    if (llabs(r->corner_x[wallid] - r->corner_x[prevwallid]) >
-            llabs(r->corner_y[wallid] - r->corner_y[prevwallid])) {
+    int nextwallid = wallid + 1;
+    if (nextwallid >= r->corners)
+        nextwallid = 0;
+    if (llabs(r->corner_x[wallid] - r->corner_x[nextwallid]) >
+            llabs(r->corner_y[wallid] - r->corner_y[nextwallid])) {
         int64_t reference_x = (
-            wx + ((int64_t)relevantinfo->
+            (wx + (int64_t)relevantinfo->
                 tex_gamestate_scrollx + (int64_t)relevantinfo->
-                tex_shiftx) * repeat_units_x /
-                TEX_REPEAT_UNITS
+                tex_shiftx)
         );
         if (reference_x > 0) {
             *tx1 = (reference_x % repeat_units_x) *
@@ -336,10 +335,9 @@ void roomcam_WallCubeMapping(
         }
     } else {
         int64_t reference_x = (
-            wy + ((int64_t)relevantinfo->
+            (wy + (int64_t)relevantinfo->
                 tex_gamestate_scrollx + (int64_t)relevantinfo->
-                tex_shiftx) * repeat_units_x /
-                TEX_REPEAT_UNITS
+                tex_shiftx)
         );
         if (reference_x > 0) {
             *tx1 = (reference_x % repeat_units_x) *
@@ -379,10 +377,9 @@ void roomcam_WallCubeMapping(
         _wtop = relevant_wall_segment_bottom - wtop;
     }
     int64_t reference_z = (
-        _wtop + ((int64_t)relevantinfo->
+        (-_wtop + (int64_t)relevantinfo->
             tex_gamestate_scrolly + (int64_t)relevantinfo->
-            tex_shifty) * repeat_units_y /
-            TEX_REPEAT_UNITS
+            tex_shifty)
     );
     if (reference_z > 0) {
         *ty1 = (reference_z % repeat_units_y) *
@@ -464,7 +461,8 @@ int roomcam_RenderRoom(
                 continue;
             } else {
                 // Calculate wall slice height:
-                int32_t top, bottom, topworldz, bottomworldz;
+                int32_t top, bottom;
+                int64_t topworldz, bottomworldz;
                 if (!roomcam_SliceHeight(
                         cam, r, h, hit_x, hit_y,
                         col + xoffset, &topworldz,
@@ -485,7 +483,8 @@ int roomcam_RenderRoom(
             }
         } else {
             // Calculate wall slice height:
-            int32_t top, bottom, topworldz, bottomworldz;
+            int32_t top, bottom;
+            int64_t topworldz, bottomworldz;
             if (!roomcam_SliceHeight(
                     cam, r, h, hit_x, hit_y,
                     col + xoffset, &topworldz, &bottomworldz,
@@ -530,6 +529,8 @@ int roomcam_RenderRoom(
                 int sourcey = srf->h - (
                     srf->h * (tx % TEX_COORD_SCALER) / TEX_COORD_SCALER
                 );
+                if (sourcey < 0) sourcey = 0;
+                if (sourcey >= srf->h) sourcey = srf->h - 1;
                 int sourcey_multiplied_w = sourcey * srf->w;
                 int k = top;
                 assert(bottom >= top);
@@ -541,19 +542,21 @@ int roomcam_RenderRoom(
                     ty = (
                         ty1 + ((ty2 - ty1) * (bottom - k) / (bottom - top))
                     );
+                    assert(ty >= 0);
                     // Remember, we're using the sideways tex.
                     int sourcex = (
-                        srf->w * (ty % TEX_COORD_SCALER) / TEX_COORD_SCALER
-                    );
-                    int sourcey = srf->h - (
-                        srf->h * (tx % TEX_COORD_SCALER) / TEX_COORD_SCALER
+                        (srf->w * (TEX_COORD_SCALER - 1 - (ty % TEX_COORD_SCALER)))
+                        / TEX_COORD_SCALER
                     );
                     const int tgoffset = (
-                        (x + y * k * targetw) * rendertargetcopylen
+                        (x + xoffset + col + (y + k) * targetw) *
+                        rendertargetcopylen
                     );
                     const int srcoffset = (
                         sourcex + sourcey_multiplied_w) *
                         srccopylen;
+                    assert(srcoffset >= 0 &&
+                        srcoffset < srf->w * srf->h * srccopylen);
                     int r = srcpixels[srcoffset + 0];
                     int g = srcpixels[srcoffset + 1];
                     int b = srcpixels[srcoffset + 2];
