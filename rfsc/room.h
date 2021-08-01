@@ -73,5 +73,6 @@ int room_RecomputePosExtent(room *room);
 int room_ContainsPoint(
     room *room, int64_t x, int64_t y
 );
+int room_VerifyBasicGeometry(room *r);
 
 #endif  // RFS2_ROOM_H_

@@ -178,7 +178,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
             else room_id = round(lua_tonumber(l, -1));
         lua_pop(l, 1);
 
-        // Make sure the room we're about to add doesn't exist yet:
+        // Make sure the room we're adding doesn't exist yet:
         room *r = room_ById(lr, room_id);
         if (r) {
             char buf[256];
@@ -247,7 +247,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     room_Destroy(r); previousroom = NULL;
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
-                        "room with id %" PRIu64 " has \"walls\"[%d] "
+                        "room with id %" PRIu64 " "
+                        "has \"walls\"[%d] "
                         "not being a table", room_id, k + 1);
                     *err = strdup(buf);
                     lua_settop(l, startstack);
@@ -292,15 +293,18 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 lua_pop(l, 1);
                 lua_pop(l, 1);  // Remove "walls"[k + 1] entry
 
-                // Set corner data, now that we verified everything:
+                // Set corner data, now that we got it:
                 r->corners++;
-                memset(&r->wall[r->corners - 1], 0, sizeof(*r->wall));
-                r->wall[r->corners - 1].wall_tex.tex_scaleintx = (
-                    TEX_FULLSCALE_INT
-                );
-                r->wall[r->corners - 1].wall_tex.tex_scaleinty = (
-                    TEX_FULLSCALE_INT
-                );
+                memset(&r->wall[r->corners - 1], 0,
+                    sizeof(*r->wall));
+                r->wall[r->corners - 1].wall_tex.
+                    tex_scaleintx = (
+                        TEX_FULLSCALE_INT
+                    );
+                r->wall[r->corners - 1].wall_tex.
+                    tex_scaleinty = (
+                        TEX_FULLSCALE_INT
+                    );
                 r->corner_x[r->corners - 1] = corner_x;
                 r->corner_y[r->corners - 1] = corner_y;
 
@@ -309,12 +313,27 @@ int roomserialize_lua_DeserializeRoomGeometries(
         }
         lua_pop(l, 1);  // Remove "walls" property
         lua_pop(l, 1);  // Remove room[i]
+        // Verify amount of corners:
         if (r->corners < 3) {
             room_Destroy(r); previousroom = NULL;
             char buf[256];
             snprintf(buf, sizeof(buf) - 1,
                 "room with id %" PRIu64 " has too few "
                 "corners", room_id);
+            *err = strdup(buf);
+            lua_settop(l, startstack);
+            return 0;
+        }
+        // Verify room shape:
+        if (!room_VerifyBasicGeometry(r)) {
+            room_Destroy(r); previousroom = NULL;
+            char buf[256];
+            snprintf(buf, sizeof(buf) - 1,
+                "room with id %" PRIu64 " has invalid "
+                "corner geometry that isn't convex, or "
+                "not specified counter-clockwise, or "
+                "with two corners merged in one spot",
+                room_id);
             *err = strdup(buf);
             lua_settop(l, startstack);
             return 0;
@@ -329,7 +348,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
         lua_pushinteger(l, i);
         lua_gettable(l, tblindex);
         assert(lua_type(l, -1) == LUA_TTABLE ||
-            lua_type(l, -1) == LUA_TNIL);  // checked in loop above
+            lua_type(l, -1) == LUA_TNIL);
+            // ^ checked in loop above
         if (lua_type(l, -1) == LUA_TNIL) {
             // End of room list.
             lua_settop(l, startstack);
@@ -340,7 +360,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
         lua_pushstring(l, "id");
         lua_gettable(l, -2);
         assert(lua_type(l, -1) == LUA_TNUMBER &&
-            lua_tonumber(l, -1) >= 1);  // checked in loop above;
+            lua_tonumber(l, -1) >= 1);
+            // ^ checked in loop above;
         if (lua_isinteger(l, -1)) room_id = lua_tointeger(l, -1);
             else room_id = round(lua_tonumber(l, -1));
         lua_pop(l, 1);
@@ -351,7 +372,8 @@ int roomserialize_lua_DeserializeRoomGeometries(
                             // so it should really exist.
         lua_pushstring(l, "walls");
         lua_gettable(l, -2);
-        assert(lua_type(l, -1) == LUA_TTABLE); // checked in loop above
+        assert(lua_type(l, -1) == LUA_TTABLE);
+        // ^ checked in loop above
 
         // Iterate over "walls" property:
         int nextk = 1;
@@ -382,16 +404,20 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 uint64_t portal_target_id = -1;
                 if (lua_isinteger(l, -1))
                     portal_target_id = lua_tointeger(l, -1);
-                    else portal_target_id = round(lua_tonumber(l, -1));
+                    else portal_target_id =
+                        round(lua_tonumber(l, -1));
                 room *portal_target = NULL;
                 if (portal_target_id < 1 ||
-                        (portal_target = room_ById(lr, portal_target_id))
-                        == NULL) {
+                        (portal_target = room_ById(
+                            lr, portal_target_id
+                        )) == NULL) {
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "room with id %" PRIu64 " has invalid "
-                        "portal target for wall %d - target room "
-                        "with id %" PRId64 " not found", room_id,
+                        "portal target for wall %d - "
+                        "target room "
+                        "with id %" PRId64 " not found",
+                        room_id,
                         k + 1, portal_target_id);
                     *err = strdup(buf);
                     lua_settop(l, startstack);
@@ -425,26 +451,31 @@ int roomserialize_lua_DeserializeRoomGeometries(
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "room with id %" PRIu64 " has invalid "
-                        "portal target for wall %d - target room "
+                        "portal target for wall %d - "
+                        "target room "
                         "with id %" PRId64 " "
-                        "has no matching wall lined up", room_id,
+                        "has no matching wall lined up",
+                        room_id,
                         k + 1, portal_target_id);
                     *err = strdup(buf);
                     lua_settop(l, startstack);
                     return 0;
                 }
-                // Ensure there is not already a conflicting portal
-                // heading back our way:
-                if (portal_target->wall[opposite_portal_wall_idx].
-                        has_portal &&
-                        portal_target->wall[opposite_portal_wall_idx].
-                        portal_targetroom != r) {
+                // Ensure there is not already a
+                // conflicting portal heading back to us:
+                if (portal_target->wall[
+                            opposite_portal_wall_idx].
+                            has_portal &&
+                        portal_target->wall[
+                            opposite_portal_wall_idx].
+                            portal_targetroom != r) {
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "room with id %" PRIu64 " has invalid "
-                        "portal target for wall %d - target room "
+                        "portal target for wall %d - "
+                        "target room "
                         "with id %" PRId64 " "
-                        "already has portal elsewhere on lined up "
+                        "already has portal elsewhere on "
                         "opposite wall %d", room_id,
                         k + 1, portal_target_id,
                         opposite_portal_wall_idx + 1);

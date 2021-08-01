@@ -5,6 +5,7 @@
 #include "compileconfig.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -44,6 +45,51 @@ uint64_t room_GetNewId(roomlayer *lr) {
         i++;
     }
     return 0;
+}
+
+int room_VerifyBasicGeometry(room *r) {
+    if (r->corners < 3)
+        return 0;
+
+    int iprev = r->corners - 1;
+    int inext = 1;
+    int i = 0;
+    while (i < r->corners) {
+        int64_t walldir_x, walldir_y;
+        walldir_x = (r->corner_x[inext] - r->corner_x[i]);
+        walldir_y = (r->corner_y[inext] - r->corner_y[i]);
+        if (walldir_x == 0 && walldir_y == 0)
+            return 0;
+        int64_t prevwalldir_x, prevwalldir_y;
+        prevwalldir_x = (
+            r->corner_x[i] - r->corner_x[iprev]
+        );
+        prevwalldir_y = (
+            r->corner_y[i] - r->corner_y[iprev]
+        );
+        if (prevwalldir_x == 0 && prevwalldir_y == 0)
+            return 0;
+        int32_t angle_i = math_angle2di(
+            walldir_x, walldir_y
+        );
+        int32_t angle_iprev = math_angle2di(
+            prevwalldir_x, prevwalldir_y
+        );
+        int32_t anglediff = math_fixanglei(
+            angle_i - angle_iprev
+        );
+        if (anglediff < 0)
+            return 0;
+        inext++;
+        if (inext >= r->corners)
+            inext = 0;
+        iprev++;
+        if (iprev >= r->corners)
+            iprev = 0;
+        i++;
+    }
+    // FIXME: check walls dont intersect with themselves
+    return 1;
 }
 
 int room_RecomputePosExtent(room *r) {
@@ -168,9 +214,9 @@ room *room_Create(roomlayer *lr, uint64_t id) {
         }
         i++;
     }
-    r->corner_x[0] = -ONE_METER_IN_UNITS * 2;
+    r->corner_x[0] = ONE_METER_IN_UNITS * 2;
     r->corner_y[0] = -ONE_METER_IN_UNITS * 2;
-    r->corner_x[1] = ONE_METER_IN_UNITS * 2;
+    r->corner_x[1] = -ONE_METER_IN_UNITS * 2;
     r->corner_y[1] = -ONE_METER_IN_UNITS * 2;
     r->corner_x[2] = 0 * 2;
     r->corner_y[2] = ONE_METER_IN_UNITS * 2;
@@ -183,8 +229,10 @@ room *room_Create(roomlayer *lr, uint64_t id) {
     r->sector_light_r = TEX_FULLSCALE_INT;
     r->sector_light_g = TEX_FULLSCALE_INT;
     r->sector_light_b = TEX_FULLSCALE_INT;
-    r->floor_tex.tex = roomlayer_MakeTexRef(lr, ROOM_DEF_FLOOR_TEX);
-    r->ceiling_tex.tex = roomlayer_MakeTexRef(lr, ROOM_DEF_CEILING_TEX);
+    r->floor_tex.tex = roomlayer_MakeTexRef(
+        lr, ROOM_DEF_FLOOR_TEX);
+    r->ceiling_tex.tex = roomlayer_MakeTexRef(
+        lr, ROOM_DEF_CEILING_TEX);
     if (!r->floor_tex.tex || !r->ceiling_tex.tex)
         goto failandfreetextures;
     if (!room_RecomputePosExtent(r)) {
@@ -210,6 +258,7 @@ room *room_Create(roomlayer *lr, uint64_t id) {
         llabs(r->corner_x[0] - r->corner_x[1]) / 2)
     );
     lr->possibly_free_room_id = r->id + 1;
+    assert(room_VerifyBasicGeometry(r));
     return r;
 }
 
@@ -259,11 +308,27 @@ void room_Destroy(room *r) {
         r->floor_tex.tex->refcount--;
     if (r->ceiling_tex.tex)
         r->ceiling_tex.tex->refcount--;
-    hash_BytesMapUnset(
-        r->parentlayer->room_by_id_map,
-        (char *)&r->id, sizeof(r->id)
-    );
-    r->parentlayer->possibly_free_room_id = r->id;
+    if (r->parentlayer) {
+        hash_BytesMapUnset(
+            r->parentlayer->room_by_id_map,
+            (char *)&r->id, sizeof(r->id)
+        );
+        r->parentlayer->possibly_free_room_id = r->id;
+        int32_t i = 0;
+        while (i < r->parentlayer->roomcount) {
+            if (r->parentlayer->rooms[i] == r) {
+                if (i + 1 < r->parentlayer->roomcount)
+                    memmove(
+                        &r->parentlayer->rooms[i],
+                        &r->parentlayer->rooms[i + 1],
+                        r->parentlayer->roomcount - i - 1
+                    );
+                r->parentlayer->roomcount--;
+                break;
+            }
+            i++;
+        }
+    }
     free(r);
 }
 
