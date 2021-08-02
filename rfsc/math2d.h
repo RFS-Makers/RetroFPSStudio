@@ -30,6 +30,18 @@ int math_lineintersect2df(
     double *ix, double *iy
 );
 
+static int imin(int i1, int i2) {
+    if (i1 < i2)
+        return i1;
+    return i2;
+}
+
+static int imax(int i1, int i2) {
+    if (i1 > i2)
+        return i1;
+    return i2;
+}
+
 int math_lineintersect2di(
     int64_t l1x1, int64_t l1y1, int64_t l1x2, int64_t l1y2,
     int64_t l2x1, int64_t l2y1, int64_t l2x2, int64_t l2y2,

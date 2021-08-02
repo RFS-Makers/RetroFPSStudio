@@ -170,7 +170,8 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
         }
     }
     if (force_recalculate_rotated_vecs ||
-            cam->cache->cachedangle != cam->obj->angle) {
+            cam->cache->cachedangle != cam->obj->angle ||
+            cam->cache->cachedvangle != cam->vangle) {
         int64_t plane_left_x = (
             cam->cache->unrotatedplanevecs_left_x
         );
@@ -204,6 +205,7 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
         }
     }
     cam->cache->cachedangle = cam->obj->angle;
+    cam->cache->cachedvangle = cam->vangle;
     cam->cache->cachedfov = cam->fov;
     cam->cache->cachedw = w;
     cam->cache->cachedh = h;
@@ -218,6 +220,7 @@ int roomcam_SliceHeight(
     int64_t dist = math_veclen(
         ix - cam->obj->x, iy - cam->obj->y
     );
+    assert(xoffset >= 0 && xoffset < cam->cache->cachedw);
     int64_t planecoldist = cam->cache->planevecs_len[xoffset];
     int64_t planecoldistscalar = (dist * 100000LL) / planecoldist;
     int64_t screenheightatwall = (
@@ -558,8 +561,11 @@ int roomcam_RenderRoom(
     const int rendertargetcopylen = (
         rendertarget->hasalpha ? 4 : 3
     );
+    const int batchwidth = (
+        imax(16, w / WALL_BATCH_DIVIDER)
+    );
     int col = xoffset;
-    while (col < w && col < max_xoffset) {
+    while (col < w && col <= max_xoffset) {
         /*printf("---\n");
         printf("render col %d/%d cam x,y %d,%d along %d,%d, "
             "angle %f roomid=%d max_xoffset=%d\n",
@@ -588,92 +594,127 @@ int roomcam_RenderRoom(
             col++;
             continue;
         }
+        // Find out where wall segment ends (=faster):
+        int endcol = _roomcam_XYToViewplaneX_NoRecalc(
+            cam, r->corner_x[wallno], r->corner_y[wallno]
+        );
+        if (endcol < col)
+            endcol = col;
+        if (endcol >= w || endcol > max_xoffset)
+            endcol = ((w - 1 < max_xoffset ||
+                max_xoffset < 0) ? w - 1 : max_xoffset);
+        if (endcol > col + batchwidth)
+            endcol = col + batchwidth;
+        assert(endcol >= col);
+
+        // Get target hit pos at wall end:
+        int64_t endhit_x, endhit_y;
+        int endwallno = -1;
+        int endintersect = math_polyintersect2di_ex(
+            cam->obj->x, cam->obj->y,
+            cam->obj->x + cam->cache->rotatedplanevecs_x[endcol] *
+                VIEWPLANE_RAY_LENGTH_DIVIDER,
+            cam->obj->y + cam->cache->rotatedplanevecs_y[endcol] *
+                VIEWPLANE_RAY_LENGTH_DIVIDER,
+            r->corners, r->corner_x, r->corner_y, ignorewall,
+            &endwallno, &endhit_x, &endhit_y
+        );
+        if (!endintersect || endwallno < 0) {
+            // Weird, that shouldn't happen. Just limit the advancement,
+            // and ignore it:
+            endcol = col;
+        }
+
         if (r->wall[wallno].has_portal) {
             assert(r->wall[wallno].portal_targetroom != NULL);
 
-            // Find out where portal ends:
-            int endcol = _roomcam_XYToViewplaneX_NoRecalc(
-                cam, r->corner_x[wallno], r->corner_y[wallno]
-            ) + 1;
-            if (endcol <= col + xoffset)
-                endcol = col + xoffset + 1;
-            if (endcol > max_xoffset)
-                endcol = max_xoffset;
-
             // Recurse into portal, or black it out if nested too deep:
             assert(r->wall[wallno].portal_targetroom != NULL);
+            int rendered_portalcols = 0;
             if (nestdepth + 1 <= RENDER_MAX_PORTAL_DEPTH) {
                 int innercols = roomcam_RenderRoom(
                     cam, r->wall[wallno].portal_targetroom,
                     x, y, w, h,
-                    col + xoffset, endcol, nestdepth + 1,
+                    col, endcol, nestdepth + 1,
                     r->wall[wallno].portal_targetwall
                 );
                 if (innercols <= 0)
                     return -1;
-                int k = 0;
-                while (k < innercols) {
-                    // Call ceiling + floor render:
-                    // ...
-                    k++;
-                }
                 /*printf("nesting returned, col: %d "
                     "innercols: %d, endcol: %d\n",
                     (int)col, (int)innercols, (int)endcol);*/
-                col += innercols;
-                continue;
-            } else {
-                // Calculate wall slice height:
-                int32_t top, bottom;
-                int64_t topworldz, bottomworldz;
-                if (!roomcam_SliceHeight(
-                        cam, r, h, hit_x, hit_y,
-                        col + xoffset, &topworldz,
-                        &bottomworldz, &top, &bottom
-                        )) {
-                    // Fully off-screen.
-                    col++;
-                    continue;
-                }
+                rendered_portalcols = innercols;
+            }
+            if (col + rendered_portalcols < endcol) {
+                int32_t z = col + rendered_portalcols;
+                while (z <= endcol) {
+                    // Calculate wall slice height:
+                    int32_t top, bottom;
+                    int64_t topworldz, bottomworldz;
+                    if (!roomcam_SliceHeight(
+                            cam, r, h, hit_x, hit_y,
+                            z, &topworldz,
+                            &bottomworldz, &top, &bottom
+                            )) {
+                        // Fully off-screen.
+                        z++;
+                        continue;
+                    }
 
-                // Black it out:
-                if (!graphics_DrawRectangle(
-                        0, 0, 0, 1,
-                        x + col + xoffset, y + top,
-                        1, bottom - y - top
-                        ))
-                    return -1;
+                    // Black it out:
+                    if (!graphics_DrawRectangle(
+                            0, 0, 0, 1,
+                            x + col + xoffset, y + top,
+                            1, bottom - y - top
+                            ))
+                        return -1;
+                    z++;
+                }
             }
             // Now draw the wall parts above & below portal:
             // ...
         } else {
-            // Calculate full wall slice height:
-            int32_t top, bottom;
-            int64_t topworldz, bottomworldz;
-            if (!roomcam_SliceHeight(
-                    cam, r, h, hit_x, hit_y,
-                    col + xoffset, &topworldz, &bottomworldz,
-                    &top, &bottom
-                    )) {
-                // Fully off-screen.
-                col++;
-                continue;
-            }
+            int32_t z = col;
+            while (z <= endcol) {
+                int64_t ipolhit_x = (
+                    hit_x + (endhit_x - hit_x) *
+                    (z - col) / imax(1, endcol - col)
+                );
+                int64_t ipolhit_y = (
+                    hit_y + (endhit_y - hit_y) *
+                    (z - col) / imax(1, endcol - col)
+                );
 
-            // Draw slice:
-            if (!roomcam_DrawWallSlice(
-                    rendertarget, r, wallno, hit_x, hit_y,
-                    top, bottom, topworldz, bottomworldz,
-                    x + xoffset + col, y, h
-                    ))
-                return -1;
+                // Calculate full wall slice height:
+                int32_t top, bottom;
+                int64_t topworldz, bottomworldz;
+                if (!roomcam_SliceHeight(
+                        cam, r, h, ipolhit_x, ipolhit_y,
+                        z, &topworldz, &bottomworldz,
+                        &top, &bottom
+                        )) {
+                    // Fully off-screen.
+                    z++;
+                    continue;
+                }
+
+                // Draw slice:
+                if (!roomcam_DrawWallSlice(
+                        rendertarget, r, wallno, ipolhit_x, ipolhit_y,
+                        top, bottom, topworldz, bottomworldz,
+                        x + z, y, h
+                        ))
+                    return -1;
+                z++;
+            }
         }
 
         // Call ceiling + floor render:
         // ...
 
         // Advance to next slice:
-        col++;
+        assert(endcol >= col);
+        col = endcol + 1;
     }
     return col - xoffset;
 }
