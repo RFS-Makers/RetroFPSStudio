@@ -48,6 +48,13 @@ int math_polyintersect2di(
     int *iwall, int64_t *ix, int64_t *iy
 );
 
+int math_polyintersect2di_ex(
+    int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
+    int corner_count, const int64_t *cx, const int64_t *cy,
+    int passable_wall_id,
+    int *iwall, int64_t *ix, int64_t *iy
+);
+
 int math_polycontains2di(
     int64_t px, int64_t py,
     int corner_count, const int64_t *cx, const int64_t *cy

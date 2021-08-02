@@ -402,6 +402,76 @@ void roomcam_WallCubeMapping(
     );
 }
 
+int32_t _roomcam_XYToViewplaneX_NoRecalc(
+        roomcam *cam, int64_t px, int64_t py
+        ) {
+    const int w = cam->cache->cachedw;
+
+    // Rotate/move vec into camera-local space:
+    px -= cam->obj->x;
+    py -= cam->obj->y;
+    math_rotate2di(&px, &py, -cam->obj->angle);
+
+    // Special case of behind camera:
+    if (px <= 0) {
+        if (py < 0)
+            return -1;
+        if (py > 0)
+            return w;
+        return 0;
+    }
+
+    // Scale vec down to exactly viewplane distance:
+    int64_t dist = math_veclen(px, py);
+    int64_t scalef = 10000LL * cam->cache->planedist / dist;
+    px = (px * scalef) / 10000LL;
+    py = (py * scalef) / 10000LL;
+
+    // If outside of viewplane, abort early:
+    if (py < cam->cache->unrotatedplanevecs_left_y)
+        return -1;
+    if (py > cam->cache->unrotatedplanevecs_right_y)
+        return w;
+
+    // See which viewplane vec is close enough:
+    int64_t previous_vec_y =
+        cam->cache->unrotatedplanevecs_left_y;
+    assert(cam->cache->unrotatedplanevecs_left_y <
+           cam->cache->unrotatedplanevecs_right_y);
+    int32_t i = 1;
+    while (i < w) {
+        int64_t current_vec_y = (
+            cam->cache->unrotatedplanevecs_left_y + ((
+                cam->cache->unrotatedplanevecs_right_y -
+                cam->cache->unrotatedplanevecs_left_y
+            ) * i) / (w - 1));
+        if (py >= previous_vec_y && py <= current_vec_y) {
+            if (llabs(py - previous_vec_y) <
+                    llabs(py - current_vec_y))
+                return i - 1;
+            else if (i >= w - 1)
+                return i;
+        } else if (py < previous_vec_y) {
+            return i - 1;
+        }
+        i++;
+    }
+    return w;
+}
+
+int roomcam_XYToViewplaneX(
+        roomcam *cam, int w, int h, int64_t px, int64_t py,
+        int32_t *result
+        ) {
+    if (w <= 0 || h <= 0)
+        return 0;
+    if (!roomcam_CalculateViewPlane(cam, w, h)) {
+        return 0;
+    }
+    *result = _roomcam_XYToViewplaneX_NoRecalc(cam, px, py);
+    return 1;
+}
+
 static int roomcam_DrawWallSlice(
         rfssurf *rendertarget,
         room *r, int wallno, int64_t hit_x, int64_t hit_y,
@@ -488,7 +558,8 @@ static int roomcam_DrawWallSlice(
  
 int roomcam_RenderRoom(
         roomcam *cam, room *r, int x, int y, int w, int h,
-        int xoffset, int nestdepth
+        int xoffset, int max_xoffset, int nestdepth,
+        int ignorewall
         ) {
     if (nestdepth > RENDER_MAX_PORTAL_DEPTH)
         return -1;
@@ -499,10 +570,10 @@ int roomcam_RenderRoom(
         rendertarget->hasalpha ? 4 : 3
     );
     int col = xoffset;
-    while (col < w) {
+    while (col < w && col < max_xoffset) {
         /*printf("---\n");
         printf("render col %d/%d cam x,y %d,%d along %d,%d, "
-            "angle %f\n",
+            "angle %f roomid=%d max_xoffset=%d\n",
             col, w,
             (int)cam->obj->x, (int)cam->obj->y,
             (int)cam->cache->rotatedplanevecs_x[col],
@@ -510,32 +581,47 @@ int roomcam_RenderRoom(
             (double) math_angle2di(
                 cam->cache->rotatedplanevecs_x[col],
                 cam->cache->rotatedplanevecs_y[col]
-            )/ (double)ANGLE_SCALAR);*/
+            )/ (double)ANGLE_SCALAR, (int)r->id,
+            (int)max_xoffset);*/
         int wallno = -1;
         int64_t hit_x, hit_y;
-        int intersect = math_polyintersect2di(
+        int intersect = math_polyintersect2di_ex(
             cam->obj->x, cam->obj->y,
             cam->obj->x + cam->cache->rotatedplanevecs_x[col] *
                 VIEWPLANE_RAY_LENGTH_DIVIDER,
             cam->obj->y + cam->cache->rotatedplanevecs_y[col] *
                 VIEWPLANE_RAY_LENGTH_DIVIDER,
-            r->corners, r->corner_x, r->corner_y,
+            r->corners, r->corner_x, r->corner_y, ignorewall,
             &wallno, &hit_x, &hit_y
         );
-        /*printf("intersect %d wallno %d hit_x, hit_y %d, %d\n",
-            intersect, wallno, (int)hit_x, (int)hit_y);*/
+        //printf("intersect: %d, wallno: %d\n", intersect, wallno);
         if (!intersect || wallno < 0) {
             col++;
             continue;
         }
         if (r->wall[wallno].has_portal) {
+            assert(r->wall[wallno].portal_targetroom != NULL);
+
+            // Find out where portal ends:
+            int endcol = _roomcam_XYToViewplaneX_NoRecalc(
+                cam, r->corner_x[wallno], r->corner_y[wallno]
+            ) + 1;
+            assert(endcol >= col + xoffset - 1);
+            if (endcol <= col + xoffset)
+                endcol = col + xoffset + 1;
+            /*printf("startcol %d, endcol %d\n",
+                col + xoffset, endcol);*/
+            if (endcol > max_xoffset)
+                endcol = max_xoffset;
+
             // Recurse into portal, or black it out if nested too deep:
             assert(r->wall[wallno].portal_targetroom != NULL);
             if (nestdepth + 1 <= RENDER_MAX_PORTAL_DEPTH) {
                 int innercols = roomcam_RenderRoom(
                     cam, r->wall[wallno].portal_targetroom,
                     x, y, w, h,
-                    col + xoffset, nestdepth + 1
+                    col + xoffset, endcol, nestdepth + 1,
+                    r->wall[wallno].portal_targetwall
                 );
                 if (innercols <= 0)
                     return -1;
@@ -545,6 +631,10 @@ int roomcam_RenderRoom(
                     // ...
                     k++;
                 }
+                /*printf("nesting returned, col: %d "
+                    "innercols: %d, endcol: %d\n",
+                    (int)col, (int)innercols, (int)endcol);*/
+                assert(col + innercols <= endcol);
                 col += innercols;
                 continue;
             } else {
@@ -569,8 +659,10 @@ int roomcam_RenderRoom(
                         ))
                     return -1;
             }
+            // Now draw the wall parts above & below portal:
+            // ...
         } else {
-            // Calculate wall slice height:
+            // Calculate full wall slice height:
             int32_t top, bottom;
             int64_t topworldz, bottomworldz;
             if (!roomcam_SliceHeight(
@@ -598,7 +690,7 @@ int roomcam_RenderRoom(
         // Advance to next slice:
         col++;
     }
-    return col;
+    return col - xoffset;
 }
 
 int roomcam_Render(
@@ -626,7 +718,7 @@ int roomcam_Render(
     }
 
     if (roomcam_RenderRoom(cam, cam->obj->parentroom,
-            x, y, w, h, 0, 0) < 0) {
+            x, y, w, h, 0, w, 0, -1) < 0) {
         graphics_PopRenderScissors();
         return 0;
     }

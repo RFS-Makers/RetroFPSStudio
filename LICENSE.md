@@ -11,8 +11,13 @@ RFS2 is proprietary, All Rights Reserved.
 A part of RFS2's code is offered in public
 **for educational and informational purposes only.
 Please do not reuse, share, modify, compile, or
-otherwise rely on this code, outside of pure informational reading
+otherwise rely on this code and these files,
+outside of pure informational reading
 and, if you want, reporting of bugs. Disassembling official binaries
 is still not allowed.**
 No warranty is offered on this code whatsover, my apologies.
 Copyright (c) 2020-2021,  E.J.T./@ell1e & RFS2 Team (see AUTHORS.md).
+
+Note: some files, like in the "vendor" folder, have a different license.
+Refer to the respective files for more info.
+If not noted differently, this license applies.

@@ -387,6 +387,17 @@ int math_polyintersect2di(
         int corner_count, const int64_t *cx, const int64_t *cy,
         int *iwall, int64_t *ix, int64_t *iy
         ) {
+    return math_polyintersect2di_ex(
+        lx1, ly1, lx2, ly2, corner_count, cx, cy, -1,
+        iwall, ix, iy);
+}
+
+int math_polyintersect2di_ex(
+        int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
+        int corner_count, const int64_t *cx, const int64_t *cy,
+        int passable_wall_id,
+        int *iwall, int64_t *ix, int64_t *iy
+        ) {
     // If intersection found, returns 1 and sets
     // iwall to intersected section number, and
     // ix/iy to the intersection point.
@@ -428,6 +439,12 @@ int math_polyintersect2di(
     int imax = corner_count;
     int iprev = imax - 1;
     while (i < imax) {
+        if (passable_wall_id >= 0 &&
+                iprev == passable_wall_id) {
+            iprev = i;
+            i++;
+            continue;
+        }
         int64_t wix, wiy;
         /*printf("checking %" PRId64 ",%" PRId64 " "
             "to %" PRId64 ",%" PRId64 "  VS  "

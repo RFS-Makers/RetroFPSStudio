@@ -55,7 +55,8 @@ typedef struct room {
     roomlayer *parentlayer;
     uint64_t id;
     int16_t corners;
-    int64_t corner_x[ROOM_MAX_CORNERS], corner_y[ROOM_MAX_CORNERS];
+    int64_t corner_x[ROOM_MAX_CORNERS],
+            corner_y[ROOM_MAX_CORNERS];
     roomwall wall[ROOM_MAX_CORNERS];
     int32_t sector_light_r, sector_light_g, sector_light_b;
     int64_t floor_z, height;

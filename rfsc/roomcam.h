@@ -29,5 +29,9 @@ int roomcam_Render(
     roomcam *cam, int x, int y, int w, int h
 );
 
+int roomcam_XYToViewplaneX(
+    roomcam *cam, int w, int h, int64_t px, int64_t py,
+    int32_t *result
+);
 
 #endif  // RFS2_ROOMCAM_H_
