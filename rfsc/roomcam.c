@@ -121,9 +121,15 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
         int64_t plane_left_x = plane_distance;
         int64_t plane_left_y = 0;
         math_rotate2di(&plane_left_x, &plane_left_y, (fov_h / 2));
+        int64_t scalar = 1000LL * plane_distance / plane_left_x;
+        plane_left_x = plane_distance;
+        plane_left_y = plane_left_y * scalar / 1000LL;
         int64_t plane_right_x = plane_distance;
         int64_t plane_right_y = 0;
         math_rotate2di(&plane_right_x, &plane_right_y, -(fov_h / 2));
+        scalar = 1000LL * plane_distance / plane_right_x;
+        plane_right_x = plane_distance;
+        plane_right_y = plane_right_y * scalar / 1000LL;
         cam->cache->unrotatedplanevecs_left_x = plane_left_x;
         cam->cache->unrotatedplanevecs_left_y = plane_left_y;
         cam->cache->unrotatedplanevecs_right_x = plane_right_x;
@@ -212,17 +218,17 @@ int roomcam_SliceHeight(
     int64_t dist = math_veclen(
         ix - cam->obj->x, iy - cam->obj->y
     );
-    int64_t planedist = cam->cache->planevecs_len[xoffset];
-    int64_t planedistscalar = (dist * 100000LL) / planedist;
+    int64_t planecoldist = cam->cache->planevecs_len[xoffset];
+    int64_t planecoldistscalar = (dist * 100000LL) / planecoldist;
     int64_t screenheightatwall = (
-        (cam->cache->planeh * planedistscalar) / 100000LL
+        (cam->cache->planeh * planecoldistscalar) / 100000LL
     );
-    /*printf("dist: %" PRId64 ", planedist: %" PRId64 ", "
-        "planedistscalar: %" PRId64 ", "
+    /*printf("dist: %" PRId64 ", planecoldist: %" PRId64 ", "
+        "planecoldistscalar: %" PRId64 ", "
         "screen height at plane: %" PRId64 ", "
         "screen height at wall: %" PRId64 ", wall "
         "height: %" PRId64 "\n",
-        dist, planedist, planedistscalar,
+        dist, planecoldist, planecoldistscalar,
         cam->cache->planeh,
         screenheightatwall,
         r->height);*/
@@ -423,7 +429,8 @@ int32_t _roomcam_XYToViewplaneX_NoRecalc(
 
     // Scale vec down to exactly viewplane distance:
     int64_t dist = math_veclen(px, py);
-    int64_t scalef = 10000LL * cam->cache->planedist / dist;
+    int64_t scalef = 10000LL * cam->cache->planedist / px;
+    assert(cam->cache->unrotatedplanevecs_left_x == cam->cache->planedist);
     px = (px * scalef) / 10000LL;
     py = (py * scalef) / 10000LL;
 
@@ -433,30 +440,12 @@ int32_t _roomcam_XYToViewplaneX_NoRecalc(
     if (py > cam->cache->unrotatedplanevecs_right_y)
         return w;
 
-    // See which viewplane vec is close enough:
-    int64_t previous_vec_y =
-        cam->cache->unrotatedplanevecs_left_y;
-    assert(cam->cache->unrotatedplanevecs_left_y <
-           cam->cache->unrotatedplanevecs_right_y);
-    int32_t i = 1;
-    while (i < w) {
-        int64_t current_vec_y = (
-            cam->cache->unrotatedplanevecs_left_y + ((
-                cam->cache->unrotatedplanevecs_right_y -
-                cam->cache->unrotatedplanevecs_left_y
-            ) * i) / (w - 1));
-        if (py >= previous_vec_y && py <= current_vec_y) {
-            if (llabs(py - previous_vec_y) <
-                    llabs(py - current_vec_y))
-                return i - 1;
-            else if (i >= w - 1)
-                return i;
-        } else if (py < previous_vec_y) {
-            return i - 1;
-        }
-        i++;
-    }
-    return w;
+    int res = (py - cam->cache->unrotatedplanevecs_left_y) * w /
+        (cam->cache->unrotatedplanevecs_right_y -
+        cam->cache->unrotatedplanevecs_left_y);
+    if (res >= w) res = w - 1;
+    if (res < 0) res = 0;
+    return res;
 }
 
 int roomcam_XYToViewplaneX(
@@ -606,11 +595,8 @@ int roomcam_RenderRoom(
             int endcol = _roomcam_XYToViewplaneX_NoRecalc(
                 cam, r->corner_x[wallno], r->corner_y[wallno]
             ) + 1;
-            assert(endcol >= col + xoffset - 1);
             if (endcol <= col + xoffset)
                 endcol = col + xoffset + 1;
-            /*printf("startcol %d, endcol %d\n",
-                col + xoffset, endcol);*/
             if (endcol > max_xoffset)
                 endcol = max_xoffset;
 
@@ -634,7 +620,6 @@ int roomcam_RenderRoom(
                 /*printf("nesting returned, col: %d "
                     "innercols: %d, endcol: %d\n",
                     (int)col, (int)innercols, (int)endcol);*/
-                assert(col + innercols <= endcol);
                 col += innercols;
                 continue;
             } else {
@@ -654,7 +639,7 @@ int roomcam_RenderRoom(
                 // Black it out:
                 if (!graphics_DrawRectangle(
                         0, 0, 0, 1,
-                        col + xoffset, y + top,
+                        x + col + xoffset, y + top,
                         1, bottom - y - top
                         ))
                     return -1;
