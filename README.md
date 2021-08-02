@@ -11,7 +11,7 @@ see [the license](LICENSE.md) for explanations.
 Hopefully, you still find it informative, and I apologize
 that it's not more liberal.*
 
-To get started with RFS2, [obtain a working copy](
+To get started, [obtain Retro FPS Studio](
     https://rfs.horse64.org/get) from the website.
 
 To get help with RFS2, [visit the community spaces](
