@@ -107,6 +107,16 @@ void outputwindow_EnsureOpenWindow(int forceno3d) {
             fprintf(stderr,
                 "rfsc/outputwindow.c: debug: window open.\n");
             #endif
+            rfs2tex *tex = graphics_LoadTex("rfslua/res/ui/icon");
+            SDL_Surface *srf = (
+                tex ? rfssurf_AsSrf(tex->srfalpha, 1) : NULL
+            );
+            if (!tex || !srf) {
+                fprintf(stderr, "rfsc/outputwindow.c: debug: "
+                    "failed to access rfslua/res/ui/icon\n");
+            } else {
+                SDL_SetWindowIcon(rfswindow, srf);
+            }
         }
     }
     if (rfswindow && !rfsrenderer) {

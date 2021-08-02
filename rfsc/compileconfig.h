@@ -24,6 +24,7 @@
 
 //#define DEBUG_VFS
 //#define DEBUG_3DRENDERER
+//#define DEBUG_TEXTURES
 //#define DEBUG_RENDERER
 //#define DEBUG_TOUCH
 //#define DEBUG_DOWNLOADS

@@ -310,6 +310,12 @@ rfs2tex *graphics_LoadTexEx(const char *path, int usecache) {
         if (!hash_BytesMapGet(
                 texture_by_name_cache, p, strlen(p),
                 (uint64_t *)&hashptrval)) {
+            #if defined(DEBUG_TEXTURES)
+            fprintf(stderr,
+                "rfsc/graphics.c: debug: graphics_LoadTex(\"%s\") "
+                    "-> adding new: %s\n",
+                path, p);
+            #endif
             rfs2tex *t = graphics_LoadTexEx(
                 path, 0
             );
