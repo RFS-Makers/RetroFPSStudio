@@ -42,7 +42,7 @@ static int imax(int i1, int i2) {
     return i2;
 }
 
-int math_lineintersect2di(
+HOTSPOT int math_lineintersect2di(
     int64_t l1x1, int64_t l1y1, int64_t l1x2, int64_t l1y2,
     int64_t l2x1, int64_t l2y1, int64_t l2x2, int64_t l2y2,
     int64_t *ix, int64_t *iy
@@ -54,6 +54,11 @@ int math_lineintersect2di(
     int *iwall, double *ix, double *iy
 );*/
 
+HOTSPOT int math_pointalmostonline(
+    int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
+    int64_t px, int64_t py, int range
+);
+
 int math_polyintersect2di(
     int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
     int corner_count, const int64_t *cx, const int64_t *cy,
@@ -63,7 +68,7 @@ int math_polyintersect2di(
 int math_polyintersect2di_ex(
     int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
     int corner_count, const int64_t *cx, const int64_t *cy,
-    int passable_wall_id,
+    int ignorewall, int loosefit,
     int *iwall, int64_t *ix, int64_t *iy
 );
 

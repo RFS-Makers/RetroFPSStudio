@@ -54,9 +54,13 @@ rfs.net.escape_plus = function(t)
     return tresult
 end
 
-rfs.net.download = function(url, maxbytes)
+rfs.net.download = function(url, options)
+    if type(options) ~= "table" and
+            type(options) ~= "nil" then
+        error("options must be a table")
+    end
     local result = (
-        _http_newdownload(url, maxbytes)
+        _http_newdownload(url, options)
     )
     debug.setmetatable(result, {
         __index = rfs.net.dlclass,

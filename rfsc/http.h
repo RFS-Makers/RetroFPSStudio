@@ -9,7 +9,9 @@
 typedef struct httpdownload httpdownload;
 
 
-httpdownload *http_NewDownload(const char *url, int64_t max_bytes);
+httpdownload *http_NewDownload(
+    const char *url, int64_t max_bytes, int retries
+);
 
 int64_t http_DownloadedByteCount(httpdownload *hp);
 

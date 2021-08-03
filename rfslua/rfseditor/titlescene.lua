@@ -39,7 +39,7 @@ function rfseditor.titlescene.load_demo_level()
         floor={texpath="rfslua/res/default-game-res/texture/wood1"},
     }, {
         id=2,
-        floor_z=-(rfseditor.defaults.one_meter_units * 0.8),
+        floor_z=-(rfseditor.defaults.one_meter_units * 0.6),
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={
             {corner_x=(rfseditor.defaults.one_meter_units * 1),

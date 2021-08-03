@@ -213,10 +213,13 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
 }
 
 int roomcam_SliceHeight(
-        roomcam *cam, room *r, int h, int64_t ix, int64_t iy,
+        roomcam *cam, int64_t geometry_floor_z,
+        int64_t geometry_height, int h, int64_t ix, int64_t iy,
         int xoffset, int64_t *topworldz, int64_t *bottomworldz,
         int32_t *topoffset, int32_t *bottomoffset
         ) {
+    if (unlikely(geometry_height <= 0))
+        return 0;
     int64_t dist = math_veclen(
         ix - cam->obj->x, iy - cam->obj->y
     );
@@ -238,18 +241,19 @@ int roomcam_SliceHeight(
     int64_t screentopatwall = (
         cam->obj->z + screenheightatwall / 2
     );
-    if (screentopatwall < r->floor_z ||
-            screentopatwall - screenheightatwall > r->floor_z + r->height)
+    if (unlikely(screentopatwall < geometry_floor_z ||
+            screentopatwall - screenheightatwall >
+            geometry_floor_z + geometry_height))
         return 0;
     int64_t world_to_pixel_scalar = (
         ((int64_t)h * 100000L) / screenheightatwall
     );
     int64_t topoff_world = (screentopatwall - (
-        r->floor_z + r->height
+        geometry_floor_z + geometry_height
     ));
     int64_t _topworldz = (
-        (screentopatwall >= r->floor_z + r->height) ?
-        (r->floor_z + r->height) : screentopatwall);
+        (screentopatwall >= geometry_floor_z + geometry_height) ?
+        (geometry_floor_z + geometry_height) : screentopatwall);
     if (topoff_world < 0) {
         topoff_world = 0;
     }
@@ -257,7 +261,7 @@ int roomcam_SliceHeight(
         (topoff_world * world_to_pixel_scalar) / 100000L
     );
     int64_t bottomoff_world = (screentopatwall - (
-        r->floor_z
+        geometry_floor_z
     ));
     int64_t bottomoff_screen = (
         (bottomoff_world * world_to_pixel_scalar) / 100000L
@@ -288,11 +292,11 @@ int roomcam_SliceHeight(
             (int)topoff_world,
             (int)bottomoff_world,
             (int)topoff_screen, (int)bottomoff_screen,
-            (int)r->height,
-            (int)cam->obj->z, (int)r->floor_z, (int)_topworldz,
+            (int)geometry_height,
+            (int)cam->obj->z, (int)geometry_floor_z, (int)_topworldz,
             (int)_bottomworldz,
             (int)(screentopatwall - _topworldz));*/
-    if (topoff_screen >= h || bottomoff_screen < 0)
+    if (unlikely(topoff_screen >= h || bottomoff_screen < 0))
         return 0;  // off-screen.
     *topoffset = topoff_screen;
     *bottomoffset = bottomoff_screen;
@@ -303,23 +307,17 @@ int roomcam_SliceHeight(
 
 void roomcam_WallCubeMapping(
         room *r, int wallid, int64_t wx, int64_t wy,
-        int aboveportal,
+        int aboveportal, roomtexinfo *texinfo,
         int64_t wtop, int64_t wsliceheight,
         int64_t *tx1, int64_t *ty1, int64_t *ty2
         ) {
-    roomtexinfo *relevantinfo = (
-        (aboveportal && r->wall[wallid].has_aboveportal_tex &&
-        r->wall[wallid].has_portal) ?
-        &r->wall[wallid].aboveportal_tex :
-        &r->wall[wallid].wall_tex
-    );
     int64_t repeat_units_x = (TEX_REPEAT_UNITS * (
-        ((int64_t)relevantinfo->tex_scaleintx) /
+        ((int64_t)texinfo->tex_scaleintx) /
         TEX_FULLSCALE_INT
     ));
     if (repeat_units_x < 1) repeat_units_x = 1;
     int64_t repeat_units_y = (TEX_REPEAT_UNITS * (
-        ((int64_t)relevantinfo->tex_scaleinty) /
+        ((int64_t)texinfo->tex_scaleinty) /
         TEX_FULLSCALE_INT
     ));
     if (repeat_units_y < 1) repeat_units_y = 1;
@@ -331,8 +329,8 @@ void roomcam_WallCubeMapping(
         if (r->wall[wallid].normal_y < 0)
             wx = -wx;
         int64_t reference_x = (
-            (wx + (int64_t)relevantinfo->
-                tex_gamestate_scrollx + (int64_t)relevantinfo->
+            (wx + (int64_t)texinfo->
+                tex_gamestate_scrollx + (int64_t)texinfo->
                 tex_shiftx)
         );
         if (reference_x > 0) {
@@ -348,8 +346,8 @@ void roomcam_WallCubeMapping(
         if (r->wall[wallid].normal_x > 0)
             wy = -wy;
         int64_t reference_x = (
-            (wy + (int64_t)relevantinfo->
-                tex_gamestate_scrollx + (int64_t)relevantinfo->
+            (wy + (int64_t)texinfo->
+                tex_gamestate_scrollx + (int64_t)texinfo->
                 tex_shiftx)
         );
         if (reference_x > 0) {
@@ -390,8 +388,8 @@ void roomcam_WallCubeMapping(
         _wtop = relevant_wall_segment_bottom - wtop;
     }
     int64_t reference_z = (
-        (-_wtop + (int64_t)relevantinfo->
-            tex_gamestate_scrolly + (int64_t)relevantinfo->
+        (-_wtop + (int64_t)texinfo->
+            tex_gamestate_scrolly + (int64_t)texinfo->
             tex_shifty)
     );
     if (reference_z > 0) {
@@ -464,16 +462,16 @@ int roomcam_XYToViewplaneX(
     return 1;
 }
 
-static int roomcam_DrawWallSlice(
+HOTSPOT static int roomcam_DrawWallSlice(
         rfssurf *rendertarget,
-        room *r, int wallno, int64_t hit_x, int64_t hit_y,
+        room *r, int wallno, int aboveportal,
+        roomtexinfo *texinfo,
+        int64_t hit_x, int64_t hit_y,
         int screentop, int screenbottom,
         int64_t topworldz, int64_t bottomworldz,
         int x, int y, int h
         ) {
-    rfs2tex *t = roomlayer_GetTexOfRef(
-        r->wall[wallno].wall_tex.tex
-    );
+    rfs2tex *t = roomlayer_GetTexOfRef(texinfo->tex);
     rfssurf *srf = (
         t ? graphics_GetTexSideways(t) : NULL
     );
@@ -489,8 +487,9 @@ static int roomcam_DrawWallSlice(
         int64_t tx, ty1, ty2, ty;
         assert(bottomworldz <= topworldz);
         roomcam_WallCubeMapping(
-            r, wallno, hit_x, hit_y,
-            0, topworldz, topworldz - bottomworldz,
+            r, wallno, hit_x, hit_y, aboveportal,
+            texinfo, topworldz,
+            topworldz - bottomworldz,
             &tx, &ty1, &ty2
         );
         const int targetw = rendertarget->w;
@@ -547,7 +546,19 @@ static int roomcam_DrawWallSlice(
     }
     return 1;
 }
- 
+
+// Helper to interpolate wall pos in roomcam_RenderRoom (x):
+#define RENDERROOM_IPOL_X(z) (\
+    hit_x + (endhit_x - hit_x) *\
+    (z - col) / imax(1, endcol - col)\
+);
+
+// Helper to interpolate wall pos in roomcam_RenderRoom (y)
+#define RENDERROOM_IPOL_Y(z) (\
+    hit_y + (endhit_y - hit_y) *\
+    (z - col) / imax(1, endcol - col)\
+);
+
 int roomcam_RenderRoom(
         roomcam *cam, room *r, int x, int y, int w, int h,
         int xoffset, int max_xoffset, int nestdepth,
@@ -555,6 +566,15 @@ int roomcam_RenderRoom(
         ) {
     if (nestdepth > RENDER_MAX_PORTAL_DEPTH)
         return -1;
+    #if defined(DEBUG_3DRENDERER)
+    fprintf(stderr,
+        "rfsc/roomcam.c: roomcam_RenderRoom cam_id=%" PRId64
+        ", RECURSE into room_id=%" PRId64 " "
+        "(floor_z=%" PRId64 ",height=%" PRId64 " -> "
+        "checking range %d<->%d\n",
+        cam->obj->id, r->id, r->floor_z, r->height, xoffset,
+        ((max_xoffset >= 0 && max_xoffset < w) ? max_xoffset : w));
+    #endif
     rfssurf *rendertarget = graphics_GetTargetSrf();
     if (!rendertarget)
         return -1;
@@ -586,14 +606,44 @@ int roomcam_RenderRoom(
                 VIEWPLANE_RAY_LENGTH_DIVIDER,
             cam->obj->y + cam->cache->rotatedplanevecs_y[col] *
                 VIEWPLANE_RAY_LENGTH_DIVIDER,
-            r->corners, r->corner_x, r->corner_y, ignorewall,
+            r->corners, r->corner_x, r->corner_y, ignorewall, 1,
             &wallno, &hit_x, &hit_y
         );
+        assert(!intersect || ignorewall < 0 ||
+               wallno != ignorewall);
         //printf("intersect: %d, wallno: %d\n", intersect, wallno);
         if (!intersect || wallno < 0) {
+            #if (defined(DEBUG_3DRENDERER) && \
+                defined(DEBUG_3DRENDERER_EXTRA) && !defined(NDEBUG))
+            if (cam->obj->parentroom != NULL) {
+                fprintf(stderr,
+                    "rfsc/roomcam.c: warning: roomcam_RenderRoom "
+                    "cam_id=%" PRId64 ", room_id=%" PRId64 " "
+                    "-> RAY FAIL at col %d/%d "
+                    " while NOT out of bounds, "
+                    "ray x,y %" PRId64 ",%" PRId64 " -> "
+                    "%" PRId64 ",%" PRId64 " "
+                    "polygon x,y",  // intentionally no EOL!
+                    cam->obj->id, r->id, col, w,
+                    cam->obj->x, cam->obj->y,
+                    cam->obj->x + cam->cache->rotatedplanevecs_x[col] *
+                        VIEWPLANE_RAY_LENGTH_DIVIDER,
+                    cam->obj->y + cam->cache->rotatedplanevecs_y[col] *
+                        VIEWPLANE_RAY_LENGTH_DIVIDER);
+                int i = 0;
+                while (i < r->corners) {
+                    fprintf(stderr,
+                        " %" PRId64 ",%" PRId64,
+                        r->corner_x[i], r->corner_y[i]);
+                    i++;
+                }
+                fprintf(stderr, "\n");
+            }
+            #endif
             col++;
             continue;
         }
+
         // Find out where wall segment ends (=faster):
         int endcol = _roomcam_XYToViewplaneX_NoRecalc(
             cam, r->corner_x[wallno], r->corner_y[wallno]
@@ -616,25 +666,32 @@ int roomcam_RenderRoom(
                 VIEWPLANE_RAY_LENGTH_DIVIDER,
             cam->obj->y + cam->cache->rotatedplanevecs_y[endcol] *
                 VIEWPLANE_RAY_LENGTH_DIVIDER,
-            r->corners, r->corner_x, r->corner_y, ignorewall,
+            r->corners, r->corner_x, r->corner_y, ignorewall, 1,
             &endwallno, &endhit_x, &endhit_y
         );
+        assert(!endintersect || ignorewall < 0 ||
+               endwallno != ignorewall);
         if (!endintersect || endwallno < 0) {
             // Weird, that shouldn't happen. Just limit the advancement,
             // and ignore it:
             endcol = col;
         }
+        #if defined(DEBUG_3DRENDERER)
+        fprintf(stderr,
+            "rfsc/roomcam.c: roomcam_RenderRoom cam_id=%" PRId64
+            ", room_id=%" PRId64 " -> slice col=%d<->%d\n",
+            cam->obj->id, r->id, col, endcol);
+        #endif
 
         if (r->wall[wallno].has_portal) {
             assert(r->wall[wallno].portal_targetroom != NULL);
+            room *target = r->wall[wallno].portal_targetroom;
 
             // Recurse into portal, or black it out if nested too deep:
-            assert(r->wall[wallno].portal_targetroom != NULL);
             int rendered_portalcols = 0;
             if (nestdepth + 1 <= RENDER_MAX_PORTAL_DEPTH) {
                 int innercols = roomcam_RenderRoom(
-                    cam, r->wall[wallno].portal_targetroom,
-                    x, y, w, h,
+                    cam, target, x, y, w, h,
                     col, endcol, nestdepth + 1,
                     r->wall[wallno].portal_targetwall
                 );
@@ -645,51 +702,102 @@ int roomcam_RenderRoom(
                     (int)col, (int)innercols, (int)endcol);*/
                 rendered_portalcols = innercols;
             }
-            if (col + rendered_portalcols < endcol) {
-                int32_t z = col + rendered_portalcols;
+            // Now draw the wall parts above & below portal.
+            int draw_above = 0;
+            int draw_below = 0;
+            if (target->floor_z + target->height <
+                    r->floor_z + r->height) {
+                draw_above = 1;
+            }
+            if (target->floor_z > r->floor_z) {
+                draw_below = 1;
+            }
+            if (draw_above || draw_below) {
+                roomtexinfo *abovetexinfo = (
+                    r->wall[wallno].has_aboveportal_tex ?
+                    &r->wall[wallno].aboveportal_tex :
+                    &r->wall[wallno].wall_tex
+                );
+                roomtexinfo *belowtexinfo = (
+                    &r->wall[wallno].wall_tex
+                );
+                int32_t z = col;
                 while (z <= endcol) {
-                    // Calculate wall slice height:
-                    int32_t top, bottom;
-                    int64_t topworldz, bottomworldz;
-                    if (!roomcam_SliceHeight(
-                            cam, r, h, hit_x, hit_y,
-                            z, &topworldz,
-                            &bottomworldz, &top, &bottom
-                            )) {
-                        // Fully off-screen.
-                        z++;
-                        continue;
-                    }
+                    int64_t ipolhit_x = RENDERROOM_IPOL_X(z);
+                    int64_t ipolhit_y = RENDERROOM_IPOL_Y(z);
 
-                    // Black it out:
-                    if (!graphics_DrawRectangle(
-                            0, 0, 0, 1,
-                            x + col + xoffset, y + top,
-                            1, bottom - y - top
-                            ))
-                        return -1;
-                    z++;
+                    if (draw_above) {
+                        // Calculate above wall slice height:
+                        int32_t top, bottom;
+                        int64_t topworldz, bottomworldz;
+                        if (!roomcam_SliceHeight(
+                                cam, target->floor_z + target->height,
+                                (r->height + r->floor_z) -
+                                (target->floor_z + target->height),
+                                h, ipolhit_x, ipolhit_y,
+                                z, &topworldz, &bottomworldz,
+                                &top, &bottom
+                                )) {
+                            // Fully off-screen.
+                            z++;
+                            continue;
+                        }
+
+                        // Draw slice:
+                        if (!roomcam_DrawWallSlice(
+                                rendertarget, r, wallno, 1,
+                                abovetexinfo,
+                                ipolhit_x, ipolhit_y,
+                                top, bottom, topworldz, bottomworldz,
+                                x + z, y, h
+                                ))
+                            return -1;
+                        z++;
+                    }
+                    if (draw_below) {
+                        // Calculate below wall slice height:
+                        int32_t top, bottom;
+                        int64_t topworldz, bottomworldz;
+                        if (!roomcam_SliceHeight(
+                                cam, r->floor_z,
+                                (target->floor_z - r->floor_z),
+                                h, ipolhit_x, ipolhit_y,
+                                z, &topworldz, &bottomworldz,
+                                &top, &bottom
+                                )) {
+                            // Fully off-screen.
+                            z++;
+                            continue;
+                        }
+
+                        // Draw slice:
+                        if (!roomcam_DrawWallSlice(
+                                rendertarget, r, wallno, 0,
+                                belowtexinfo,
+                                ipolhit_x, ipolhit_y,
+                                top, bottom, topworldz, bottomworldz,
+                                x + z, y, h
+                                ))
+                            return -1;
+                        z++;
+                    }
                 }
             }
-            // Now draw the wall parts above & below portal:
-            // ...
         } else {
+            roomtexinfo *texinfo = (
+                &r->wall[wallno].wall_tex
+            );
             int32_t z = col;
             while (z <= endcol) {
-                int64_t ipolhit_x = (
-                    hit_x + (endhit_x - hit_x) *
-                    (z - col) / imax(1, endcol - col)
-                );
-                int64_t ipolhit_y = (
-                    hit_y + (endhit_y - hit_y) *
-                    (z - col) / imax(1, endcol - col)
-                );
+                int64_t ipolhit_x = RENDERROOM_IPOL_X(z);
+                int64_t ipolhit_y = RENDERROOM_IPOL_Y(z);
 
                 // Calculate full wall slice height:
                 int32_t top, bottom;
                 int64_t topworldz, bottomworldz;
                 if (!roomcam_SliceHeight(
-                        cam, r, h, ipolhit_x, ipolhit_y,
+                        cam, r->floor_z, r->height,
+                        h, ipolhit_x, ipolhit_y,
                         z, &topworldz, &bottomworldz,
                         &top, &bottom
                         )) {
@@ -700,7 +808,8 @@ int roomcam_RenderRoom(
 
                 // Draw slice:
                 if (!roomcam_DrawWallSlice(
-                        rendertarget, r, wallno, ipolhit_x, ipolhit_y,
+                        rendertarget, r, wallno, 0, texinfo,
+                        ipolhit_x, ipolhit_y,
                         top, bottom, topworldz, bottomworldz,
                         x + z, y, h
                         ))
@@ -728,6 +837,12 @@ int roomcam_Render(
         graphics_PopRenderScissors();
         return 0;
     }
+    #if defined(DEBUG_3DRENDERER)
+    fprintf(stderr,
+        "rfsc/roomcam.c: roomcam_Render cam_id=%" PRId64
+        " START, w=%d,h=%d\n",
+        cam->obj->id, w, h);
+    #endif
     if (!cam->obj->parentroom) {
         #if defined(DEBUG_3DRENDERER)
         fprintf(stderr,

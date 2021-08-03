@@ -149,9 +149,10 @@ int math_lineintersect2df(
     if (dval == 0) {
         return 0;
     }
-    double slopeA = valA / dval;
-    double slopeB = valB / dval;
-    if (slopeA >= 0 && slopeA <= 1 && slopeB >= 0 && slopeB <= 1) {
+    double slopeA = valA / (double)dval;
+    double slopeB = valB / (double)dval;
+    if (slopeA >= 0 && slopeA <= 1 &&
+            slopeB >= 0 && slopeB <= 1) {
         *ix = (l1x1 + (slopeA * (l1x2 - l1x1)));
         *iy = (l1y1 + (slopeA * (l1y2 - l1y1)));
         return 1;
@@ -159,7 +160,63 @@ int math_lineintersect2df(
     return 0;
 }
 
-int math_lineintersect2di(
+static void __attribute__((constructor))
+        _test_pointalmostonline() {
+    int result = math_pointalmostonline(
+        -10, 0, 10, 1,
+        0, 0, 1
+    );
+    assert(result != 0);
+    result = math_pointalmostonline(
+        -10, 0, 10, 1,
+        0, -2, 1
+    );
+    assert(result == 0);
+    result = math_pointalmostonline(
+        -10, -10, 10, 10,
+        0, 1, 1
+    );
+    assert(result != 0);
+    result = math_pointalmostonline(
+        -10, -10, 10, 10,
+        0, 0, 1
+    );
+    assert(result != 0);
+}
+
+HOTSPOT int math_pointalmostonline(
+        int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
+        int64_t px, int64_t py, int range
+        ) {
+    if (llabs(ly2 - ly1) > llabs(lx2 - lx1)) {
+        if (unlikely((py >= ly2 && py <= ly1) ||
+                 (py >= ly1 && py <= ly2))) {
+            int64_t expected_x = -1;
+            expected_x = (
+                lx1 + (lx2 - lx1) *
+                    (py - ly1) / (ly2 - ly1)
+            );
+            if (llabs(expected_x - px) <= range)
+                return 1;
+        }
+    } else {
+        if (llabs(lx2 - lx1) == 0)
+            return 0;
+        if (unlikely((px >= lx2 && px <= lx1) ||
+                 (px >= lx1 && px <= lx2))) {
+            int64_t expected_y = -1;
+            expected_y = (
+                ly1 + (ly2 - ly1) *
+                    (px - lx1) / (lx2 - lx1)
+            );
+            if (llabs(expected_y - py) <= range)
+                return 1;
+        }
+    }
+    return 0;
+}
+
+HOTSPOT int math_lineintersect2di(
         int64_t l1x1, int64_t l1y1, int64_t l1x2, int64_t l1y2,
         int64_t l2x1, int64_t l2y1, int64_t l2x2, int64_t l2y2,
         int64_t *ix, int64_t *iy
@@ -226,9 +283,10 @@ int math_lineintersect2di(
     if (dval == 0) {
         return 0;
     }
-    long double slopeA = valA / (long double)dval;
-    long double slopeB = valB / (long double)dval;
-    if (slopeA >= 0 && slopeA <= 1 && slopeB >= 0 && slopeB <= 1) {
+    long double slopeA = (long double)valA / (long double)dval;
+    long double slopeB = (long double)valB / (long double)dval;
+    if (slopeA >= 0 && slopeA <= 1 &&
+            slopeB >= 0 && slopeB <= 1) {
         *ix = roundl(l1x1 + (slopeA * (l1x2 - l1x1)));
         *iy = roundl(l1y1 + (slopeA * (l1y2 - l1y1)));
         return 1;
@@ -388,20 +446,22 @@ int math_polyintersect2di(
         int *iwall, int64_t *ix, int64_t *iy
         ) {
     return math_polyintersect2di_ex(
-        lx1, ly1, lx2, ly2, corner_count, cx, cy, -1,
-        iwall, ix, iy);
+        lx1, ly1, lx2, ly2, corner_count, cx, cy, -1, 0,
+        iwall, ix, iy
+    );
 }
 
 int math_polyintersect2di_ex(
         int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
         int corner_count, const int64_t *cx, const int64_t *cy,
-        int passable_wall_id,
+        int passable_wall_id, int loosefit,
         int *iwall, int64_t *ix, int64_t *iy
         ) {
     // If intersection found, returns 1 and sets
     // iwall to intersected section number, and
     // ix/iy to the intersection point.
     // Otherwise, returns 0.
+    // THIS ASSUMES CONVEX POLYGONS.
 
     int contains1 = math_polycontains2di(
         lx1, ly1, corner_count, cx, cy
@@ -409,7 +469,7 @@ int math_polyintersect2di_ex(
     int contains2 = math_polycontains2di(
         lx2, ly2, corner_count, cx, cy
     );
-    if (contains1 == contains2) {
+    if (contains1 && contains2) {
         /*printf("EARLY ABORT. line is fully %s "
             "the polygon: %" PRId64 ",%" PRId64
             " to %" PRId64 ",%" PRId64 "\n",
@@ -436,9 +496,9 @@ int math_polyintersect2di_ex(
         contains2 = 0;
     }
     int i = 0;
-    int imax = corner_count;
-    int iprev = imax - 1;
-    while (i < imax) {
+    int imax = corner_count - 1;
+    int iprev = imax;
+    while (i <= imax) {
         if (passable_wall_id >= 0 &&
                 iprev == passable_wall_id) {
             iprev = i;
@@ -469,5 +529,44 @@ int math_polyintersect2di_ex(
         iprev = i;
         i++;
     }
+    // Sometimes, precision issues let a ray slip through a corner.
+    // We want to return a collision in that case:
+    i = 0;
+    while (i <= imax) {
+        if (i != passable_wall_id && math_pointalmostonline(
+                lx1, ly1, lx2, ly2, cx[i], cy[i],
+                ((loosefit || contains1 != contains2) ? 5 : 1)
+                )) {
+            *iwall = i;
+            *ix = cx[i];
+            *iy = cy[i];
+            return 1;
+        }
+        i++;
+    }
     return 0;
+}
+
+static void __attribute__((constructor))
+        _test_polyintersect() {
+    // Line: 0,0 -> 26100,-27000
+    // Polygon: 128,-640 640,-640 384,-1920
+
+    int64_t lx1 = 0;
+    int64_t ly1 = 0;
+    int64_t lx2 = 26100;
+    int64_t ly2 = -27000;
+    int64_t cx[] = {128, 640, 384};
+    int64_t cy[] = {-640, -640, -1920};
+
+    int iwall;
+    int64_t ix, iy;
+    int result = math_polyintersect2di_ex(
+        lx1, ly1, lx2, ly2, 3, cx, cy, -1, 0,
+        &iwall, &ix, &iy
+    );
+    assert(result != 0);
+    assert(iwall == 0);
+    assert(llabs(ix - 618) <= 10);
+    assert(llabs(iy - (-640)) <= 10);
 }

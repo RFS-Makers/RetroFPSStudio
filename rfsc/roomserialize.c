@@ -648,7 +648,6 @@ int roomserialize_lua_SetRoomProperties(
                 lua_settop(l, startstack);
                 return 0;
             }
-            lua_pushstring(l, "height");
         }
         lua_pop(l, 1);  // Remove "ceiling" property
         {

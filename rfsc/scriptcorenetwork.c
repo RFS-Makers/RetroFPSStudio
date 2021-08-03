@@ -17,12 +17,32 @@ static int _http_newdownload(lua_State *l) {
         lua_pushstring(l, "expected 1 arg of type string");
         return lua_error(l);
     }
+    const char *url = lua_tostring(l, 1);
+    if (!url) {
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
     int64_t maxbytes = 1024LL * 1024LL * 20LL;
-    if (lua_gettop(l) >= 2 && lua_type(l, 2) == LUA_TNUMBER) {
-        maxbytes = lua_tointeger(l, 2);
+    int retries = 0;
+    if (lua_gettop(l) >= 2 && lua_type(l, 2) == LUA_TTABLE) {
+        lua_pushstring(l, "retries");
+        lua_gettable(l, 2);
+        if (lua_type(l, -1) == LUA_TNUMBER) {
+            retries = lua_tonumber(l, -1);
+            if (retries < 0) retries = 0;
+        }
+        lua_pop(l, 1);
+        lua_pushstring(l, "maxbytes");
+        lua_gettable(l, 2);
+        if (lua_type(l, -1) == LUA_TNUMBER) {
+            if (lua_isinteger(l, -1)) maxbytes = lua_tointeger(l, -1);
+            else maxbytes = lua_tonumber(l, -1);
+            if (maxbytes < 0) maxbytes = -1;
+        }
+        lua_pop(l, 1);
     }
     httpdownload *h = http_NewDownload(
-        lua_tostring(l, 1), maxbytes
+        lua_tostring(l, 1), maxbytes, retries
     );
     if (!h) {
         lua_pushstring(l, "failed to start download. "
