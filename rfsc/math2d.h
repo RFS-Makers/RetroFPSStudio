@@ -54,7 +54,7 @@ HOTSPOT int math_lineintersect2di(
     int *iwall, double *ix, double *iy
 );*/
 
-HOTSPOT int math_pointalmostonline(
+HOTSPOT int math_pointalmostonline2di(
     int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
     int64_t px, int64_t py, int range
 );

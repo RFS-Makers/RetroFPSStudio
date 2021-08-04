@@ -19,6 +19,51 @@
 #include "scriptcore.h"
 #include "scriptcoreroom.h"
 
+
+static int _roomcam_renderstats(lua_State *l) {
+    if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+                OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+                OBJREF_ROOMOBJ) {
+        wrongargs:;
+        lua_pushstring(l, "expected arg of type roomcam");
+        return lua_error(l);
+    }
+    roomobj *obj = roomobj_ById(
+        (uint64_t)((scriptobjref *)lua_touserdata(l, 1))->value
+    );
+    if (!obj || obj->objtype != ROOMOBJ_CAMERA)
+        goto wrongargs;
+    roomcam *cam = (roomcam *)obj->objdata;
+    renderstatistics *stats = roomcam_GetStats(cam);
+    lua_newtable(l);
+    lua_pushstring(l, "base_geometry_slices_rendered");
+    lua_pushinteger(l,
+        (stats ? stats->base_geometry_slices_rendered :
+         (int64_t)0)
+    );
+    lua_settable(l, -3);
+    lua_pushstring(l, "base_geometry_rays_cast");
+    lua_pushinteger(l,
+        (stats ? stats->base_geometry_rays_cast :
+         (int64_t)0)
+    );
+    lua_settable(l, -3);
+    lua_pushstring(l, "base_geometry_rooms_recursed");
+    lua_pushinteger(l,
+        (stats ? stats->base_geometry_rooms_recursed :
+         (int64_t)0)
+    );
+    lua_settable(l, -3);
+    lua_pushstring(l, "fps");
+    lua_pushinteger(l,
+        (stats ? stats->fps : (int64_t)0)
+    );
+    lua_settable(l, -3);
+    return 1;
+}
+
 static int _roomlayer_deserializeroomstolayer(lua_State *l) {
     if (lua_gettop(l) < 2 || lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
@@ -561,4 +606,6 @@ void scriptcoreroom_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_roomlayer_global_getonemeterunits");
     lua_pushcfunction(l, _roomlayer_deserializeroomstolayer);
     lua_setglobal(l, "_roomlayer_deserializeroomstolayer");
+    lua_pushcfunction(l, _roomcam_renderstats);
+    lua_setglobal(l, "_roomcam_renderstats");
 }

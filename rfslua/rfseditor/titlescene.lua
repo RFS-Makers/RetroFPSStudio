@@ -10,6 +10,15 @@ dofile("rfslua/rfseditor/_titlescene_license.lua")
 dofile("rfslua/rfseditor/_titlescene_update.lua")
 
 
+function rfseditor.titlescene.on_debugstr()
+    if rfs._show_renderstats and
+            rfseditor._democam ~= nil then
+        local stats = rfseditor._democam:renderstats()
+        return rfs.json.dump(stats)
+    end
+    return ""
+end
+
 function rfseditor.titlescene.load_demo_level()
     if rfseditor._demolevel ~= nil then
         return

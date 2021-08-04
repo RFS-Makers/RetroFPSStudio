@@ -733,6 +733,14 @@ char *json_Dump(jsonvalue *jv) {
         char resultbuf[128];
         snprintf(resultbuf, sizeof(resultbuf) - 1,
                  "%f", jv->value_float);
+        if (strstr(resultbuf, ".") != NULL) {
+            int _i = strlen(resultbuf) - 1;
+            while (resultbuf[_i] == '0' &&
+                    resultbuf[_i - 1] != '.') {
+                resultbuf[_i] = '\0';
+                _i--;
+            }
+        }
         return strdup(resultbuf);
     } else if (jv->type == JSON_VALUE_BOOL) {
         if (jv->value_bool)
@@ -872,8 +880,17 @@ char *json_EncodedStrFromStackEx(
         json_Free(v);
         return encoded;
     } else if (lua_type(l, valueindex) == LUA_TNUMBER) {
-        v->type = JSON_VALUE_FLOAT;
-        v->value_float = lua_tonumber(l, valueindex);
+        if (lua_isinteger(l, valueindex)) {
+            v->type = JSON_VALUE_INT;
+            v->value_int = lua_tointeger(l, valueindex);
+        } else if (round(lua_tonumber(l, valueindex)) ==
+                lua_tonumber(l, valueindex)) {
+            v->type = JSON_VALUE_INT;
+            v->value_int = round(lua_tonumber(l, valueindex));
+        } else {
+            v->type = JSON_VALUE_FLOAT;
+            v->value_float = lua_tonumber(l, valueindex);
+        }
         encoded = json_Dump(v);
         if (!encoded)
             goto outofmemfail;

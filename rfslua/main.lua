@@ -74,6 +74,10 @@ while argno + 1 <= #pargs do
         optionknown = true
         rfs._force_full_render_res = true
     end
+    if v == "--render-stats" then
+        optionknown = true
+        rfs._show_renderstats = true
+    end
     if v == "--aspect-ratio" then
         optionknown = true
         if pargs[argno + 1] == nil or
@@ -132,6 +136,7 @@ while argno + 1 <= #pargs do
         print("  --help         Print this help text.")
         print("  --no-mouse     Disable physical mice. Useful")
         print("                 when touch input bugs out.")
+        print("  --render-stats Print out render statistics.")
         print("  --resolution   Enforce a fixed output resolution.")
         print("  --software     Force-disable any 3d acceleration.")
         print("  --version      Print out the program version.")

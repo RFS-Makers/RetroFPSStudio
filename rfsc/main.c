@@ -1,10 +1,14 @@
 
 #include "compileconfig.h"
 
+#include <assert.h>
 #if defined(HAVE_SDL)
 #include <SDL2/SDL.h>
 #endif
 #include <stdio.h>
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#endif
 
 #include "filesys.h"
 #include "scriptcore.h"
@@ -77,6 +81,7 @@ static int str_is_spaces(const char *s) {
 int WINAPI WinMain(
         ATTR_UNUSED HINSTANCE hInst, ATTR_UNUSED HINSTANCE hPrev,
         ATTR_UNUSED LPSTR szCmdLine, ATTR_UNUSED int sw) {
+    int argc = 0;
     char **argv = malloc(sizeof(*argv));
     if (!argv)
         return 1;
@@ -94,74 +99,53 @@ int WINAPI WinMain(
     }
     if (!argv[0])
         return 1;
-    char *argline = NULL;
-    wchar_t *arglineu16 = GetCommandLineW();
-    if (arglineu16)
-        argline = AS_U8_FROM_U16(arglineu16);
-    if (!argline)
-        return 1;
-    char *p = argline;
-    int len = strlen(argline);
-    char in_quote = '\0';
-    int backslash_escaped = 0;
-    int argc = 1;
-    int i = 0;
-    while (i <= len) {
-        if (i >= len || (
-                argline[i] == ' ' && in_quote == '\0' &&
-                !backslash_escaped
-                )) {
-            char **new_argv = realloc(argv, sizeof(*argv) * (argc + 1));
-            if (!new_argv)
-                return 1;
-            argline[i] = '\0';
-            int added_it = 0;
-            if (strlen(p) > 0 && !str_is_spaces(p)) {
-                added_it = 1;
-                new_argv[argc] = strdup(p);
-                char quote_removed = '\0';
-                if ((new_argv[argc][0] == '"' &&
-                        new_argv[argc][strlen(new_argv[argc]) - 1] == '"') ||
-                        (new_argv[argc][0] == '\'' &&
-                        new_argv[argc][strlen(new_argv[argc]) - 1] == '\'')) {
-                    quote_removed = new_argv[argc][0];
-                    memmove(
-                        new_argv[argc], new_argv[argc] + 1,
-                        strlen(new_argv[argc])
-                    );
-                    new_argv[argc][strlen(new_argv[argc]) - 1] = '\0';
-                }
-                int k = 0;
-                while (k < (int)strlen(new_argv[argc]) - 1) {
-                    if (new_argv[argc][k] == '\\' &&
-                            (new_argv[argc][k + 1] == '\\' ||
-                             (quote_removed != '\0' &&
-                              new_argv[argc][k + 1] == quote_removed))) {
-                        memmove(
-                            new_argv[argc] + k, new_argv[argc] + k + 1,
-                            strlen(new_argv[argc]) - k
-                        );
-                    }
-                    k++;
-                }
-            }
-            argv = new_argv;
-            p = (argline + i + 1);
-            if (added_it)
-                argc++;
-        } else if (backslash_escaped) {
-            backslash_escaped = 0;
-        } else if (in_quote == '\0' && !backslash_escaped && (
-                argline[i] == '"' || argline[i] == '\'')) {
-            in_quote = argline[i];
-        } else if (in_quote != '\0' && in_quote == argline[i]) {
-            in_quote = '\0';
-        } else if (argline[i] == '\\' && in_quote != '\'') {
-            backslash_escaped = 1;
+    argc = 1;
+
+    int _winSplitCount = 0;
+    LPWSTR *_winSplitList = NULL;
+    _winSplitList = CommandLineToArgvW(
+        GetCommandLineW(), &_winSplitCount
+    );
+    if (!_winSplitList) {
+        oom: ;
+        if (_winSplitList) LocalFree(_winSplitList);
+        int i = 0;
+        while (i < argc) {
+            free(argv[i]);
+            i++;
         }
-        i++;
+        free(argv);
+        fprintf(
+            stderr, "rfsc/main.c: error: "
+            "arg alloc or convert failure"
+        );
+        return -1;
     }
-    free(argline);
+    if (_winSplitCount > 1) {
+        char **argv_new = realloc(
+            argv, sizeof(*argv) * (argc + _winSplitCount - 1)
+        );
+        if (!argv_new)
+            goto oom;
+        argv = argv_new;
+        memset(&argv[argc], 0, sizeof(*argv) * (_winSplitCount - 1));
+        argc += _winSplitCount - 1;
+        int k = 1;
+        while (k < _winSplitCount) {
+            assert(sizeof(wchar_t) == sizeof(uint16_t));
+            char *argbuf = NULL;
+            argbuf = AS_U8_FROM_U16(
+                _winSplitList[k]
+            );
+            if (!argbuf)
+                goto oom;
+            assert(k < argc);
+            argv[k] = argbuf;
+            k++;
+        }
+    }
+    LocalFree(_winSplitList);
+    _winSplitList = NULL;
     SDL_SetMainReady();
     int result = SDL_main(argc, argv);
     int k = 0;

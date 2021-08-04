@@ -29,6 +29,15 @@ function rfs.scene.on_keyup(t)
     end
 end
 
+function rfs.scene.on_debugstr()
+    if rfs.scene._current ~= nil and
+            rfs.scene._current.on_debugstr ~= nil then
+        return tostring(rfs.scene._current.on_debugstr())
+    end
+    return ""
+end
+
+
 function rfs.scene.on_update()
     if rfs.scene._current ~= nil and
             rfs.scene._current.on_update ~= nil then
@@ -80,4 +89,5 @@ function rfs.scene.draw()
         rfs.scene._current.on_draw()
     end
     rfs.ui.draw()
+    rfs.debugoutput.draw()
 end

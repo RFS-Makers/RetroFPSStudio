@@ -34,4 +34,5 @@ rfs.roomcam._class.get_angle = _roomobj_getangle
 rfs.roomcam._class.set_vangle = _roomcam_setvangle
 rfs.roomcam._class.get_vangle = _roomcam_getvangle
 rfs.roomcam._class.set_layer = _roomobj_setlayer
+rfs.roomcam._class.renderstats = _roomcam_renderstats
 

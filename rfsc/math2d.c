@@ -162,29 +162,29 @@ int math_lineintersect2df(
 
 static void __attribute__((constructor))
         _test_pointalmostonline() {
-    int result = math_pointalmostonline(
+    int result = math_pointalmostonline2di(
         -10, 0, 10, 1,
         0, 0, 1
     );
     assert(result != 0);
-    result = math_pointalmostonline(
+    result = math_pointalmostonline2di(
         -10, 0, 10, 1,
         0, -2, 1
     );
     assert(result == 0);
-    result = math_pointalmostonline(
+    result = math_pointalmostonline2di(
         -10, -10, 10, 10,
         0, 1, 1
     );
     assert(result != 0);
-    result = math_pointalmostonline(
+    result = math_pointalmostonline2di(
         -10, -10, 10, 10,
         0, 0, 1
     );
     assert(result != 0);
 }
 
-HOTSPOT int math_pointalmostonline(
+HOTSPOT int math_pointalmostonline2di(
         int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
         int64_t px, int64_t py, int range
         ) {
@@ -531,11 +531,14 @@ int math_polyintersect2di_ex(
     }
     // Sometimes, precision issues let a ray slip through a corner.
     // We want to return a collision in that case:
+    const int cornercheckrange = (
+        (contains1 != contains2) ? 10 :
+        (loosefit ? 5 : 1));
     i = 0;
     while (i <= imax) {
-        if (i != passable_wall_id && math_pointalmostonline(
+        if (i != passable_wall_id && math_pointalmostonline2di(
                 lx1, ly1, lx2, ly2, cx[i], cy[i],
-                ((loosefit || contains1 != contains2) ? 5 : 1)
+                cornercheckrange
                 )) {
             *iwall = i;
             *ix = cx[i];

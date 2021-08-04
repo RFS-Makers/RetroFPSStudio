@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "datetime.h"
 #include "graphics.h"
 #include "math2d.h"
 #include "room.h"
@@ -21,6 +22,7 @@
 #include "roomobject.h"
 #include "rfssurf.h"
 
+typedef struct renderstatistics renderstatistics;
 
 typedef struct roomcamcache {
     int cachedangle, cachedvangle, cachedfov, cachedw, cachedh;
@@ -35,8 +37,16 @@ typedef struct roomcamcache {
 
     int64_t *rotatedplanevecs_x, *rotatedplanevecs_y;
     int32_t rotatedalloc;
+
+    renderstatistics stats;
 } roomcamcache;
 
+
+renderstatistics *roomcam_GetStats(roomcam *c) {
+    if (c && c->cache)
+        return &c->cache->stats;
+    return NULL;
+}
 
 static void _roomcam_FreeCache(roomcamcache *cache) {
     if (!cache)
@@ -68,6 +78,7 @@ roomcam *roomcam_Create() {
         return NULL;
     }
     memset(rc->cache, 0, sizeof(*rc->cache));
+    rc->cache->stats.fps_ts = datetime_Ticks();
     rc->cache->cachedangle = -99999;
     rc->cache->cachedvangle = -99999;
     rc->fovf = 70.0;
@@ -513,10 +524,12 @@ HOTSPOT static int roomcam_DrawWallSlice(
         assert(screentop >= 0);
         if (screenbottom == h)
             screenbottom--;
+        const int slicepixellen = (screenbottom - screentop);
+        const int32_t ty1toty2diff = (ty2 - ty1);
         while (k < screenbottom) {
             ty = (
-                ty1 + ((ty2 - ty1) * (screenbottom - k) /
-                    (screenbottom - screentop))
+                ty1 + (ty1toty2diff * (screenbottom - k) /
+                    slicepixellen)
             );
             assert(ty >= 0);
             // Remember, we're using the sideways tex.
@@ -566,6 +579,8 @@ int roomcam_RenderRoom(
         ) {
     if (nestdepth > RENDER_MAX_PORTAL_DEPTH)
         return -1;
+    renderstatistics *stats = &cam->cache->stats;
+    stats->base_geometry_rooms_recursed++;
     #if defined(DEBUG_3DRENDERER)
     fprintf(stderr,
         "rfsc/roomcam.c: roomcam_RenderRoom cam_id=%" PRId64
@@ -609,6 +624,7 @@ int roomcam_RenderRoom(
             r->corners, r->corner_x, r->corner_y, ignorewall, 1,
             &wallno, &hit_x, &hit_y
         );
+        stats->base_geometry_rays_cast++;
         assert(!intersect || ignorewall < 0 ||
                wallno != ignorewall);
         //printf("intersect: %d, wallno: %d\n", intersect, wallno);
@@ -669,6 +685,7 @@ int roomcam_RenderRoom(
             r->corners, r->corner_x, r->corner_y, ignorewall, 1,
             &endwallno, &endhit_x, &endhit_y
         );
+        stats->base_geometry_rays_cast++;
         assert(!endintersect || ignorewall < 0 ||
                endwallno != ignorewall);
         if (!endintersect || endwallno < 0) {
@@ -752,6 +769,7 @@ int roomcam_RenderRoom(
                                 x + z, y, h
                                 ))
                             return -1;
+                        stats->base_geometry_slices_rendered++;
                         z++;
                     }
                     if (draw_below) {
@@ -779,6 +797,7 @@ int roomcam_RenderRoom(
                                 x + z, y, h
                                 ))
                             return -1;
+                        stats->base_geometry_slices_rendered++;
                         z++;
                     }
                 }
@@ -814,6 +833,7 @@ int roomcam_RenderRoom(
                         x + z, y, h
                         ))
                     return -1;
+                stats->base_geometry_slices_rendered++;
                 z++;
             }
         }
@@ -836,6 +856,26 @@ int roomcam_Render(
     if (!graphics_ClearTarget()) {
         graphics_PopRenderScissors();
         return 0;
+    }
+    renderstatistics *stats = &cam->cache->stats;
+    uint64_t fps_ts = stats->fps_ts;
+    int32_t frames_accumulator = stats->frames_accumulator;
+    int32_t fps = stats->fps;
+    memset(stats, 0, sizeof(*stats));
+    stats->fps_ts = fps_ts;
+    stats->frames_accumulator = frames_accumulator + 1;
+    stats->fps = fps;
+    uint64_t now = datetime_Ticks();
+    if (stats->fps_ts < now) {
+        stats->fps_ts += 1000;
+        if (stats->fps_ts >= now && stats->frames_accumulator > 0) {
+            stats->fps = stats->frames_accumulator;
+        } else {
+            // Unusable numbers. Reset things.
+            stats->fps_ts = now;
+            stats->fps = 1;
+        }
+        stats->frames_accumulator = 1;
     }
     #if defined(DEBUG_3DRENDERER)
     fprintf(stderr,
