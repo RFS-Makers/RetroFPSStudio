@@ -15,10 +15,30 @@
 #include "roomcam.h"
 #include "roomlayer.h"
 #include "roomobject.h"
+#include "roomobject_colmov.h"
 #include "roomserialize.h"
 #include "scriptcore.h"
 #include "scriptcoreroom.h"
 
+
+static int _roomobj_newinviscolmov(lua_State *l) {
+    colmovobj *mov = colmov_Create();
+    if (!mov) {
+        lua_pushstring(l, "failed to create object");
+        return lua_error(l);
+    }
+    scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
+    if (!ref) {
+        roomobj_Destroy(mov->obj);
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    memset(ref, 0, sizeof(*ref));
+    ref->magic = OBJREFMAGIC;
+    ref->type = OBJREF_ROOMOBJ;
+    ref->value = (uintptr_t)mov->obj->id;
+    return 1;
+}
 
 static int _roomcam_renderstats(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
@@ -608,4 +628,6 @@ void scriptcoreroom_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_roomlayer_deserializeroomstolayer");
     lua_pushcfunction(l, _roomcam_renderstats);
     lua_setglobal(l, "_roomcam_renderstats");
+    lua_pushcfunction(l, _roomobj_newinviscolmov);
+    lua_setglobal(l, "_roomobj_newinviscolmov");
 }

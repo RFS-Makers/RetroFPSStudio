@@ -29,7 +29,7 @@ while argno + 1 <= #pargs do
     end
     if v == "--internal-do-update-to" then
         optionknown = true
-        local target = pargs[argno + 1]
+        local target = os.normpath(pargs[argno + 1])
         rfseditor._updatetask = function()
             if not os.exists(target) then
                 error("not given a valid update target")
@@ -44,7 +44,7 @@ while argno + 1 <= #pargs do
     end
     if v == "--internal-delete-update-source" then
         optionknown = true
-        local target = pargs[argno + 1]
+        local target = os.normpath(pargs[argno + 1])
         rfseditor._updatetask = function()
             if not os.exists(target) then
                 error("not given a valid update source")

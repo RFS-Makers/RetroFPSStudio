@@ -1,3 +1,7 @@
+-- This is PROPRIETARY CODE, do not modify, reuse, or share.
+-- All Rights Reserved.
+-- See LICENSE.md for details.
+
 
 if rfs == nil then rfs = {} end
 if rfs.debugoutput == nil then rfs.debugoutput = {} end

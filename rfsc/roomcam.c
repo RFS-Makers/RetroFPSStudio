@@ -61,7 +61,7 @@ static void _roomcam_DestroyCallback(roomobj *camobj) {
     roomcam *cam = ((roomcam *)camobj->objdata);
     if (!cam)
         return;
-    free(cam->cache);
+    _roomcam_FreeCache(cam->cache);
     free(cam);
     camobj->objdata = NULL;
 }
