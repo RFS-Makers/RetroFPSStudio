@@ -26,6 +26,8 @@ typedef struct renderstatistics {
     int base_geometry_slices_rendered;
     int base_geometry_rays_cast;
     int base_geometry_rooms_recursed;
+    int last_canvas_width, last_canvas_height,
+        last_fov, last_fovh, last_fovv;
 
     uint64_t fps_ts;
     int32_t frames_accumulator;
@@ -36,6 +38,11 @@ roomcam *roomcam_Create();
 
 int roomcam_Render(
     roomcam *cam, int x, int y, int w, int h
+);
+
+int32_t roomcam_XYZToViewplaneY(
+    roomcam *cam, int w, int h, int64_t px, int64_t py, int64_t pz,
+    int32_t *result
 );
 
 int roomcam_XYToViewplaneX(

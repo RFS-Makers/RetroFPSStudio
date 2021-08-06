@@ -660,16 +660,26 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
         SDL_FreeSurface(srf->sdlsrf);
         srf->sdlsrf = NULL;
     }
-    if (!srf->sdlsrf)
+    if (!srf->sdlsrf) {
         srf->sdlsrf = SDL_CreateRGBSurfaceWithFormat(
             0, srf->w, srf->h, 32, (
                 withalpha ? SDL_PIXELFORMAT_ABGR8888 :
                 SDL_PIXELFORMAT_XBGR8888
             )
         );
+        srf->sdlsrf_hasalpha = withalpha;
+    }
     if (!srf->sdlsrf)
         return NULL;
     SDL_LockSurface(srf->sdlsrf);
+    if (unlikely(srf->sdlsrf->pitch == 4 * srf->w &&
+            srf->sdlsrf_hasalpha && srf->hasalpha)) {
+        // Super fast path (copies entire surface in one)
+        memcpy(srf->sdlsrf->pixels, srf->pixels,
+               4 * srf->w * srf->h);
+        SDL_UnlockSurface(srf->sdlsrf);
+        return srf->sdlsrf;
+    }
     char *p = (char *)srf->sdlsrf->pixels;
     const int width = srf->w;
     const int height = srf->h;
@@ -680,17 +690,17 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
     while (y < height) {
         int x = 0;
         char *pnow = p;
-        while (x < width) {
-            if (likely(withalpha && srf->hasalpha)) {
-                // Fast path:
-                assert(x == 0);
-                memcpy(
-                    pnow, srf->pixels + sourceoffset,
-                    4 * width
-                );
-                sourceoffset += sourcestepsize * width;
-                break;
-            }
+        char *maxp = p + (stepsize * width);
+        if (likely(srf->hasalpha)) {
+            // Fast path (copies entire row in one):
+            memcpy(
+                pnow, srf->pixels + sourceoffset,
+                4 * width
+            );
+            sourceoffset += sourcestepsize * width;
+            continue;
+        }
+        while (pnow < maxp) {
             // Slow path:
             memcpy(
                 pnow, srf->pixels + sourceoffset, 3
@@ -699,7 +709,6 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
             pnow[3] = 255;
             pnow += stepsize;
             sourceoffset += sourcestepsize;
-            x++;
         }
         p += srf->sdlsrf->pitch;
         y++;

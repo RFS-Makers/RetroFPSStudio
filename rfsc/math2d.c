@@ -69,7 +69,7 @@ void math_rotate2di(int64_t *x, int64_t *y, int32_t rot) {
     *y = newy;
 }
 
-int64_t math_veclen(int64_t x, int64_t y) {
+int64_t math_veclen2di(int64_t x, int64_t y) {
     int64_t result = roundl(sqrtl(
         (long double)(x * x + y * y)
     ));

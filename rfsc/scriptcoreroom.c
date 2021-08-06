@@ -81,6 +81,36 @@ static int _roomcam_renderstats(lua_State *l) {
         (stats ? stats->fps : (int64_t)0)
     );
     lua_settable(l, -3);
+    lua_pushstring(l, "canvas_width");
+    lua_pushinteger(l,
+        (stats ? stats->last_canvas_width :
+         (int64_t)0)
+    );
+    lua_settable(l, -3);
+    lua_pushstring(l, "canvas_height");
+    lua_pushinteger(l,
+        (stats ? stats->last_canvas_height :
+         (int64_t)0)
+    );
+    lua_settable(l, -3);
+    lua_pushstring(l, "canvas_fov");
+    lua_pushnumber(l,
+        (double)(stats ? stats->last_fov :
+         (int64_t)0) / (double)ANGLE_SCALAR
+    );
+    lua_settable(l, -3);
+    lua_pushstring(l, "canvas_fovh");
+    lua_pushinteger(l,
+        (double)(stats ? stats->last_fovh :
+         (int64_t)0) / (double)ANGLE_SCALAR
+    );
+    lua_settable(l, -3);
+    lua_pushstring(l, "canvas_fovv");
+    lua_pushinteger(l,
+        (double)(stats ? stats->last_fovv :
+         (int64_t)0) / (double)ANGLE_SCALAR
+    );
+    lua_settable(l, -3);
     return 1;
 }
 

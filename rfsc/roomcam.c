@@ -27,14 +27,16 @@ typedef struct renderstatistics renderstatistics;
 typedef struct roomcamcache {
     int cachedangle, cachedvangle, cachedfov, cachedw, cachedh;
 
+    int32_t cachedfovh, cachedfovv;
     int64_t planedist, planew, planeh;
     int64_t unrotatedplanevecs_left_x;
     int64_t unrotatedplanevecs_left_y;
     int64_t unrotatedplanevecs_right_x;
     int64_t unrotatedplanevecs_right_y;
     int64_t *planevecs_len;
-    int32_t planevecs_alloc;
+    int32_t planevecs_alloc, vertivecs_alloc;
 
+    int64_t *vertivecs_x, *vertivecs_z;
     int64_t *rotatedplanevecs_x, *rotatedplanevecs_y;
     int32_t rotatedalloc;
 
@@ -48,12 +50,97 @@ renderstatistics *roomcam_GetStats(roomcam *c) {
     return NULL;
 }
 
+int32_t _roomcam_XYZToViewplaneY_NoRecalc(
+        roomcam *cam,
+        int64_t px, int64_t py, int64_t pz
+        ) {
+    const int w = cam->cache->cachedw;
+    const int h = cam->cache->cachedh;
+
+    // Rotate/move vec into camera-local space:
+    px -= cam->obj->x;
+    py -= cam->obj->y;
+    pz -= cam->obj->z;
+    math_rotate2di(&px, &py, -cam->obj->angle);
+
+    // Special case of behind camera:
+    if (px <= 0) {
+        if (pz < 0)
+            return h;
+        if (pz > 0)
+            return -1;
+        return 0;
+    }
+
+    // Scale vec down to exactly viewplane distance:
+    int64_t scalef = 10000LL * cam->cache->planedist / px;
+    assert(cam->cache->vertivecs_x[0] == cam->cache->planedist);
+    px = (px * scalef) / 10000LL;
+    pz = (pz * scalef) / 10000LL;
+    // (...we dont need 'py' anymore, so ignore that one)
+
+    // If outside of viewplane, abort early:
+    if (pz < cam->cache->vertivecs_z[0])
+        return -1;
+    if (pz > cam->cache->vertivecs_z[h - 1])
+        return h;
+
+    int res = (pz - cam->cache->vertivecs_z[0]) * h /
+        (cam->cache->vertivecs_z[h - 1] -
+        cam->cache->vertivecs_z[0]);
+    if (res >= h) res = h - 1;
+    if (res < 0) res = 0;
+    return res;
+}
+
+int32_t _roomcam_XYToViewplaneX_NoRecalc(
+        roomcam *cam, int64_t px, int64_t py
+        ) {
+    const int w = cam->cache->cachedw;
+
+    // Rotate/move vec into camera-local space:
+    px -= cam->obj->x;
+    py -= cam->obj->y;
+    math_rotate2di(&px, &py, -cam->obj->angle);
+
+    // Special case of behind camera:
+    if (px <= 0) {
+        if (py < 0)
+            return -1;
+        if (py > 0)
+            return w;
+        return 0;
+    }
+
+    // Scale vec down to exactly viewplane distance:
+    int64_t scalef = 10000LL * cam->cache->planedist / px;
+    assert(cam->cache->unrotatedplanevecs_left_x == cam->cache->planedist);
+    px = (px * scalef) / 10000LL;
+    py = (py * scalef) / 10000LL;
+
+    // If outside of viewplane, abort early:
+    if (py < cam->cache->unrotatedplanevecs_left_y)
+        return -1;
+    if (py > cam->cache->unrotatedplanevecs_right_y)
+        return w;
+
+    int res = (py - cam->cache->unrotatedplanevecs_left_y) * w /
+        (cam->cache->unrotatedplanevecs_right_y -
+        cam->cache->unrotatedplanevecs_left_y);
+    if (res >= w) res = w - 1;
+    if (res < 0) res = 0;
+    return res;
+}
+
+
 static void _roomcam_FreeCache(roomcamcache *cache) {
     if (!cache)
         return;
     free(cache->planevecs_len);
     free(cache->rotatedplanevecs_x);
     free(cache->rotatedplanevecs_y);
+    free(cache->vertivecs_x);
+    free(cache->vertivecs_z);
     free(cache);
 }
 
@@ -113,12 +200,12 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
             cam->cache->cachedh != h) {
         force_recalculate_rotated_vecs = 1;
         int32_t aspectscalar = (
-            (h * ANGLE_SCALAR) / w
+            (w * ANGLE_SCALAR) / h
         );
         int32_t fov_h = (
-            (cam->fov * aspectscalar / ANGLE_SCALAR) +
-            cam->fov + cam->fov + cam->fov
-        ) / 4;
+            1 * (cam->fov * aspectscalar / ANGLE_SCALAR) +
+            cam->fov * 10
+        ) / 11;
         if (fov_h > 120 * ANGLE_SCALAR) fov_h = 120 * ANGLE_SCALAR;
         #if defined(DEBUG_3DRENDERER)
         fprintf(stderr,
@@ -179,6 +266,45 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
                 return 0;
             cam->cache->planevecs_alloc = w * 2;
         }
+        if (cam->cache->vertivecs_alloc < h) {
+            cam->cache->vertivecs_alloc = 0;
+            free(cam->cache->vertivecs_x);
+            free(cam->cache->vertivecs_z);
+            cam->cache->vertivecs_x = NULL;
+            cam->cache->vertivecs_z = NULL;
+            cam->cache->vertivecs_x = malloc(
+                sizeof(*cam->cache->vertivecs_x) * (h * 2)
+            );
+            if (!cam->cache->vertivecs_x)
+                return 0;
+            cam->cache->vertivecs_z = malloc(
+                sizeof(*cam->cache->vertivecs_z) * (h * 2)
+            );
+            if (!cam->cache->vertivecs_z)
+                return 0;
+            cam->cache->vertivecs_alloc = h * 2;
+        }
+        int64_t plane_world_width = llabs(
+            plane_right_y - plane_left_y
+        );
+        int64_t plane_world_height = (
+            plane_world_width * h / w
+        );
+        int i = 0;
+        while (i < h) {
+            cam->cache->vertivecs_z[i] = (
+                plane_world_height / 2 -
+                plane_world_height * i / imax(1, h - 1)
+            );
+            cam->cache->vertivecs_x[i] = plane_distance;
+            i++;
+        }
+        int32_t fov_v = (math_angle2di(
+            cam->cache->vertivecs_x[0],
+            -cam->cache->vertivecs_z[0]
+        ));
+        cam->cache->cachedfovh = fov_h;
+        cam->cache->cachedfovv = fov_v;
     }
     if (force_recalculate_rotated_vecs ||
             cam->cache->cachedangle != cam->obj->angle ||
@@ -208,7 +334,7 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
                 plane_left_y * (10000 - scalar) +
                 plane_right_y * scalar
             ) / 10000;
-            cam->cache->planevecs_len[i] = math_veclen(
+            cam->cache->planevecs_len[i] = math_veclen2di(
                 cam->cache->rotatedplanevecs_x[i],
                 cam->cache->rotatedplanevecs_y[i]
             );
@@ -223,7 +349,134 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
     return 1;
 }
 
-int roomcam_SliceHeight(
+int roomcam_FloorSliceHeight(
+        roomcam *cam, int64_t geometry_z,
+        int geometry_corners, int64_t *geometry_corner_x,
+        int64_t *geometry_corner_y, int h, int xoffset,
+        int isfloor,
+        int64_t *topworldx, int64_t *topworldy,
+        int64_t *bottomworldx, int64_t *bottomworldy,
+        int32_t *topoffset, int32_t *bottomoffset
+        ) {
+    renderstatistics *stats = &cam->cache->stats;
+    if (geometry_z == cam->obj->z)
+        return 0;
+    if (isfloor && geometry_z > cam->obj->z)
+        return 0;
+    else if (!isfloor && geometry_z < cam->obj->z)
+        return 0;
+
+    // First, get the angle along the viewing slice:
+    int32_t angle = cam->obj->angle;
+    int32_t vangle = cam->vangle;
+    int64_t intersect_lx1 = cam->obj->x;
+    int64_t intersect_ly1 = cam->obj->y;
+    int64_t intersect_lx2 = intersect_lx1 +
+        cam->cache->rotatedplanevecs_x[xoffset] *
+        VIEWPLANE_RAY_LENGTH_DIVIDER;
+    int64_t intersect_ly2 = intersect_ly1 +
+        cam->cache->rotatedplanevecs_y[xoffset] *
+        VIEWPLANE_RAY_LENGTH_DIVIDER;
+
+    // Then, intersect test with the geometry polygon:
+    stats->base_geometry_rays_cast++;
+    int camtoaway_wallno;
+    int64_t camtoaway_ix, camtoaway_iy;
+    int camtoaway_intersect = math_polyintersect2di_ex(
+        intersect_lx1, intersect_ly1,
+        intersect_lx2, intersect_ly2,
+        geometry_corners,
+        geometry_corner_x, geometry_corner_y,
+        -1, 0, &camtoaway_wallno, &camtoaway_ix,
+        &camtoaway_iy
+    );
+    if (!camtoaway_intersect)
+        return 0;
+    stats->base_geometry_rays_cast++;
+    int awaytocam_wallno;
+    int64_t awaytocam_ix, awaytocam_iy;
+    int awaytocam_intersect = math_polyintersect2di_ex(
+        intersect_lx2, intersect_ly2,
+        intersect_lx1, intersect_ly1,
+        geometry_corners,
+        geometry_corner_x, geometry_corner_y,
+        -1, 0, &awaytocam_wallno, &awaytocam_ix,
+        &awaytocam_iy
+    );
+    if (!awaytocam_intersect)
+        return 0;
+    // Compute "closer" geometry end point on screen:
+    int32_t close_screen_offset = 0;
+    int64_t close_world_x = intersect_lx1;
+    int64_t close_world_y = intersect_ly1;
+    if (awaytocam_wallno == camtoaway_wallno) {
+        if (!math_polycontains2di(
+                intersect_lx1, intersect_lx2,
+                geometry_corners,
+                geometry_corner_x, geometry_corner_y)) {
+            return 0;
+        }
+        assert(h <= cam->cache->cachedh);
+        if (isfloor) {
+            assert(geometry_z < cam->obj->z);
+            int64_t lowerscreen_x = cam->cache->vertivecs_x[h - 1];
+            int64_t lowerscreen_z = cam->cache->vertivecs_z[h - 1];
+            assert(lowerscreen_z < 0);
+            int64_t scalar = 1000LL * (
+                (geometry_z - cam->obj->z) / lowerscreen_z
+            );
+            close_world_x = lowerscreen_x * scalar / 1000LL;
+            close_world_y = intersect_ly1;
+        } else {
+            assert(geometry_z > cam->obj->z);
+            int64_t upperscreen_x = cam->cache->vertivecs_x[0];
+            int64_t upperscreen_z = cam->cache->vertivecs_z[0];
+            assert(upperscreen_z > 0);
+            int64_t scalar = 1000LL * (
+                (geometry_z - cam->obj->z) / upperscreen_z
+            );
+            close_world_x = upperscreen_x * scalar / 1000LL;
+            close_world_y = intersect_ly1;
+        }
+        close_screen_offset = 0;
+    } else {
+        close_screen_offset = _roomcam_XYZToViewplaneY_NoRecalc(
+            cam, close_world_x, close_world_y, geometry_z
+        );
+        if (close_screen_offset < 0) close_screen_offset = 0;
+        if (close_screen_offset >= h) close_screen_offset = h - 1;
+    }
+    // Compute "farther" geometry point on screen:
+    int64_t far_world_x = intersect_lx2;
+    int64_t far_world_y = intersect_ly2;
+    int32_t far_screen_offset = _roomcam_XYZToViewplaneY_NoRecalc(
+        cam, far_world_x, far_world_y, geometry_z
+    );
+    if (far_screen_offset < 0) far_screen_offset = 0;
+    if (far_screen_offset >= h) far_screen_offset = h - 1;
+    // Figure out the proper order:
+    if (far_screen_offset < close_screen_offset ||
+            (far_screen_offset == close_screen_offset && !isfloor)) {
+        assert(!isfloor);
+        *topworldx = close_world_x;
+        *topworldy = close_world_y;
+        *topoffset = close_screen_offset;
+        *bottomworldx = far_world_x;
+        *bottomworldy = far_world_y;
+        *bottomoffset = far_screen_offset;
+    } else {
+        assert(isfloor);
+        *topworldx = far_world_x;
+        *topworldy = far_world_y;
+        *topoffset = far_screen_offset;
+        *bottomworldx = close_world_x;
+        *bottomworldy = close_world_y;
+        *bottomoffset = close_screen_offset;
+    }
+    return 1;
+}
+
+int roomcam_WallSliceHeight(
         roomcam *cam, int64_t geometry_floor_z,
         int64_t geometry_height, int h, int64_t ix, int64_t iy,
         int xoffset, int64_t *topworldz, int64_t *bottomworldz,
@@ -231,7 +484,7 @@ int roomcam_SliceHeight(
         ) {
     if (unlikely(geometry_height <= 0))
         return 0;
-    int64_t dist = math_veclen(
+    int64_t dist = math_veclen2di(
         ix - cam->obj->x, iy - cam->obj->y
     );
     assert(xoffset >= 0 && xoffset < cam->cache->cachedw);
@@ -420,44 +673,17 @@ void roomcam_WallCubeMapping(
     );
 }
 
-int32_t _roomcam_XYToViewplaneX_NoRecalc(
-        roomcam *cam, int64_t px, int64_t py
+int32_t roomcam_XYZToViewplaneY(
+        roomcam *cam, int w, int h, int64_t px, int64_t py, int64_t pz,
+        int32_t *result
         ) {
-    const int w = cam->cache->cachedw;
-
-    // Rotate/move vec into camera-local space:
-    px -= cam->obj->x;
-    py -= cam->obj->y;
-    math_rotate2di(&px, &py, -cam->obj->angle);
-
-    // Special case of behind camera:
-    if (px <= 0) {
-        if (py < 0)
-            return -1;
-        if (py > 0)
-            return w;
+    if (w <= 0 || h <= 0)
+        return 0;
+    if (!roomcam_CalculateViewPlane(cam, w, h)) {
         return 0;
     }
-
-    // Scale vec down to exactly viewplane distance:
-    int64_t dist = math_veclen(px, py);
-    int64_t scalef = 10000LL * cam->cache->planedist / px;
-    assert(cam->cache->unrotatedplanevecs_left_x == cam->cache->planedist);
-    px = (px * scalef) / 10000LL;
-    py = (py * scalef) / 10000LL;
-
-    // If outside of viewplane, abort early:
-    if (py < cam->cache->unrotatedplanevecs_left_y)
-        return -1;
-    if (py > cam->cache->unrotatedplanevecs_right_y)
-        return w;
-
-    int res = (py - cam->cache->unrotatedplanevecs_left_y) * w /
-        (cam->cache->unrotatedplanevecs_right_y -
-        cam->cache->unrotatedplanevecs_left_y);
-    if (res >= w) res = w - 1;
-    if (res < 0) res = 0;
-    return res;
+    *result = _roomcam_XYZToViewplaneY_NoRecalc(cam, px, py, pz);
+    return 1;
 }
 
 int roomcam_XYToViewplaneX(
@@ -526,7 +752,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
             screenbottom--;
         const int slicepixellen = (screenbottom - screentop);
         const int32_t ty1toty2diff = (ty2 - ty1);
-        while (k < screenbottom) {
+        while (k <= screenbottom) {
             ty = (
                 ty1 + (ty1toty2diff * (screenbottom - k) /
                     slicepixellen)
@@ -747,7 +973,7 @@ int roomcam_RenderRoom(
                         // Calculate above wall slice height:
                         int32_t top, bottom;
                         int64_t topworldz, bottomworldz;
-                        if (!roomcam_SliceHeight(
+                        if (!roomcam_WallSliceHeight(
                                 cam, target->floor_z + target->height,
                                 (r->height + r->floor_z) -
                                 (target->floor_z + target->height),
@@ -776,7 +1002,7 @@ int roomcam_RenderRoom(
                         // Calculate below wall slice height:
                         int32_t top, bottom;
                         int64_t topworldz, bottomworldz;
-                        if (!roomcam_SliceHeight(
+                        if (!roomcam_WallSliceHeight(
                                 cam, r->floor_z,
                                 (target->floor_z - r->floor_z),
                                 h, ipolhit_x, ipolhit_y,
@@ -814,7 +1040,7 @@ int roomcam_RenderRoom(
                 // Calculate full wall slice height:
                 int32_t top, bottom;
                 int64_t topworldz, bottomworldz;
-                if (!roomcam_SliceHeight(
+                if (!roomcam_WallSliceHeight(
                         cam, r->floor_z, r->height,
                         h, ipolhit_x, ipolhit_y,
                         z, &topworldz, &bottomworldz,
@@ -839,7 +1065,24 @@ int roomcam_RenderRoom(
         }
 
         // Call ceiling + floor render:
-        // ...
+        int32_t z = col;
+        while (z <= endcol) {
+            // Floor:
+            int64_t topwx, topwy, bottomwx, bottomwy;
+            int32_t topoffset, bottomoffset;
+            if (roomcam_FloorSliceHeight(
+                    cam, r->floor_z,
+                    r->corners, r->corner_x, r->corner_y,
+                    h, z, 1, &topwx, &topwy, &bottomwx, &bottomwy,
+                    &topoffset, &bottomoffset
+                    )) {
+                graphics_DrawRectangle(
+                    1, 0, 0.5, 1,
+                    z, topoffset, 1, bottomoffset - topoffset + 1
+                );
+            }
+            z++;
+        }
 
         // Advance to next slice:
         assert(endcol >= col);
@@ -857,6 +1100,8 @@ int roomcam_Render(
         graphics_PopRenderScissors();
         return 0;
     }
+
+    // Prepare render stats first:
     renderstatistics *stats = &cam->cache->stats;
     uint64_t fps_ts = stats->fps_ts;
     int32_t frames_accumulator = stats->frames_accumulator;
@@ -865,8 +1110,10 @@ int roomcam_Render(
     stats->fps_ts = fps_ts;
     stats->frames_accumulator = frames_accumulator + 1;
     stats->fps = fps;
+    stats->last_canvas_width = w;
+    stats->last_canvas_height = h;
     uint64_t now = datetime_Ticks();
-    if (stats->fps_ts < now) {
+    if (stats->fps_ts < now) {  // FPS calculation update
         stats->fps_ts += 1000;
         if (stats->fps_ts >= now && stats->frames_accumulator > 0) {
             stats->fps = stats->frames_accumulator;
@@ -877,6 +1124,8 @@ int roomcam_Render(
         }
         stats->frames_accumulator = 1;
     }
+
+    // Ok, we're ready to render now:
     #if defined(DEBUG_3DRENDERER)
     fprintf(stderr,
         "rfsc/roomcam.c: roomcam_Render cam_id=%" PRId64
@@ -897,6 +1146,9 @@ int roomcam_Render(
         graphics_PopRenderScissors();
         return 0;
     }
+    stats->last_fov = cam->cache->cachedfov;
+    stats->last_fovh = cam->cache->cachedfovh;
+    stats->last_fovv = cam->cache->cachedfovv;
 
     if (roomcam_RenderRoom(cam, cam->obj->parentroom,
             x, y, w, h, 0, w, 0, -1) < 0) {

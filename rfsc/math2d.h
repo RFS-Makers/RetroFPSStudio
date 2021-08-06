@@ -18,7 +18,7 @@ double math_angle2df(double x, double y);
 
 int32_t math_angle2di(int64_t x, int64_t y);
 
-int64_t math_veclen(int64_t x, int64_t y);
+int64_t math_veclen2di(int64_t x, int64_t y);
 
 void math_rotate2df(double *x, double *y, double rot);
 

@@ -12,7 +12,16 @@
 #include "scriptcoremath.h"
 
 
-void math_polygon3d_normal(
+int64_t math_veclen3di(
+        int64_t x, int64_t y, int64_t z
+        ) {
+    int64_t result = roundl(sqrtl(
+        (long double)(x * x + y * y + z * z)
+    ));
+    return result;
+}
+
+void math_polynormal3df(
         const double pos1[3], const double pos2[3],
         const double pos3[3],
         double result[3]
