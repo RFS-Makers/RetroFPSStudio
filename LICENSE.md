@@ -14,7 +14,7 @@ Please do not reuse, share, modify, compile, or
 otherwise rely on this code and these files,
 outside of pure informational reading
 and, if you want, reporting of bugs. Disassembling official binaries
-is still not allowed.**
+is still not allowed.** I hope you can learn something from reading!
 No warranty is offered on this code whatsover, my apologies.
 Copyright (c) 2020-2021,  E.J.T./@ell1e & RFS2 Team (see AUTHORS.md).
 

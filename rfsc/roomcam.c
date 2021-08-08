@@ -405,13 +405,14 @@ int roomcam_FloorSliceHeight(
     );
     if (!awaytocam_intersect)
         return 0;
+
     // Compute "closer" geometry end point on screen:
     int32_t close_screen_offset = 0;
     int64_t close_world_x = intersect_lx1;
     int64_t close_world_y = intersect_ly1;
     if (awaytocam_wallno == camtoaway_wallno) {
         if (!math_polycontains2di(
-                intersect_lx1, intersect_lx2,
+                intersect_lx1, intersect_ly1,
                 geometry_corners,
                 geometry_corner_x, geometry_corner_y)) {
             return 0;
@@ -454,6 +455,11 @@ int roomcam_FloorSliceHeight(
     );
     if (far_screen_offset < 0) far_screen_offset = 0;
     if (far_screen_offset >= h) far_screen_offset = h - 1;
+    /*if (d)
+        printf("close x,y %" PRId64 ",%" PRId64 " "
+            "far x,y %" PRId64 ",%" PRId64 "\n",
+            close_world_x, close_world_y,
+            far_world_x, far_world_y);*/
     // Figure out the proper order:
     if (far_screen_offset < close_screen_offset ||
             (far_screen_offset == close_screen_offset && !isfloor)) {
@@ -752,7 +758,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
             screenbottom--;
         const int slicepixellen = (screenbottom - screentop);
         const int32_t ty1toty2diff = (ty2 - ty1);
-        while (k <= screenbottom) {
+        while (likely(k <= screenbottom)) {
             ty = (
                 ty1 + (ty1toty2diff * (screenbottom - k) /
                     slicepixellen)
@@ -1070,17 +1076,41 @@ int roomcam_RenderRoom(
             // Floor:
             int64_t topwx, topwy, bottomwx, bottomwy;
             int32_t topoffset, bottomoffset;
+            /*int d = 0;
+            if (z == 100 && r->id == 1) {
+                d = 1;
+                printf("rendering floor at z=100, "
+                    "floor_z=%" PRId64 ", ceiling=%" PRId64
+                    "\n",
+                    r->floor_z, r->floor_z + r->height);
+            }*/
             if (roomcam_FloorSliceHeight(
                     cam, r->floor_z,
                     r->corners, r->corner_x, r->corner_y,
                     h, z, 1, &topwx, &topwy, &bottomwx, &bottomwy,
-                    &topoffset, &bottomoffset
+                    &topoffset, &bottomoffset //, d
                     )) {
+                /*if (d) {
+                    printf("topwx,topwy: %" PRId64 ",%" PRId64 " "
+                        "bottomwx,bottomwy: %" PRId64 ",%" PRId64 " "
+                        "top screen: %d, bottom screen: %d\n",
+                        topwx, topwy, bottomwx, bottomwy,
+                        (int)topoffset, (int)bottomoffset);
+                }*/
                 graphics_DrawRectangle(
                     1, 0, 0.5, 1,
-                    z, topoffset, 1, bottomoffset - topoffset + 1
+                    z, y + topoffset, 1, y + bottomoffset - topoffset + 1
                 );
+            } else {
+                //if (d)
+                //    printf("REPORTED NOT ON SCREEN.\n");
             }
+            /*if (d) {
+                 graphics_DrawRectangle(
+                    0, 1, 0, 1,
+                    99, y, 1, y + h
+                );
+            }*/
             z++;
         }
 

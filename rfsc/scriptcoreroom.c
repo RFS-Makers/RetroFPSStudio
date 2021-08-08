@@ -553,7 +553,7 @@ static int _roomlayer_destroy(lua_State *l) {
 }
 
 static int _roomlayer_global_getmaxroomslimit(lua_State *l) {
-    lua_pushinteger(l, MAX_ROOMS_PER_GROUP);
+    lua_pushinteger(l, MAX_ROOMS_PER_LAYER);
     return 1;
 }
 
@@ -563,7 +563,7 @@ static int _roomlayer_global_getmaxwallslimit(lua_State *l) {
 }
 
 static int _roomlayer_global_getmaxdecalslimit(lua_State *l) {
-    lua_pushinteger(l, MAX_ROOMS_PER_GROUP);
+    lua_pushinteger(l, DECALS_MAXCOUNT);
     return 1;
 }
 

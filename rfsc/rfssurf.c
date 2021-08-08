@@ -228,7 +228,7 @@ void rfssurf_Rect(rfssurf *target,
         const int ir = fmax(0, fmin(255, round(r * 255)));
         const int ig = fmax(0, fmin(255, round(g * 255)));
         const int ib = fmax(0, fmin(255, round(b * 255)));
-        const int INT_COLOR_SCALAR = 1000;
+        const int INT_COLOR_SCALAR = 1024;
         const int alphar = (
             fmax(0, fmin(INT_COLOR_SCALAR, round(a
                 * INT_COLOR_SCALAR)))
@@ -288,7 +288,7 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
         return;
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
-    const int INT_COLOR_SCALAR = 1000;
+    const int INT_COLOR_SCALAR = 1024;
     const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
     assert(clipalpha > 0);
     const int maxy = tgy + cliph;
@@ -412,7 +412,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
         return rfssurf_BlitSimple(target, source,
             tgx, tgy, clipx, clipy, clipw, cliph);
     }
-    const int INT_COLOR_SCALAR = 1000;
+    const int INT_COLOR_SCALAR = 1024;
     int intrfull = round(fmin(2 * INT_COLOR_SCALAR,
         fmax(0, r * (double)INT_COLOR_SCALAR)));
     int intgfull = round(fmin(2 * INT_COLOR_SCALAR,
@@ -528,7 +528,7 @@ HOTSPOT void rfssurf_BlitScaled(
             tgx, tgy, clipx, clipy,
             clipw, cliph, r, g, b, a);
     }
-    const int INT_COLOR_SCALAR = 1000;
+    const int INT_COLOR_SCALAR = 1024;
     int intrfull = round(fmin(2 * INT_COLOR_SCALAR,
         fmax(0, r * (double)INT_COLOR_SCALAR)));
     int intgfull = round(fmin(2 * INT_COLOR_SCALAR,
