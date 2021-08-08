@@ -1,6 +1,7 @@
 // This is PROPRIETARY CODE, do not modify, reuse, or share.
 // All Rights Reserved.
-// See LICENSE.md for details.
+// Reading this code for personal education and curiosity is ENCOURAGED!
+// See LICENSE.md for details
 
 #ifndef RFSC_URI_H_
 #define RFSC_URI_H_

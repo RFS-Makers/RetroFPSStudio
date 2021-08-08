@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 
-#define ANGLE_SCALAR ((int32_t)64)
+#define ANGLE_SCALAR ((int32_t)16)
 
 
 #endif  // RFS2_MATHDEFS_H_

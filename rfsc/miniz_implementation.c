@@ -1,6 +1,7 @@
 // This is PROPRIETARY CODE, do not modify, reuse, or share.
 // All Rights Reserved.
-// See LICENSE.md for details.
+// Reading this code for personal education and curiosity is ENCOURAGED!
+// See LICENSE.md for details
 
 // This file includes miniz to pull it into an object file.
 // It will also make it compatible with our VFS, instead

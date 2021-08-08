@@ -8,8 +8,8 @@ raycasting retro fun!
 *Note: this public, partial copy of RFS2 is sadly
 **NOT free software** and has restrictive terms,
 see [the license](LICENSE.md) for explanations.
-Hopefully, you still find it informative, and I apologize
-that it's not more liberal.*
+Hopefully, you still find it informative, and I
+apologize that it's not more liberal.*
 
 To get started, [obtain Retro FPS Studio](
     https://rfs.horse64.org/get) from the website.
