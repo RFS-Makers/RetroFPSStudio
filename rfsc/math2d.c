@@ -66,8 +66,8 @@ void math_rotate2di(int64_t *x, int64_t *y, int32_t rot) {
         ((long double)*x) * sinl(rotf);
     long double newx = ((long double)*x) * cosl(rotf) -
         ((long double)*y) * sinl(rotf);
-    *x = newx;
-    *y = newy;
+    *x = (int64_t)newx;
+    *y = (int64_t)newy;
 }
 
 int64_t math_veclen2di(int64_t x, int64_t y) {
@@ -470,23 +470,9 @@ int math_polyintersect2di_ex(
     int contains2 = math_polycontains2di(
         lx2, ly2, corner_count, cx, cy
     );
-    if (contains1 && contains2) {
-        /*printf("EARLY ABORT. line is fully %s "
-            "the polygon: %" PRId64 ",%" PRId64
-            " to %" PRId64 ",%" PRId64 "\n",
-            (contains1 ? "inside": "outside"),
-            lx1, ly1, lx2, ly2);
-        int i = 0;
-        printf("polypoints:");
-        while (i < corner_count) {
-            printf(" %" PRId64 ",%" PRId64,
-                cx[i], cy[i]);
-            i++;
-        }
-        printf("\n");*/
+    if (unlikely(contains1 && contains2))
         return 0;
-    }
-    if (!contains1) {
+    if (!contains1 && contains2) {
         int64_t tx = lx1;
         int64_t ty = ly1;
         lx1 = lx2;
@@ -496,6 +482,12 @@ int math_polyintersect2di_ex(
         contains1 = 1;
         contains2 = 0;
     }
+
+    int bestwall = -1;
+    int64_t bestx, besty;
+    int64_t bestdist = -1;
+
+    // Find the closest intersection:
     int i = 0;
     int imax = corner_count - 1;
     int iprev = imax;
@@ -522,13 +514,34 @@ int math_polyintersect2di_ex(
                 lx1, ly1, lx2, ly2,
                 &wix, &wiy
                 )) {
-            *iwall = iprev;
-            *ix = wix;
-            *iy = wiy;
-            return 1;
+            if (likely(contains1 && !contains2)) {
+                // No other collision possible, since convex polygon.
+                assert(iprev >= 0);
+                *iwall = iprev;
+                *ix = wix;
+                *iy = wiy;
+                return 1;
+            }
+            int64_t intersectdist = (
+                math_veclen2di(lx1 - wix, ly1 - wiy)
+            );
+            if (bestwall < 0 || intersectdist < bestdist) {
+                assert(iprev >= 0);
+                bestwall = iprev;
+                bestx = wix;
+                besty = wiy;
+                bestdist = intersectdist;
+            }
         }
         iprev = i;
         i++;
+    }
+    if (bestwall >= 0) {
+        // We got a result!
+        *iwall = bestwall;
+        *ix = bestx;
+        *iy = besty;
+        return 1;
     }
     // Sometimes, precision issues let a ray slip through a corner.
     // We want to return a collision in that case:
@@ -541,6 +554,7 @@ int math_polyintersect2di_ex(
                 lx1, ly1, lx2, ly2, cx[i], cy[i],
                 cornercheckrange
                 )) {
+            assert(i >= 0);
             *iwall = i;
             *ix = cx[i];
             *iy = cy[i];

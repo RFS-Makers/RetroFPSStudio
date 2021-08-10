@@ -21,6 +21,7 @@
 #include "roomdefs.h"
 #include "roomlayer.h"
 #include "roomobject.h"
+#include "roomrendercache.h"
 #include "rfssurf.h"
 
 typedef struct renderstatistics renderstatistics;
@@ -67,9 +68,9 @@ int32_t _roomcam_XYZToViewplaneY_NoRecalc(
     // Special case of behind camera:
     if (px <= 0) {
         if (pz < 0)
-            return h;
+            return h + h * 10;
         if (pz > 0)
-            return -1;
+            return -(h * 10);
         return 0;
     }
 
@@ -80,17 +81,9 @@ int32_t _roomcam_XYZToViewplaneY_NoRecalc(
     pz = (pz * scalef) / 10000LL;
     // (...we dont need 'py' anymore, so ignore that one)
 
-    // If outside of viewplane, abort early:
-    if (pz < cam->cache->vertivecs_z[0])
-        return -1;
-    if (pz > cam->cache->vertivecs_z[h - 1])
-        return h;
-
-    int res = (pz - cam->cache->vertivecs_z[0]) * h /
+    int res = ((pz - cam->cache->vertivecs_z[0]) * h) /
         (cam->cache->vertivecs_z[h - 1] -
         cam->cache->vertivecs_z[0]);
-    if (res >= h) res = h - 1;
-    if (res < 0) res = 0;
     return res;
 }
 
@@ -133,6 +126,37 @@ int32_t _roomcam_XYToViewplaneX_NoRecalc(
     return res;
 }
 
+int GetFloorCeilingSafeInterpolationColumns(
+        roomcam *cam, room *r, roomrendercache *rcache,
+        int xcol, int *result
+        ) {
+    if (!roomrendercache_SetXCols(
+            rcache, r, cam, cam->cache->cachedw,
+            cam->cache->cachedh))
+        return 0;
+    int max_cols_ahead = (
+        cam->cache->cachedw / (WALL_BATCH_DIVIDER * 1)
+    );
+    int k = 0;
+    while (k < r->corners) {
+        if (rcache->corners_to_screenxcol[k] >= xcol) {
+            int corner_ahead = (
+                rcache->corners_to_screenxcol[k] - xcol
+            ) + 1;
+            if (max_cols_ahead > corner_ahead)
+                max_cols_ahead = corner_ahead;
+        }
+        k++;
+    }
+    if (xcol + max_cols_ahead > cam->cache->cachedw - 1)
+        max_cols_ahead = (cam->cache->cachedw - 1) - xcol;
+    if (max_cols_ahead < 1) {
+        *result = 1;
+        return 1;
+    }
+    *result = max_cols_ahead;
+    return 1;
+}
 
 static void _roomcam_FreeCache(roomcamcache *cache) {
     if (!cache)
@@ -354,7 +378,7 @@ int roomcam_FloorSliceHeight(
         roomcam *cam, int64_t geometry_z,
         int geometry_corners, int64_t *geometry_corner_x,
         int64_t *geometry_corner_y, int h, int xoffset,
-        int isfloor,
+        int isfloor, int *onscreen,
         int64_t *topworldx, int64_t *topworldy,
         int64_t *bottomworldx, int64_t *bottomworldy,
         int32_t *topoffset, int32_t *bottomoffset
@@ -388,7 +412,7 @@ int roomcam_FloorSliceHeight(
         intersect_lx2, intersect_ly2,
         geometry_corners,
         geometry_corner_x, geometry_corner_y,
-        -1, 0, &camtoaway_wallno, &camtoaway_ix,
+        -1, 1, &camtoaway_wallno, &camtoaway_ix,
         &camtoaway_iy
     );
     if (!camtoaway_intersect)
@@ -401,7 +425,7 @@ int roomcam_FloorSliceHeight(
         intersect_lx1, intersect_ly1,
         geometry_corners,
         geometry_corner_x, geometry_corner_y,
-        -1, 0, &awaytocam_wallno, &awaytocam_ix,
+        -1, 1, &awaytocam_wallno, &awaytocam_ix,
         &awaytocam_iy
     );
     if (!awaytocam_intersect)
@@ -409,61 +433,93 @@ int roomcam_FloorSliceHeight(
 
     // Compute "closer" geometry end point on screen:
     int32_t close_screen_offset = 0;
-    int64_t close_world_x = intersect_lx1;
-    int64_t close_world_y = intersect_ly1;
-    if (awaytocam_wallno == camtoaway_wallno) {
-        if (!math_polycontains2di(
-                intersect_lx1, intersect_ly1,
-                geometry_corners,
-                geometry_corner_x, geometry_corner_y)) {
-            return 0;
-        }
+    int64_t close_world_x = camtoaway_ix;
+    int64_t close_world_y = camtoaway_iy;
+    if (awaytocam_wallno == camtoaway_wallno &&
+            math_polycontains2di(
+            intersect_lx1, intersect_ly1,
+            geometry_corners,
+            geometry_corner_x, geometry_corner_y)) {
+        // Camera is "inside" polygon, so closer border extends past screen
         assert(h <= cam->cache->cachedh);
         if (isfloor) {
             assert(geometry_z < cam->obj->z);
-            int64_t lowerscreen_x = cam->cache->vertivecs_x[h - 1];
+            int64_t lowerscreen_x =
+                cam->cache->rotatedplanevecs_x[xoffset];
+            int64_t lowerscreen_y =
+                cam->cache->rotatedplanevecs_y[xoffset];
             int64_t lowerscreen_z = cam->cache->vertivecs_z[h - 1];
             assert(lowerscreen_z < 0);
-            int64_t scalar = 1000LL * (
-                (geometry_z - cam->obj->z) / lowerscreen_z
+            int64_t scalar = ((int64_t)1000 *
+                (geometry_z - cam->obj->z)) / lowerscreen_z;
+            assert(llabs(
+                (lowerscreen_z * scalar / (int64_t)1000LL) -
+                (geometry_z - cam->obj->z)
+            ) <= 5);
+            close_world_x = lowerscreen_x * scalar / (int64_t)1000LL;
+            close_world_y = lowerscreen_y * scalar / (int64_t)1000LL;
+            math_rotate2di(
+                &close_world_x, &close_world_y, cam->obj->angle
             );
-            close_world_x = lowerscreen_x * scalar / 1000LL;
-            close_world_y = intersect_ly1;
+            /*int testo = _roomcam_XYZToViewplaneY_NoRecalc(
+                cam, close_world_x, close_world_y, geometry_z
+            );
+            if (testo < h) {
+                printf("cam z: %" PRId64 ", geo z: %" PRId64 "\n",
+                    cam->obj->z, geometry_z);
+                printf("h back project: %d\n", testo);
+            }
+            assert(1 || _roomcam_XYZToViewplaneY_NoRecalc(
+                cam, close_world_x, close_world_y, geometry_z
+            ) >= h - 5);*/
+            close_screen_offset = h - 1;
         } else {
             assert(geometry_z > cam->obj->z);
-            int64_t upperscreen_x = cam->cache->vertivecs_x[0];
+            int64_t upperscreen_x =
+                cam->cache->rotatedplanevecs_x[xoffset];
+            int64_t upperscreen_y =
+                cam->cache->rotatedplanevecs_y[xoffset];
             int64_t upperscreen_z = cam->cache->vertivecs_z[0];
             assert(upperscreen_z > 0);
-            int64_t scalar = 1000LL * (
-                (geometry_z - cam->obj->z) / upperscreen_z
+            int64_t scalar = ((int64_t)1000LL *
+                (geometry_z - cam->obj->z)) / upperscreen_z;
+            close_world_x = upperscreen_x * scalar / (int64_t)1000LL;
+            close_world_y = upperscreen_y * scalar / (int64_t)1000LL;
+            math_rotate2di(
+                &close_world_x, &close_world_y, cam->obj->angle
             );
-            close_world_x = upperscreen_x * scalar / 1000LL;
-            close_world_y = intersect_ly1;
+            close_screen_offset = 0;
         }
-        close_screen_offset = 0;
     } else {
         close_screen_offset = _roomcam_XYZToViewplaneY_NoRecalc(
             cam, close_world_x, close_world_y, geometry_z
-        );
-        if (close_screen_offset < 0) close_screen_offset = 0;
-        if (close_screen_offset >= h) close_screen_offset = h - 1;
+        ) + (isfloor ? 1 : -1);
     }
     // Compute "farther" geometry point on screen:
-    int64_t far_world_x = intersect_lx2;
-    int64_t far_world_y = intersect_ly2;
+    int64_t far_world_x = awaytocam_ix;
+    int64_t far_world_y = awaytocam_iy;
     int32_t far_screen_offset = _roomcam_XYZToViewplaneY_NoRecalc(
         cam, far_world_x, far_world_y, geometry_z
-    );
-    if (far_screen_offset < 0) far_screen_offset = 0;
-    if (far_screen_offset >= h) far_screen_offset = h - 1;
-    /*if (d)
-        printf("close x,y %" PRId64 ",%" PRId64 " "
-            "far x,y %" PRId64 ",%" PRId64 "\n",
-            close_world_x, close_world_y,
-            far_world_x, far_world_y);*/
-    // Figure out the proper order:
-    if (far_screen_offset < close_screen_offset ||
-            (far_screen_offset == close_screen_offset && !isfloor)) {
+    ) + (isfloor ? -1 : 1);
+    /*if (d) {
+        printf("close x,y,z,screen: %" PRId64
+            ",%" PRId64 ",%" PRId64 ",%d\n",
+            close_world_x, close_world_y, geometry_z,
+            close_screen_offset);
+        printf("far x,y,z,screen: %" PRId64
+            ",%" PRId64 ",%" PRId64 ",%d\n",
+            far_world_x, far_world_y, geometry_z,
+            far_screen_offset);
+    }*/
+    if ((isfloor && (far_screen_offset > close_screen_offset)) ||
+            (!isfloor && (far_screen_offset < close_screen_offset))) {
+        // Segment is behind camera.
+        *onscreen = 0;
+    } else {
+        *onscreen = 1;
+    }
+    // Return in proper order:
+    if (!isfloor) {
         assert(!isfloor);
         *topworldx = close_world_x;
         *topworldy = close_world_y;
@@ -538,8 +594,8 @@ int roomcam_WallSliceHeight(
         (bottomoff_world * world_to_pixel_scalar) / 100000L
     );
     assert(bottomoff_world >= 0);
-    if (bottomoff_screen > h) {
-        bottomoff_screen = h;
+    if (bottomoff_screen >= h) {
+        bottomoff_screen = h - 1;
         bottomoff_world = screentopatwall - screenheightatwall;
     }
     int64_t _bottomworldz = (_topworldz -
@@ -793,17 +849,185 @@ HOTSPOT static int roomcam_DrawWallSlice(
     return 1;
 }
 
-// Helper to interpolate wall pos in roomcam_RenderRoom (x):
-#define RENDERROOM_IPOL_X(z) (\
-    hit_x + (endhit_x - hit_x) *\
-    (z - col) / imax(1, endcol - col)\
-);
 
-// Helper to interpolate wall pos in roomcam_RenderRoom (y)
-#define RENDERROOM_IPOL_Y(z) (\
-    hit_y + (endhit_y - hit_y) *\
-    (z - col) / imax(1, endcol - col)\
-);
+int roomcam_DrawWall(
+        roomcam *cam, room *r, int canvasx, int canvasy,
+        int xcol, int endcol,
+        int originwall, roomtexinfo *texinfo,
+        int64_t wall_floor_z, int64_t wall_height
+        ) {
+    #if defined(DEBUG_3DRENDERER) && defined(DEBUG_3DRENDERER_EXTRA)
+    fprintf(stderr, "rfsc/roomcam.c: debug: "
+        "roomcam_DrawWall r->id %" PRId64 " "
+        "col=%d,%d\n",
+        r->id, xcol, endcol);
+    #endif
+    if (xcol < 0) xcol = 0;
+    if (endcol < xcol) return 1;
+    renderstatistics *stats = &cam->cache->stats;
+    roomrendercache *rcache = room_GetRenderCache(r->id);
+    if (!rcache)
+        return 0;
+    roomrendercache_SetXCols(
+        rcache, r, cam, cam->cache->cachedw, cam->cache->cachedh
+    );
+    if (endcol < rcache->corners_minscreenxcol ||
+            xcol > rcache->corners_maxscreenxcol)
+        return 1;
+    if (xcol < rcache->corners_minscreenxcol)
+        xcol = rcache->corners_minscreenxcol;
+
+    rfssurf *rendertarget = graphics_GetTargetSrf();
+    if (!rendertarget)
+        return -1;
+    const int w = cam->cache->cachedw;
+    const int h = cam->cache->cachedh;
+    if (endcol >= w)
+        endcol = w - 1;
+    if (endcol < xcol)
+        return 1;
+    const int orig_xcol = xcol;
+    int prev_hitset = 0;
+    int64_t prev_hitx, prev_hity;
+    int prev_wallno = -1;
+    while (xcol <= endcol) {
+        // Calculate perspective data to interpolate between:
+        int start_wallno = -1;
+        int64_t start_hitx, start_hity;
+        if (prev_hitset) {
+            prev_hitset = 0;
+            start_wallno = prev_wallno;
+            start_hitx = prev_hitx; start_hity = prev_hity;
+        } else {
+            int _temp_xcol = xcol;
+            while (1) {
+                int intersect = math_polyintersect2di_ex(
+                    cam->obj->x, cam->obj->y,
+                    cam->obj->x + cam->cache->rotatedplanevecs_x[
+                        _temp_xcol] *
+                        VIEWPLANE_RAY_LENGTH_DIVIDER,
+                    cam->obj->y + cam->cache->rotatedplanevecs_y[
+                        _temp_xcol] *
+                        VIEWPLANE_RAY_LENGTH_DIVIDER,
+                    r->corners, r->corner_x, r->corner_y, originwall, 1,
+                    &start_wallno, &start_hitx, &start_hity
+                );
+                stats->base_geometry_rays_cast++;
+                if (!intersect) {
+                    if (_temp_xcol < endcol && _temp_xcol < xcol + 3) {
+                        _temp_xcol++;
+                        continue;
+                    } else {
+                        start_wallno = -1;
+                        break;
+                    }
+                }
+                assert(start_wallno >= 0);
+                break;
+            }
+            if (start_wallno < 0) {
+                xcol++;
+                prev_hitset = 0;
+                continue;
+            }
+        }
+        int max_safe_next_segment = -1;
+        if (!GetFloorCeilingSafeInterpolationColumns(
+                cam, r, rcache, xcol, &max_safe_next_segment
+                )) {
+            return 0;
+        }
+        int max_render_ahead = imax(1, imin(
+            max_safe_next_segment + 1, endcol - xcol + 1));
+        int _temp_max_render_ahead = max_render_ahead;
+        int end_wallno = -1;
+        int64_t end_hitx, end_hity;
+        while (1) {
+            int intersect = math_polyintersect2di_ex(
+                cam->obj->x, cam->obj->y,
+                cam->obj->x + cam->cache->rotatedplanevecs_x[
+                    imin(w - 1, xcol + _temp_max_render_ahead - 1)] *
+                    VIEWPLANE_RAY_LENGTH_DIVIDER,
+                cam->obj->y + cam->cache->rotatedplanevecs_y[
+                    imin(w - 1, xcol + _temp_max_render_ahead - 1)] *
+                    VIEWPLANE_RAY_LENGTH_DIVIDER,
+                r->corners, r->corner_x, r->corner_y, originwall, 1,
+                &end_wallno, &end_hitx, &end_hity
+            );
+            stats->base_geometry_rays_cast++;
+            if (!intersect) {
+                if (_temp_max_render_ahead > 1 &&
+                        _temp_max_render_ahead > max_render_ahead - 4) {
+                    _temp_max_render_ahead--;
+                    continue;
+                } else if (_temp_max_render_ahead <= 1) {
+                    end_wallno = start_wallno;
+                    end_hitx = start_hitx;
+                    end_hity = start_hity;
+                    break;
+                } else {
+                    end_wallno = -1;
+                    break;
+                }
+            } else {
+                prev_hitset = 1;
+                prev_wallno = start_wallno;  // intended. more reliable.
+                prev_hitx = end_hitx; prev_hity = end_hity;
+                assert(end_wallno >= 0);
+                break;
+            }
+        }
+        if (end_wallno < 0) {
+            xcol++;
+            prev_hitset = 0;
+            continue;
+        }
+
+        // Do actual render:
+        int z = xcol;
+        while (likely(z < xcol + max_render_ahead)) {
+            assert(z <= endcol);
+            int64_t ix = (
+                start_hitx + ((end_hitx - start_hitx) *
+                (z - xcol)) / imax(1, endcol - xcol)
+            );
+            int64_t iy = (
+                start_hity + ((end_hity - start_hity) *
+                (z - xcol)) / imax(1, endcol - xcol)
+            );
+
+            // Calculate above wall slice height:
+            int32_t top, bottom;
+            int64_t topworldz, bottomworldz;
+            if (unlikely(!roomcam_WallSliceHeight(
+                    cam, wall_floor_z, wall_height,
+                    h, ix, iy,
+                    z, &topworldz, &bottomworldz,
+                    &top, &bottom
+                    ))) {
+                // Fully off-screen.
+                z++;
+                continue;
+            }
+
+            // Draw slice:
+            assert(top >= 0 && bottom >= top && bottom <= h - 1);
+            assert(start_wallno != originwall);
+            if (unlikely(!roomcam_DrawWallSlice(
+                    rendertarget, r, start_wallno, 1,
+                    texinfo, ix, iy,
+                    top, bottom, topworldz, bottomworldz,
+                    canvasx + z, canvasy, h
+                    )))
+                return -1;
+            stats->base_geometry_slices_rendered++;
+            z++;
+        }
+        xcol = z;
+    }
+    assert(xcol == endcol + 1);
+    return 1;
+}
 
 int roomcam_RenderRoom(
         roomcam *cam, room *r, int x, int y, int w, int h,
@@ -818,9 +1042,10 @@ int roomcam_RenderRoom(
     fprintf(stderr,
         "rfsc/roomcam.c: roomcam_RenderRoom cam_id=%" PRId64
         ", RECURSE into room_id=%" PRId64 " "
-        "(floor_z=%" PRId64 ",height=%" PRId64 " -> "
+        "(floor_z=%" PRId64 ",height=%" PRId64 ","
+        "ignorewall=%d) -> "
         "checking range %d<->%d\n",
-        cam->obj->id, r->id, r->floor_z, r->height, xoffset,
+        cam->obj->id, r->id, r->floor_z, r->height, ignorewall, xoffset,
         ((max_xoffset >= 0 && max_xoffset < w) ? max_xoffset : w));
     #endif
     rfssurf *rendertarget = graphics_GetTargetSrf();
@@ -860,7 +1085,6 @@ int roomcam_RenderRoom(
         stats->base_geometry_rays_cast++;
         assert(!intersect || ignorewall < 0 ||
                wallno != ignorewall);
-        //printf("intersect: %d, wallno: %d\n", intersect, wallno);
         if (!intersect || wallno < 0) {
             #if (defined(DEBUG_3DRENDERER) && \
                 defined(DEBUG_3DRENDERER_EXTRA) && !defined(NDEBUG))
@@ -893,7 +1117,7 @@ int roomcam_RenderRoom(
             continue;
         }
 
-        // Find out where wall segment ends (=faster):
+        // Find out where wall segment ends:
         int endcol = _roomcam_XYToViewplaneX_NoRecalc(
             cam, r->corner_x[wallno], r->corner_y[wallno]
         );
@@ -909,21 +1133,36 @@ int roomcam_RenderRoom(
         // Get target hit pos at wall end:
         int64_t endhit_x, endhit_y;
         int endwallno = -1;
-        int endintersect = math_polyintersect2di_ex(
-            cam->obj->x, cam->obj->y,
-            cam->obj->x + cam->cache->rotatedplanevecs_x[endcol] *
-                VIEWPLANE_RAY_LENGTH_DIVIDER,
-            cam->obj->y + cam->cache->rotatedplanevecs_y[endcol] *
-                VIEWPLANE_RAY_LENGTH_DIVIDER,
-            r->corners, r->corner_x, r->corner_y, ignorewall, 1,
-            &endwallno, &endhit_x, &endhit_y
-        );
-        stats->base_geometry_rays_cast++;
-        assert(!endintersect || ignorewall < 0 ||
-               endwallno != ignorewall);
-        if (!endintersect || endwallno < 0) {
-            // Weird, that shouldn't happen. Just limit the advancement,
-            // and ignore it:
+        int _tempendcol = endcol;
+        while (1) {
+            int endintersect = math_polyintersect2di_ex(
+                cam->obj->x, cam->obj->y,
+                cam->obj->x + cam->cache->rotatedplanevecs_x[
+                    _tempendcol] *
+                    VIEWPLANE_RAY_LENGTH_DIVIDER,
+                cam->obj->y + cam->cache->rotatedplanevecs_y[
+                    _tempendcol] *
+                    VIEWPLANE_RAY_LENGTH_DIVIDER,
+                r->corners, r->corner_x, r->corner_y, ignorewall, 1,
+                &endwallno, &endhit_x, &endhit_y
+            );
+            stats->base_geometry_rays_cast++;
+            assert(!endintersect || ignorewall < 0 ||
+                   endwallno != ignorewall);
+            if (!endintersect || endwallno < 0) {
+                if (_tempendcol <= col ||
+                        _tempendcol < col - 4) {
+                    endwallno = -1;
+                    break;
+                }
+                _tempendcol--;
+                continue;
+            }
+            break;
+        }
+        if (endwallno < 0) {
+            // Weird, that shouldn't happen. Limit the advancement,
+            // and carry on:
             endcol = col;
         }
         #if defined(DEBUG_3DRENDERER)
@@ -971,126 +1210,140 @@ int roomcam_RenderRoom(
                 roomtexinfo *belowtexinfo = (
                     &r->wall[wallno].wall_tex
                 );
-                int32_t z = col;
-                while (z <= endcol) {
-                    int64_t ipolhit_x = RENDERROOM_IPOL_X(z);
-                    int64_t ipolhit_y = RENDERROOM_IPOL_Y(z);
-
-                    if (draw_above) {
-                        // Calculate above wall slice height:
-                        int32_t top, bottom;
-                        int64_t topworldz, bottomworldz;
-                        if (!roomcam_WallSliceHeight(
-                                cam, target->floor_z + target->height,
-                                (r->height + r->floor_z) -
-                                (target->floor_z + target->height),
-                                h, ipolhit_x, ipolhit_y,
-                                z, &topworldz, &bottomworldz,
-                                &top, &bottom
-                                )) {
-                            // Fully off-screen.
-                            z++;
-                            continue;
-                        }
-
-                        // Draw slice:
-                        if (!roomcam_DrawWallSlice(
-                                rendertarget, r, wallno, 1,
-                                abovetexinfo,
-                                ipolhit_x, ipolhit_y,
-                                top, bottom, topworldz, bottomworldz,
-                                x + z, y, h
-                                ))
-                            return -1;
-                        stats->base_geometry_slices_rendered++;
-                        z++;
-                    }
-                    if (draw_below) {
-                        // Calculate below wall slice height:
-                        int32_t top, bottom;
-                        int64_t topworldz, bottomworldz;
-                        if (!roomcam_WallSliceHeight(
-                                cam, r->floor_z,
-                                (target->floor_z - r->floor_z),
-                                h, ipolhit_x, ipolhit_y,
-                                z, &topworldz, &bottomworldz,
-                                &top, &bottom
-                                )) {
-                            // Fully off-screen.
-                            z++;
-                            continue;
-                        }
-
-                        // Draw slice:
-                        if (!roomcam_DrawWallSlice(
-                                rendertarget, r, wallno, 0,
-                                belowtexinfo,
-                                ipolhit_x, ipolhit_y,
-                                top, bottom, topworldz, bottomworldz,
-                                x + z, y, h
-                                ))
-                            return -1;
-                        stats->base_geometry_slices_rendered++;
-                        z++;
-                    }
+                if (draw_above) {
+                    roomcam_DrawWall(
+                        cam, r, x, y, col, endcol,
+                        ignorewall, abovetexinfo,
+                        target->floor_z + target->height,
+                        (r->height + r->floor_z) -
+                        (target->floor_z + target->height)
+                    );
+                }
+                if (draw_below) {
+                    roomcam_DrawWall(
+                        cam, r, x, y, col, endcol,
+                        ignorewall, belowtexinfo,
+                        r->floor_z,
+                        (target->floor_z - r->floor_z)
+                    );
                 }
             }
         } else {
             roomtexinfo *texinfo = (
                 &r->wall[wallno].wall_tex
             );
-            int32_t z = col;
-            while (z <= endcol) {
-                int64_t ipolhit_x = RENDERROOM_IPOL_X(z);
-                int64_t ipolhit_y = RENDERROOM_IPOL_Y(z);
-
-                // Calculate full wall slice height:
-                int32_t top, bottom;
-                int64_t topworldz, bottomworldz;
-                if (!roomcam_WallSliceHeight(
-                        cam, r->floor_z, r->height,
-                        h, ipolhit_x, ipolhit_y,
-                        z, &topworldz, &bottomworldz,
-                        &top, &bottom
-                        )) {
-                    // Fully off-screen.
-                    z++;
-                    continue;
-                }
-
-                // Draw slice:
-                if (!roomcam_DrawWallSlice(
-                        rendertarget, r, wallno, 0, texinfo,
-                        ipolhit_x, ipolhit_y,
-                        top, bottom, topworldz, bottomworldz,
-                        x + z, y, h
-                        ))
-                    return -1;
-                stats->base_geometry_slices_rendered++;
-                z++;
+            roomcam_DrawWall(
+                cam, r, x, y, col, endcol,
+                ignorewall, texinfo,
+                r->floor_z, r->height
+            );
+            #if defined(DEBUG_3DRENDERER)
+            int j = col;
+            while (j <= endcol) {
+                 graphics_DrawRectangle(
+                    0, fmax(0, 1.0 - fmod(((double)r->id) * 0.2,
+                    1.0)), 0, 1,
+                    j, y + 65 + fmod(((double)r->id) * 0.05,
+                    1.0) * 50, 1, 5
+                );
+                j++;
             }
+            #endif
         }
 
         // Call ceiling + floor render:
+        roomrendercache *rcache = room_GetRenderCache(r->id);
+        if (!rcache)
+            return -1;
+        int prev_valuesset = 0;
+        int64_t prev_topwx, prev_topwy, prev_bottomwx, prev_bottomwy;
+        int32_t prev_topoffset, prev_bottomoffset;
+        int prev_onscreen;
         int32_t z = col;
-        while (z <= endcol) {
-            // Floor:
-            int64_t topwx, topwy, bottomwx, bottomwy;
-            int32_t topoffset, bottomoffset;
-            /*int d = 0;
-            if (z == 100 && r->id == 1) {
-                d = 1;
-                printf("rendering floor at z=100, "
-                    "floor_z=%" PRId64 ", ceiling=%" PRId64
-                    "\n",
-                    r->floor_z, r->floor_z + r->height);
-            }*/
-            if (roomcam_FloorSliceHeight(
+        while (likely(z <= endcol)) {
+            // Check over which segment to interpolate the perspective:
+            int max_safe_next_cols = -1;
+            if (!GetFloorCeilingSafeInterpolationColumns(
+                    cam, r, rcache, z, &max_safe_next_cols
+                    )) {
+                return -1;
+            }
+            assert(max_safe_next_cols >= 1);
+            int innerendcol = max_safe_next_cols + z;
+            if (innerendcol > endcol)
+                innerendcol = endcol;
+            assert(innerendcol >= z);
+            int64_t top1wx, top1wy, bottom1wx, bottom1wy;
+            int32_t top1offset, bottom1offset;
+            int onscreen1 = 0;
+            if (prev_valuesset) {
+                prev_valuesset = 0;
+                top1wx = prev_topwx; top1wy = prev_topwy;
+                bottom1wx = prev_bottomwx; bottom1wy = prev_bottomwy;
+                top1offset = prev_topoffset; bottom1offset = prev_bottomoffset;
+                onscreen1 = prev_onscreen;
+            } else {
+                if (!roomcam_FloorSliceHeight(
+                        cam, r->floor_z,
+                        r->corners, r->corner_x, r->corner_y,
+                        h, z, 1, &onscreen1,
+                        &top1wx, &top1wy, &bottom1wx, &bottom1wy,
+                        &top1offset, &bottom1offset
+                        )) {
+                    prev_valuesset = 0;
+                    z = innerendcol + 1;
+                    break;
+                }
+            }
+            int64_t top2wx, top2wy, bottom2wx, bottom2wy;
+            int32_t top2offset, bottom2offset;
+            int onscreen2 = 0;
+            if (!roomcam_FloorSliceHeight(
                     cam, r->floor_z,
                     r->corners, r->corner_x, r->corner_y,
-                    h, z, 1, &topwx, &topwy, &bottomwx, &bottomwy,
-                    &topoffset, &bottomoffset //, d
+                    h, innerendcol, 1, &onscreen2,
+                    &top2wx, &top2wy, &bottom2wx, &bottom2wy,
+                    &top2offset, &bottom2offset
                     )) {
+                prev_valuesset = 0;
+                z = innerendcol + 1;
+                break;
+            } else {
+                prev_valuesset = 1;
+                prev_topwx = top2wx; prev_topwy = top2wy;
+                prev_bottomwx = bottom2wx; prev_bottomwy = bottom2wy;
+                prev_topoffset = top2offset; prev_bottomoffset = bottom2offset;
+                prev_onscreen = onscreen2;
+            }
+
+            // Render floor by interpolating over above info:
+            const int startz = z;
+            while (likely(z <= innerendcol)) {
+                const int64_t scalarrange = (1024 * 8);
+                const int64_t scalar = imin(scalarrange, (scalarrange * (
+                    (z - startz))) / imax(1, innerendcol - startz));
+                int64_t topwx = (
+                    top1wx + (top2wx - top1wx) * scalar / scalarrange
+                );
+                int64_t topwy = (
+                    top1wx + (top2wx - top1wx) * scalar / scalarrange
+                );
+                int64_t bottomwx = (
+                    bottom1wx + (bottom2wx - bottom1wx) *
+                    scalar / scalarrange
+                );
+                int64_t bottomwy = (
+                    bottom1wx + (bottom2wx - bottom1wx) *
+                    scalar / scalarrange
+                );
+                int32_t topoffset = imin(h, imax(-1,
+                    top1offset + ((top2offset - top1offset) *
+                    scalar) / scalarrange
+                ));
+                int32_t bottomoffset = imin(h, imax(-1,
+                    bottom1offset + ((bottom2offset - bottom1offset) *
+                    scalar) / scalarrange
+                ));
                 /*if (d) {
                     printf("topwx,topwy: %" PRId64 ",%" PRId64 " "
                         "bottomwx,bottomwy: %" PRId64 ",%" PRId64 " "
@@ -1098,21 +1351,14 @@ int roomcam_RenderRoom(
                         topwx, topwy, bottomwx, bottomwy,
                         (int)topoffset, (int)bottomoffset);
                 }*/
-                graphics_DrawRectangle(
-                    1, 0, 0.5, 1,
-                    z, y + topoffset, 1, y + bottomoffset - topoffset + 1
-                );
-            } else {
-                //if (d)
-                //    printf("REPORTED NOT ON SCREEN.\n");
+                if (bottomoffset >= topoffset)
+                    graphics_DrawRectangle(
+                        1, fmin(1.0, ((double)r->id) * 0.2), 0.5, 1,
+                        z, y + topoffset, 1, y + bottomoffset - topoffset + 1
+                    );
+                z++;
             }
-            /*if (d) {
-                 graphics_DrawRectangle(
-                    0, 1, 0, 1,
-                    99, y, 1, y + h
-                );
-            }*/
-            z++;
+            assert(z > innerendcol);
         }
 
         // Advance to next slice:
@@ -1163,6 +1409,7 @@ int roomcam_Render(
         " START, w=%d,h=%d\n",
         cam->obj->id, w, h);
     #endif
+    room_ClearRenderCache();
     if (!cam->obj->parentroom) {
         #if defined(DEBUG_3DRENDERER)
         fprintf(stderr,
