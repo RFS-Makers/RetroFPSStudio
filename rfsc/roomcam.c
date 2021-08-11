@@ -1114,7 +1114,7 @@ int roomcam_DrawFloorCeiling(
     renderstatistics *stats = &cam->cache->stats;
     roomrendercache *rcache = room_GetRenderCache(r->id);
 
-    // Do ceiling + floor render:
+    // Do floor render:
     int prev_valuesset = 0;
     int64_t prev_topwx, prev_topwy, prev_bottomwx, prev_bottomwy;
     int32_t prev_topoffset, prev_bottomoffset;
@@ -1244,6 +1244,127 @@ int roomcam_DrawFloorCeiling(
                     canvasx + z, canvasy + topoffset, 1,
                     bottomoffset - topoffset + 1
                 );*/
+            }
+            z++;
+        }
+        assert(z > innerendcol);
+    }
+
+    // Do ceiling render:
+    prev_valuesset = 0;
+    z = xcol;
+    while (likely(z <= endcol)) {
+        // Check over which segment to interpolate the perspective:
+        int max_safe_next_cols = -1;
+        if (!GetFloorCeilingSafeInterpolationColumns(
+                cam, r, rcache, z, &max_safe_next_cols
+                )) {
+            return 0;
+        }
+        assert(max_safe_next_cols >= 1);
+        int innerendcol = max_safe_next_cols + z;
+        if (innerendcol > endcol)
+            innerendcol = endcol;
+        assert(innerendcol >= z);
+        int64_t top1wx, top1wy, bottom1wx, bottom1wy;
+        int32_t top1offset, bottom1offset;
+        int onscreen1 = 0;
+        if (prev_valuesset) {
+            prev_valuesset = 0;
+            top1wx = prev_topwx;
+            top1wy = prev_topwy;
+            bottom1wx = prev_bottomwx;
+            bottom1wy = prev_bottomwy;
+            top1offset = prev_topoffset;
+            bottom1offset = prev_bottomoffset;
+            onscreen1 = prev_onscreen;
+        } else {
+            if (!roomcam_FloorSliceHeight(
+                    cam, geom,
+                    h, z, 0, &onscreen1,
+                    &top1wx, &top1wy, &bottom1wx, &bottom1wy,
+                    &top1offset, &bottom1offset
+                    )) {
+                prev_valuesset = 0;
+                z = innerendcol + 1;
+                break;
+            }
+        }
+        int64_t top2wx, top2wy, bottom2wx, bottom2wy;
+        int32_t top2offset, bottom2offset;
+        int onscreen2 = 0;
+        if (!roomcam_FloorSliceHeight(
+                cam, geom,
+                h, innerendcol, 0, &onscreen2,
+                &top2wx, &top2wy, &bottom2wx, &bottom2wy,
+                &top2offset, &bottom2offset
+                )) {
+            prev_valuesset = 0;
+            z = innerendcol + 1;
+            break;
+        } else {
+            prev_valuesset = 1;
+            prev_topwx = top2wx;
+            prev_topwy = top2wy;
+            prev_bottomwx = bottom2wx;
+            prev_bottomwy = bottom2wy;
+            prev_topoffset = top2offset;
+            prev_bottomoffset = bottom2offset;
+            prev_onscreen = onscreen2;
+        }
+
+        // Render floor by interpolating over above info:
+        roomtexinfo *texinfo = NULL;
+        if (geom->type == DRAWGEOM_ROOM) {
+            texinfo = &geom->r->floor_tex;
+        } else if (geom->type == DRAWGEOM_BLOCK) {
+            //texinfo =
+        } else {
+            assert(0);
+            return 0;
+        }
+        const int startz = z;
+        while (likely(z <= innerendcol)) {
+            const int64_t scalarrange = (1024 * 8);
+            const int64_t scalar = imin(scalarrange, (scalarrange * (
+                (z - startz))) / imax(1, innerendcol - startz));
+            int64_t topwx = (
+                top1wx + (top2wx - top1wx) * scalar / scalarrange
+            );
+            int64_t topwy = (
+                top1wx + (top2wx - top1wx) * scalar / scalarrange
+            );
+            int64_t bottomwx = (
+                bottom1wx + (bottom2wx - bottom1wx) *
+                scalar / scalarrange
+            );
+            int64_t bottomwy = (
+                bottom1wx + (bottom2wx - bottom1wx) *
+                scalar / scalarrange
+            );
+            int32_t topoffset = imin(h, imax(-1,
+                top1offset + ((top2offset - top1offset) *
+                scalar) / scalarrange
+            ));
+            int32_t bottomoffset = imin(h, imax(-1,
+                bottom1offset + ((bottom2offset - bottom1offset) *
+                scalar) / scalarrange
+            ));
+            if (bottomoffset >= topoffset) {
+                int cr = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_r));
+                int cg = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_g));
+                int cb = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_b));
+                roomcam_DrawFloorCeilingSlice(
+                    rendertarget, r, geom, 0,
+                    topwx, topwy, r->floor_z,
+                    bottomwx, bottomwy, r->floor_z,
+                    texinfo, topoffset, bottomoffset,
+                    canvasx + z, canvasy, h, cr, cg, cb,
+                    cr, cg, cb
+                );
             }
             z++;
         }
