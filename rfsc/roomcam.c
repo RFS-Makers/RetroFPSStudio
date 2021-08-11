@@ -1460,6 +1460,8 @@ int roomcam_RenderRoom(
         ) {
     if (nestdepth > RENDER_MAX_PORTAL_DEPTH)
         return -1;
+
+    // Collect some important info first:
     renderstatistics *stats = &cam->cache->stats;
     stats->base_geometry_rooms_recursed++;
     #if defined(DEBUG_3DRENDERER)
@@ -1481,6 +1483,8 @@ int roomcam_RenderRoom(
     const int batchwidth = (
         imax(16, w / WALL_BATCH_DIVIDER)
     );
+
+    // Drawing loop over all screen columns:
     int col = xoffset;
     while (col < w && col <= max_xoffset) {
         /*printf("---\n");
@@ -1495,6 +1499,8 @@ int roomcam_RenderRoom(
                 cam->cache->rotatedplanevecs_y[col]
             )/ (double)ANGLE_SCALAR, (int)r->id,
             (int)max_xoffset);*/
+
+        // Get hit info at the start of wall segment:
         int wallno = -1;
         int64_t hit_x, hit_y;
         int intersect = math_polyintersect2di_ex(
@@ -1510,6 +1516,7 @@ int roomcam_RenderRoom(
         assert(!intersect || ignorewall < 0 ||
                wallno != ignorewall);
         if (!intersect || wallno < 0) {
+            // Special super noisy debug of weird collision events:
             #if (defined(DEBUG_3DRENDERER) && \
                 defined(DEBUG_3DRENDERER_EXTRA) && !defined(NDEBUG))
             if (cam->obj->parentroom != NULL) {
@@ -1520,7 +1527,7 @@ int roomcam_RenderRoom(
                     " while NOT out of bounds, "
                     "ray x,y %" PRId64 ",%" PRId64 " -> "
                     "%" PRId64 ",%" PRId64 " "
-                    "polygon x,y",  // intentionally no EOL!
+                    "polygon x,y",  // Intentionally no EOL!
                     cam->obj->id, r->id, col, w,
                     cam->obj->x, cam->obj->y,
                     cam->obj->x + cam->cache->rotatedplanevecs_x[col] *
@@ -1528,7 +1535,7 @@ int roomcam_RenderRoom(
                     cam->obj->y + cam->cache->rotatedplanevecs_y[col] *
                         VIEWPLANE_RAY_LENGTH_DIVIDER);
                 int i = 0;
-                while (i < r->corners) {
+                while (i < r->corners) {  // Output polygon too.
                     fprintf(stderr,
                         " %" PRId64 ",%" PRId64,
                         r->corner_x[i], r->corner_y[i]);
@@ -1537,6 +1544,7 @@ int roomcam_RenderRoom(
                 fprintf(stderr, "\n");
             }
             #endif
+            // We got nothing useful to draw with, therefore skip.
             col++;
             continue;
         }
@@ -1574,6 +1582,8 @@ int roomcam_RenderRoom(
             assert(!endintersect || ignorewall < 0 ||
                    endwallno != ignorewall);
             if (!endintersect || endwallno < 0) {
+                // Oops, probably a precision error.
+                // Cheat a little, and see if we can find the end:
                 if (_tempendcol <= col ||
                         _tempendcol < col - 4) {
                     endwallno = -1;
@@ -1625,7 +1635,7 @@ int roomcam_RenderRoom(
             if (target->floor_z > r->floor_z) {
                 draw_below = 1;
             }
-            if (draw_above || draw_below) {
+            if (draw_above || draw_below) {  // Wall is visible!
                 roomtexinfo *abovetexinfo = (
                     r->wall[wallno].has_aboveportal_tex ?
                     &r->wall[wallno].aboveportal_tex :
@@ -1637,7 +1647,7 @@ int roomcam_RenderRoom(
                 drawgeom geom = {0};
                 geom.type = DRAWGEOM_ROOM;
                 geom.r = r;
-                if (draw_above) {
+                if (draw_above) {  // Above portal drawing!
                     roomcam_DrawWall(
                         cam, &geom, x, y, col, endcol,
                         ignorewall, abovetexinfo,
@@ -1646,7 +1656,7 @@ int roomcam_RenderRoom(
                         (target->floor_z + target->height)
                     );
                 }
-                if (draw_below) {
+                if (draw_below) {  // Below portal drawing!
                     roomcam_DrawWall(
                         cam, &geom, x, y, col, endcol,
                         ignorewall, belowtexinfo,
@@ -1656,6 +1666,7 @@ int roomcam_RenderRoom(
                 }
             }
         } else {
+            // Draw regular full height wall:
             roomtexinfo *texinfo = (
                 &r->wall[wallno].wall_tex
             );
@@ -1667,6 +1678,8 @@ int roomcam_RenderRoom(
                 ignorewall, texinfo,
                 r->floor_z, r->height
             );
+
+            // Draw debug indicators for drawn walls:
             #if defined(DEBUG_3DRENDERER)
             int j = col;
             while (j <= endcol) {
@@ -1681,6 +1694,7 @@ int roomcam_RenderRoom(
             #endif
         }
 
+        // Draw floor/ceiling:
         drawgeom geom = {0};
         geom.type = DRAWGEOM_ROOM;
         geom.r = r;
