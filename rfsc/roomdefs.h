@@ -23,7 +23,7 @@
 // General dimensions:
 #define TEX_COORD_SCALER ((int64_t)4096LL)
 #define TEX_FULLSCALE_INT ((int64_t)1024LL)
-#define ONE_METER_IN_UNITS (128LL)
+#define ONE_METER_IN_UNITS ((int64_t)128LL)
 #define GRID_UNITS (ONE_METER_IN_UNITS/4LL)
 #define TEX_REPEAT_UNITS (ONE_METER_IN_UNITS * 1LL)
 
@@ -47,6 +47,7 @@
 #define VIEWPLANE_RAY_LENGTH_DIVIDER 128
 #define WALL_BATCH_DIVIDER 16
 #define MAX_LIGHT_RANGE ((int64_t)(ONE_METER_IN_UNITS * 10))
+#define LIGHT_COLOR_SCALAR 128
 
 // Door and elevator directions:
 #define ROOM_DIR_UP 1

@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "datetime.h"
+#include "drawgeom.h"
 #include "graphics.h"
 #include "math2d.h"
 #include "room.h"
@@ -21,6 +22,7 @@
 #include "roomdefs.h"
 #include "roomlayer.h"
 #include "roomobject.h"
+#include "roomobject_block.h"
 #include "roomrendercache.h"
 #include "rfssurf.h"
 
@@ -210,6 +212,64 @@ roomcam *roomcam_Create() {
     return rc;
 }
 
+void roomcam_FloorCeilingCubeMapping(
+        roomtexinfo *texinfo,
+        int64_t px1, int64_t py1,
+        int64_t px2, int64_t py2,
+        int64_t *tx1, int64_t *ty1,
+        int64_t *tx2, int64_t *ty2
+        ) {
+    int64_t repeat_units_x = (TEX_REPEAT_UNITS * (
+        ((int64_t)texinfo->tex_scaleintx) /
+        TEX_FULLSCALE_INT
+    ));
+    if (repeat_units_x < 1) repeat_units_x = 1;
+    int64_t repeat_units_y = (TEX_REPEAT_UNITS * (
+        ((int64_t)texinfo->tex_scaleinty) /
+        TEX_FULLSCALE_INT
+    ));
+    if (repeat_units_y < 1) repeat_units_y = 1;
+    {
+        int64_t reference_x = (
+            (px1 + (int64_t)texinfo->
+                tex_gamestate_scrollx + (int64_t)texinfo->
+                tex_shiftx)
+        );
+        if (reference_x > 0) {
+            *tx1 = (reference_x % repeat_units_x) *
+                TEX_COORD_SCALER / repeat_units_x;
+        } else {
+            *tx1 = TEX_COORD_SCALER - (
+                ((-reference_x) % repeat_units_x) *
+                TEX_COORD_SCALER/ repeat_units_x
+            );
+        }
+    }
+    {
+        int64_t reference_y = (
+            (py1 + (int64_t)texinfo->
+                tex_gamestate_scrolly + (int64_t)texinfo->
+                tex_shifty)
+        );
+        if (reference_y > 0) {
+            *ty1 = (reference_y % repeat_units_y) *
+                TEX_COORD_SCALER / repeat_units_y;
+        } else {
+            *ty1 = TEX_COORD_SCALER - (
+                ((-reference_y) % repeat_units_y) *
+                TEX_COORD_SCALER / repeat_units_y
+            );
+        }
+    }
+    *tx2 = *tx1 + (
+        ((px2 - px1) * TEX_COORD_SCALER) / repeat_units_y
+    );
+    *ty2 = *ty1 + (
+        ((py2 - py1) * TEX_COORD_SCALER) / repeat_units_y
+    );
+}
+
+
 int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
     // Override mathematically unsafe values:
     if (w <= 0) w = 1;
@@ -224,14 +284,17 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
             cam->cache->cachedw != w ||
             cam->cache->cachedh != h) {
         force_recalculate_rotated_vecs = 1;
+        assert(cam->fov > 0);
         int32_t aspectscalar = (
             (w * ANGLE_SCALAR) / h
         );
-        int32_t fov_h = (
-            1 * (cam->fov * aspectscalar / ANGLE_SCALAR) +
-            cam->fov * 10
-        ) / 11;
+        int32_t fov_h = (int64_t)(
+            (int64_t)1 * ((int64_t)cam->fov * (int64_t)aspectscalar) +
+            (int64_t)cam->fov * 10 * (int64_t)ANGLE_SCALAR
+        ) / ((int64_t)11 * (int64_t)ANGLE_SCALAR);
         if (fov_h > 120 * ANGLE_SCALAR) fov_h = 120 * ANGLE_SCALAR;
+        assert(fov_h >= 0);
+        if (fov_h < 30 * ANGLE_SCALAR) fov_h = 30 * ANGLE_SCALAR;
         #if defined(DEBUG_3DRENDERER)
         fprintf(stderr,
             "rfsc/roomcam.c: debug: fov: "
@@ -849,26 +912,180 @@ HOTSPOT static int roomcam_DrawWallSlice(
     return 1;
 }
 
+int roomcam_DrawFloorCeiling(
+        roomcam *cam, drawgeom *geom,
+        int canvasx, int canvasy,
+        int xcol, int endcol
+        ) {
+    // Collect some info first:
+    room *r = NULL;
+    if (geom->type == DRAWGEOM_ROOM) {
+        r = geom->r;
+    } else if (geom->type == DRAWGEOM_BLOCK) {
+        r = geom->bl->obj->parentroom;
+    } else {
+        return 0;
+    }
+    rfssurf *rendertarget = graphics_GetTargetSrf();
+    if (!rendertarget)
+        return 0;
+    const int w = cam->cache->cachedw;
+    const int h = cam->cache->cachedh;
+    renderstatistics *stats = &cam->cache->stats;
+    roomrendercache *rcache = room_GetRenderCache(r->id);
+
+    // Do ceiling + floor render:
+    int prev_valuesset = 0;
+    int64_t prev_topwx, prev_topwy, prev_bottomwx, prev_bottomwy;
+    int32_t prev_topoffset, prev_bottomoffset;
+    int prev_onscreen;
+    int32_t z = xcol;
+    while (likely(z <= endcol)) {
+        // Check over which segment to interpolate the perspective:
+        int max_safe_next_cols = -1;
+        if (!GetFloorCeilingSafeInterpolationColumns(
+                cam, r, rcache, z, &max_safe_next_cols
+                )) {
+            return 0;
+        }
+        assert(max_safe_next_cols >= 1);
+        int innerendcol = max_safe_next_cols + z;
+        if (innerendcol > endcol)
+            innerendcol = endcol;
+        assert(innerendcol >= z);
+        int64_t top1wx, top1wy, bottom1wx, bottom1wy;
+        int32_t top1offset, bottom1offset;
+        int onscreen1 = 0;
+        if (prev_valuesset) {
+            prev_valuesset = 0;
+            top1wx = prev_topwx;
+            top1wy = prev_topwy;
+            bottom1wx = prev_bottomwx;
+            bottom1wy = prev_bottomwy;
+            top1offset = prev_topoffset;
+            bottom1offset = prev_bottomoffset;
+            onscreen1 = prev_onscreen;
+        } else {
+            if (!roomcam_FloorSliceHeight(
+                    cam, r->floor_z,
+                    r->corners, r->corner_x, r->corner_y,
+                    h, z, 1, &onscreen1,
+                    &top1wx, &top1wy, &bottom1wx, &bottom1wy,
+                    &top1offset, &bottom1offset
+                    )) {
+                prev_valuesset = 0;
+                z = innerendcol + 1;
+                break;
+            }
+        }
+        int64_t top2wx, top2wy, bottom2wx, bottom2wy;
+        int32_t top2offset, bottom2offset;
+        int onscreen2 = 0;
+        if (!roomcam_FloorSliceHeight(
+                cam, r->floor_z,
+                r->corners, r->corner_x, r->corner_y,
+                h, innerendcol, 1, &onscreen2,
+                &top2wx, &top2wy, &bottom2wx, &bottom2wy,
+                &top2offset, &bottom2offset
+                )) {
+            prev_valuesset = 0;
+            z = innerendcol + 1;
+            break;
+        } else {
+            prev_valuesset = 1;
+            prev_topwx = top2wx;
+            prev_topwy = top2wy;
+            prev_bottomwx = bottom2wx;
+            prev_bottomwy = bottom2wy;
+            prev_topoffset = top2offset;
+            prev_bottomoffset = bottom2offset;
+            prev_onscreen = onscreen2;
+        }
+
+        // Render floor by interpolating over above info:
+        const int startz = z;
+        while (likely(z <= innerendcol)) {
+            const int64_t scalarrange = (1024 * 8);
+            const int64_t scalar = imin(scalarrange, (scalarrange * (
+                (z - startz))) / imax(1, innerendcol - startz));
+            int64_t topwx = (
+                top1wx + (top2wx - top1wx) * scalar / scalarrange
+            );
+            int64_t topwy = (
+                top1wx + (top2wx - top1wx) * scalar / scalarrange
+            );
+            int64_t bottomwx = (
+                bottom1wx + (bottom2wx - bottom1wx) *
+                scalar / scalarrange
+            );
+            int64_t bottomwy = (
+                bottom1wx + (bottom2wx - bottom1wx) *
+                scalar / scalarrange
+            );
+            int32_t topoffset = imin(h, imax(-1,
+                top1offset + ((top2offset - top1offset) *
+                scalar) / scalarrange
+            ));
+            int32_t bottomoffset = imin(h, imax(-1,
+                bottom1offset + ((bottom2offset - bottom1offset) *
+                scalar) / scalarrange
+            ));
+            /*if (d) {
+                printf("topwx,topwy: %" PRId64 ",%" PRId64 " "
+                    "bottomwx,bottomwy: %" PRId64 ",%" PRId64 " "
+                    "top screen: %d, bottom screen: %d\n",
+                    topwx, topwy, bottomwx, bottomwy,
+                    (int)topoffset, (int)bottomoffset);
+            }*/
+            if (bottomoffset >= topoffset)
+                graphics_DrawRectangle(
+                    1, fmin(1.0, ((double)r->id) * 0.2), 0.5, 1,
+                    canvasx + z, canvasy + topoffset, 1,
+                    bottomoffset - topoffset + 1
+                );
+            z++;
+        }
+        assert(z > innerendcol);
+    }
+    return 1;
+}
 
 int roomcam_DrawWall(
-        roomcam *cam, room *r, int canvasx, int canvasy,
+        roomcam *cam, drawgeom *geom,
+        int canvasx, int canvasy,
         int xcol, int endcol,
         int originwall, roomtexinfo *texinfo,
         int64_t wall_floor_z, int64_t wall_height
         ) {
+    // First, extract some info:
+    room *r = NULL;
+    if (geom->type == DRAWGEOM_ROOM) {
+        r = geom->r;
+    } else if (geom->type == DRAWGEOM_BLOCK) {
+        r = geom->bl->obj->parentroom;
+    } else {
+        return 0;
+    }
+    rfssurf *rendertarget = graphics_GetTargetSrf();
+    if (!rendertarget)
+        return 0;
+    const int w = cam->cache->cachedw;
+    const int h = cam->cache->cachedh;
+    renderstatistics *stats = &cam->cache->stats;
+    roomrendercache *rcache = room_GetRenderCache(r->id);
     #if defined(DEBUG_3DRENDERER) && defined(DEBUG_3DRENDERER_EXTRA)
     fprintf(stderr, "rfsc/roomcam.c: debug: "
         "roomcam_DrawWall r->id %" PRId64 " "
         "col=%d,%d\n",
         r->id, xcol, endcol);
     #endif
+
+    // Some sanity checks:
     if (xcol < 0) xcol = 0;
     if (endcol < xcol) return 1;
-    renderstatistics *stats = &cam->cache->stats;
-    roomrendercache *rcache = room_GetRenderCache(r->id);
-    if (!rcache)
+    if (!rcache || !r)
         return 0;
-    roomrendercache_SetXCols(
+    roomrendercache_SetXCols(  // require column data
         rcache, r, cam, cam->cache->cachedw, cam->cache->cachedh
     );
     if (endcol < rcache->corners_minscreenxcol ||
@@ -876,16 +1093,12 @@ int roomcam_DrawWall(
         return 1;
     if (xcol < rcache->corners_minscreenxcol)
         xcol = rcache->corners_minscreenxcol;
-
-    rfssurf *rendertarget = graphics_GetTargetSrf();
-    if (!rendertarget)
-        return -1;
-    const int w = cam->cache->cachedw;
-    const int h = cam->cache->cachedh;
     if (endcol >= w)
         endcol = w - 1;
     if (endcol < xcol)
         return 1;
+
+    // Do the actual drawing:
     const int orig_xcol = xcol;
     int prev_hitset = 0;
     int64_t prev_hitx, prev_hity;
@@ -1210,9 +1423,12 @@ int roomcam_RenderRoom(
                 roomtexinfo *belowtexinfo = (
                     &r->wall[wallno].wall_tex
                 );
+                drawgeom geom = {0};
+                geom.type = DRAWGEOM_ROOM;
+                geom.r = r;
                 if (draw_above) {
                     roomcam_DrawWall(
-                        cam, r, x, y, col, endcol,
+                        cam, &geom, x, y, col, endcol,
                         ignorewall, abovetexinfo,
                         target->floor_z + target->height,
                         (r->height + r->floor_z) -
@@ -1221,7 +1437,7 @@ int roomcam_RenderRoom(
                 }
                 if (draw_below) {
                     roomcam_DrawWall(
-                        cam, r, x, y, col, endcol,
+                        cam, &geom, x, y, col, endcol,
                         ignorewall, belowtexinfo,
                         r->floor_z,
                         (target->floor_z - r->floor_z)
@@ -1232,8 +1448,11 @@ int roomcam_RenderRoom(
             roomtexinfo *texinfo = (
                 &r->wall[wallno].wall_tex
             );
+            drawgeom geom = {0};
+            geom.type = DRAWGEOM_ROOM;
+            geom.r = r;
             roomcam_DrawWall(
-                cam, r, x, y, col, endcol,
+                cam, &geom, x, y, col, endcol,
                 ignorewall, texinfo,
                 r->floor_z, r->height
             );
@@ -1251,115 +1470,12 @@ int roomcam_RenderRoom(
             #endif
         }
 
-        // Call ceiling + floor render:
-        roomrendercache *rcache = room_GetRenderCache(r->id);
-        if (!rcache)
-            return -1;
-        int prev_valuesset = 0;
-        int64_t prev_topwx, prev_topwy, prev_bottomwx, prev_bottomwy;
-        int32_t prev_topoffset, prev_bottomoffset;
-        int prev_onscreen;
-        int32_t z = col;
-        while (likely(z <= endcol)) {
-            // Check over which segment to interpolate the perspective:
-            int max_safe_next_cols = -1;
-            if (!GetFloorCeilingSafeInterpolationColumns(
-                    cam, r, rcache, z, &max_safe_next_cols
-                    )) {
-                return -1;
-            }
-            assert(max_safe_next_cols >= 1);
-            int innerendcol = max_safe_next_cols + z;
-            if (innerendcol > endcol)
-                innerendcol = endcol;
-            assert(innerendcol >= z);
-            int64_t top1wx, top1wy, bottom1wx, bottom1wy;
-            int32_t top1offset, bottom1offset;
-            int onscreen1 = 0;
-            if (prev_valuesset) {
-                prev_valuesset = 0;
-                top1wx = prev_topwx; top1wy = prev_topwy;
-                bottom1wx = prev_bottomwx; bottom1wy = prev_bottomwy;
-                top1offset = prev_topoffset; bottom1offset = prev_bottomoffset;
-                onscreen1 = prev_onscreen;
-            } else {
-                if (!roomcam_FloorSliceHeight(
-                        cam, r->floor_z,
-                        r->corners, r->corner_x, r->corner_y,
-                        h, z, 1, &onscreen1,
-                        &top1wx, &top1wy, &bottom1wx, &bottom1wy,
-                        &top1offset, &bottom1offset
-                        )) {
-                    prev_valuesset = 0;
-                    z = innerendcol + 1;
-                    break;
-                }
-            }
-            int64_t top2wx, top2wy, bottom2wx, bottom2wy;
-            int32_t top2offset, bottom2offset;
-            int onscreen2 = 0;
-            if (!roomcam_FloorSliceHeight(
-                    cam, r->floor_z,
-                    r->corners, r->corner_x, r->corner_y,
-                    h, innerendcol, 1, &onscreen2,
-                    &top2wx, &top2wy, &bottom2wx, &bottom2wy,
-                    &top2offset, &bottom2offset
-                    )) {
-                prev_valuesset = 0;
-                z = innerendcol + 1;
-                break;
-            } else {
-                prev_valuesset = 1;
-                prev_topwx = top2wx; prev_topwy = top2wy;
-                prev_bottomwx = bottom2wx; prev_bottomwy = bottom2wy;
-                prev_topoffset = top2offset; prev_bottomoffset = bottom2offset;
-                prev_onscreen = onscreen2;
-            }
-
-            // Render floor by interpolating over above info:
-            const int startz = z;
-            while (likely(z <= innerendcol)) {
-                const int64_t scalarrange = (1024 * 8);
-                const int64_t scalar = imin(scalarrange, (scalarrange * (
-                    (z - startz))) / imax(1, innerendcol - startz));
-                int64_t topwx = (
-                    top1wx + (top2wx - top1wx) * scalar / scalarrange
-                );
-                int64_t topwy = (
-                    top1wx + (top2wx - top1wx) * scalar / scalarrange
-                );
-                int64_t bottomwx = (
-                    bottom1wx + (bottom2wx - bottom1wx) *
-                    scalar / scalarrange
-                );
-                int64_t bottomwy = (
-                    bottom1wx + (bottom2wx - bottom1wx) *
-                    scalar / scalarrange
-                );
-                int32_t topoffset = imin(h, imax(-1,
-                    top1offset + ((top2offset - top1offset) *
-                    scalar) / scalarrange
-                ));
-                int32_t bottomoffset = imin(h, imax(-1,
-                    bottom1offset + ((bottom2offset - bottom1offset) *
-                    scalar) / scalarrange
-                ));
-                /*if (d) {
-                    printf("topwx,topwy: %" PRId64 ",%" PRId64 " "
-                        "bottomwx,bottomwy: %" PRId64 ",%" PRId64 " "
-                        "top screen: %d, bottom screen: %d\n",
-                        topwx, topwy, bottomwx, bottomwy,
-                        (int)topoffset, (int)bottomoffset);
-                }*/
-                if (bottomoffset >= topoffset)
-                    graphics_DrawRectangle(
-                        1, fmin(1.0, ((double)r->id) * 0.2), 0.5, 1,
-                        z, y + topoffset, 1, y + bottomoffset - topoffset + 1
-                    );
-                z++;
-            }
-            assert(z > innerendcol);
-        }
+        drawgeom geom = {0};
+        geom.type = DRAWGEOM_ROOM;
+        geom.r = r;
+        roomcam_DrawFloorCeiling(
+            cam, &geom, x, y, col, endcol
+        );
 
         // Advance to next slice:
         assert(endcol >= col);

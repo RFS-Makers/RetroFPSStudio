@@ -60,7 +60,7 @@ void math_rotate2df(double *x, double *y, double rot) {
 
 void math_rotate2di(int64_t *x, int64_t *y, int32_t rot) {
     // Axis: x right, y down, rot+ rotates CCW
-    double rotf = ((double)rot) / ANGLE_SCALAR;
+    double rotf = ((double)rot) / (double)ANGLE_SCALAR;
     rotf = (-rotf / 180.0) * M_PI;
     long double newy = ((long double)*y) * cosl(rotf) +
         ((long double)*x) * sinl(rotf);

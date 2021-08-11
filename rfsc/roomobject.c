@@ -170,7 +170,7 @@ void roomobj_Destroy(roomobj *obj) {
             " not found in global list\n",
             obj, obj->id);
     }
-    if (obj->parentroom->parentlayer) {
+    if (obj->parentroom && obj->parentroom->parentlayer) {
         roomcolmap_MovedObject(
             obj->parentroom->parentlayer->colmap, obj
         );
@@ -179,7 +179,6 @@ void roomobj_Destroy(roomobj *obj) {
         roomobj_by_id_map,
         (char *)&obj->id, sizeof(obj->id)
     );
-    hash_FreeMap(roomobj_by_id_map);
     free(obj);
 }
 

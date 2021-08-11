@@ -16,14 +16,14 @@
 #include "roomcam.h"
 #include "roomlayer.h"
 #include "roomobject.h"
-#include "roomobject_colmov.h"
+#include "roomobject_movable.h"
 #include "roomserialize.h"
 #include "scriptcore.h"
 #include "scriptcoreroom.h"
 
 
-static int _roomobj_newinviscolmov(lua_State *l) {
-    colmovobj *mov = colmov_Create();
+static int _roomobj_newinvismovable(lua_State *l) {
+    movable *mov = movable_Create();
     if (!mov) {
         lua_pushstring(l, "failed to create object");
         return lua_error(l);
@@ -39,6 +39,68 @@ static int _roomobj_newinviscolmov(lua_State *l) {
     ref->type = OBJREF_ROOMOBJ;
     ref->value = (uintptr_t)mov->obj->id;
     return 1;
+}
+
+static int _movable_setemit(lua_State *l) {
+    if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+                OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+                OBJREF_ROOMOBJ) {
+        wrongargs:;
+        lua_pushstring(l, "expected arg of type movable");
+        return lua_error(l);
+    }
+    roomobj *obj = roomobj_ById(
+        (uint64_t)((scriptobjref *)lua_touserdata(l, 1))->value
+    );
+    if (!obj || obj->objtype != ROOMOBJ_MOVABLE)
+        goto wrongargs;
+    int32_t r = 0;
+    int32_t g = 0;
+    int32_t b = 0;
+    int64_t radius = 0;
+    if (lua_gettop(l) > 1) {
+        if (lua_gettop(l) < 4 ||
+                lua_type(l, 2) != LUA_TNUMBER ||
+                lua_type(l, 3) != LUA_TNUMBER ||
+                lua_type(l, 4) != LUA_TNUMBER) {
+            lua_pushstring(l, "expected args #2, #3, #4 to "
+                "be of type number if not omitted");
+            return lua_error(l);
+        }
+        r = round(fmax(0.0, fmin(1.0, lua_tonumber(l, 2))) *
+            LIGHT_COLOR_SCALAR);
+        g = round(fmax(0.0, fmin(1.0, lua_tonumber(l, 3))) *
+            LIGHT_COLOR_SCALAR);
+        b = round(fmax(0.0, fmin(1.0, lua_tonumber(l, 4))) *
+            LIGHT_COLOR_SCALAR);
+        radius = ONE_METER_IN_UNITS * 3;
+        if (radius > MAX_LIGHT_RANGE)
+            radius = MAX_LIGHT_RANGE;
+        if (r == 0 && g == 0 && b == 0)
+            radius = 0;
+    }
+    if (lua_gettop(l) >= 5) {
+        if (lua_type(l, 5) != LUA_TNUMBER) {
+            lua_pushstring(l, "expected arg #5 to "
+                "be of type number if not omitted");
+            return lua_error(l);
+        }
+        if (lua_isinteger(l, 5))
+            radius = lua_tointeger(l, 5);
+        else
+            radius = lua_tonumber(l, 5);
+        if (radius < 0) radius = 0;
+        if (radius > MAX_LIGHT_RANGE)
+            radius = MAX_LIGHT_RANGE;
+    }
+    movable *cmov = (movable*)obj->objdata;
+    cmov->does_emit = (radius > 0);
+    cmov->emit_r = r;
+    cmov->emit_g = g;
+    cmov->emit_b = b;
+    return 0;
 }
 
 static int _roomcam_renderstats(lua_State *l) {
@@ -251,11 +313,10 @@ static int _roomobj_setangle(lua_State *l) {
         goto wrongargs;
 
     double angle = math_fixanglef(lua_tonumber(l, 2));
-
     if (angle != obj->anglef) {
         obj->anglef = angle;
         obj->angle = round(
-            ((int64_t)ANGLE_SCALAR) * obj->anglef
+            ((double)ANGLE_SCALAR * (double)obj->anglef)
         );
     }
     return 0;
@@ -659,6 +720,8 @@ void scriptcoreroom_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_roomlayer_deserializeroomstolayer");
     lua_pushcfunction(l, _roomcam_renderstats);
     lua_setglobal(l, "_roomcam_renderstats");
-    lua_pushcfunction(l, _roomobj_newinviscolmov);
-    lua_setglobal(l, "_roomobj_newinviscolmov");
+    lua_pushcfunction(l, _roomobj_newinvismovable);
+    lua_setglobal(l, "_roomobj_newinvismovable");
+    lua_pushcfunction(l, _movable_setemit);
+    lua_setglobal(l, "_movable_setemit");
 }

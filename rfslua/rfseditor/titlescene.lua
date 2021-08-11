@@ -25,9 +25,13 @@ function rfseditor.titlescene.load_demo_level()
         return
     end
     local lvl = rfs.roomlayer.new(1)
+    local obj = rfs.movable.new_invisible()
+    obj:set_light(1, 0.8, 0)
+    obj:set_layer(lvl)
     local rid = 1
     lvl:deserialize_rooms({{
         id=rid,
+        light={0.5, 0.4, 0.5},
         floor_z=-(rfseditor.defaults.one_meter_units * 1),
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={

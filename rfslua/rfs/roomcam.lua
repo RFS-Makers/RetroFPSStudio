@@ -13,12 +13,12 @@ function rfs.roomcam.new()
     local result = _roomcam_new()
     debug.setmetatable(result, {
         __index = rfs.roomcam._class,
-        __gc = function(self)
+        --[[__gc = function(self)
             local f = function(gcself)
                 _roomobj_destroy(gcself)
             end
             pcall(f, self)
-        end
+        end]]
     })
     return result
 end

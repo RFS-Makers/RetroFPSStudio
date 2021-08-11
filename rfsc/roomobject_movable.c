@@ -13,11 +13,11 @@
 
 #include "room.h"
 #include "roomobject.h"
-#include "roomobject_colmov.h"
+#include "roomobject_movable.h"
 
 
-static void _colmov_DestroyCallback(roomobj *movobj) {
-    colmovobj *mov = ((colmovobj *)movobj->objdata);
+static void _movable_DestroyCallback(roomobj *movobj) {
+    movable *mov = ((movable *)movobj->objdata);
     if (!mov)
         return;
     free(mov);
@@ -25,14 +25,14 @@ static void _colmov_DestroyCallback(roomobj *movobj) {
 }
 
 
-colmovobj *colmov_Create() {
-    colmovobj *mov = malloc(sizeof(*mov));
+movable *movable_Create() {
+    movable *mov = malloc(sizeof(*mov));
     if (!mov)
         return NULL;
     memset(mov, 0, sizeof(*mov));
     roomobj *obj = roomobj_Create(
-        roomobj_GetNewId(), ROOMOBJ_COLMOV,
-        mov, &_colmov_DestroyCallback
+        roomobj_GetNewId(), ROOMOBJ_MOVABLE,
+        mov, &_movable_DestroyCallback
     );
     if (!obj) {
         free(mov);

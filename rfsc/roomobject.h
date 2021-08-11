@@ -18,7 +18,8 @@ typedef struct roomlayer roomlayer;
 typedef enum roomobjtype {
     ROOMOBJ_UNKNOWN = 0,
     ROOMOBJ_CAMERA = 1,
-    ROOMOBJ_COLMOV = 2,
+    ROOMOBJ_MOVABLE = 2,
+    ROOMOBJ_BLOCK = 3,
     ROOMOBJ_TOTAL
 } roomobjtype;
 
@@ -29,7 +30,7 @@ typedef struct roomobj {
     roomlayer *parentlayer;
     room *parentroom;
     int64_t x, y, z;
-    int16_t angle;  // degrees * ANGLE_SCALAR
+    int32_t angle;  // degrees * ANGLE_SCALAR
     double anglef;
 
     uint8_t has_collision;

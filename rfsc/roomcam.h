@@ -16,7 +16,7 @@ typedef struct roomcamcache roomcamcache;
 
 typedef struct roomcam {
     roomobj *obj;
-    int16_t vangle, fov;  // degrees * ANGLE_SCALAR
+    int32_t vangle, fov;  // degrees * ANGLE_SCALAR
     double vanglef, fovf;
     uint8_t gamma;  // default: 128
 
@@ -27,7 +27,7 @@ typedef struct renderstatistics {
     int base_geometry_slices_rendered;
     int base_geometry_rays_cast;
     int base_geometry_rooms_recursed;
-    int last_canvas_width, last_canvas_height,
+    int32_t last_canvas_width, last_canvas_height,
         last_fov, last_fovh, last_fovv;
 
     uint64_t fps_ts;

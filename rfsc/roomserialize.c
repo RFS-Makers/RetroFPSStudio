@@ -558,6 +558,45 @@ int roomserialize_lua_SetRoomProperties(
             lua_settop(l, startstack);
             return 0;
         }
+        lua_pushstring(l, "light");
+        lua_gettable(l, -2);
+        if (lua_type(l, -1) != LUA_TTABLE &&
+                lua_type(l, -1) != LUA_TNIL) {
+            char buf[256];
+            snprintf(buf, sizeof(buf) - 1,
+                "room with id %" PRIu64 " has \"walls\" "
+                "not being a table", room_id);
+            *err = strdup(buf);
+            lua_settop(l, startstack);
+            return 0;
+        } else if (lua_type(l, -1) == LUA_TTABLE) {
+            double cr = 1;
+            double cg = 1;
+            double cb = 1;
+            int i = 1;
+            while (i <= 3) {
+                lua_pushinteger(l, i);
+                lua_gettable(l, -2);
+                if (lua_type(l, -1) != LUA_TNUMBER) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "room with id %" PRIu64 " has \"light\" "
+                        "not containing 3 numbers", room_id);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                if (i == 1) cr = fmax(0.0, fmin(2.0, lua_tonumber(l, -1)));
+                if (i == 2) cg = fmax(0.0, fmin(2.0, lua_tonumber(l, -1)));
+                if (i == 3) cb = fmax(0.0, fmin(2.0, lua_tonumber(l, -1)));
+                lua_pop(l, 1);  // Remove current light value
+                i++;
+            }
+            r->sector_light_r = round(cr * LIGHT_COLOR_SCALAR);
+            r->sector_light_g = round(cg * LIGHT_COLOR_SCALAR);
+            r->sector_light_b = round(cb * LIGHT_COLOR_SCALAR);
+        }
+        lua_pop(l, 1);  // Remove "light" property
         lua_pushstring(l, "walls");
         lua_gettable(l, -2);
         if (lua_type(l, -1) != LUA_TTABLE &&
