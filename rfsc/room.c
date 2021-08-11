@@ -52,44 +52,62 @@ int room_VerifyBasicGeometry(room *r) {
     if (r->corners < 3)
         return 0;
 
+    // Make sure no corners share a spot:
     int iprev = r->corners - 1;
-    int inext = 1;
     int i = 0;
     while (i < r->corners) {
-        int64_t walldir_x, walldir_y;
-        walldir_x = (r->corner_x[inext] - r->corner_x[i]);
-        walldir_y = (r->corner_y[inext] - r->corner_y[i]);
-        if (walldir_x == 0 && walldir_y == 0)
-            return 0;
-        int64_t prevwalldir_x, prevwalldir_y;
-        prevwalldir_x = (
-            r->corner_x[i] - r->corner_x[iprev]
-        );
-        prevwalldir_y = (
-            r->corner_y[i] - r->corner_y[iprev]
-        );
-        if (prevwalldir_x == 0 && prevwalldir_y == 0)
-            return 0;
-        int32_t angle_i = math_angle2di(
-            walldir_x, walldir_y
-        );
-        int32_t angle_iprev = math_angle2di(
-            prevwalldir_x, prevwalldir_y
-        );
-        int32_t anglediff = math_fixanglei(
-            angle_i - angle_iprev
-        );
-        if (anglediff < 0)
-            return 0;
-        inext++;
-        if (inext >= r->corners)
-            inext = 0;
-        iprev++;
-        if (iprev >= r->corners)
-            iprev = 0;
+        int k = 0;
+        while (k < r->corners) {
+            if (k != i &&
+                    r->corner_x[i] == r->corner_x[k] &&
+                    r->corner_y[i] == r->corner_y[k]) {
+                return 0;
+            }
+            k++;
+        }
         i++;
     }
-    // FIXME: check walls dont intersect with themselves
+
+    // Check it's counter-clockwise:
+    if (!math_checkpolyccw2di(r->corners,
+            r->corner_x, r->corner_y)) {
+        return 0;
+    }
+
+    // Check walls don't intersect with each other:
+    int inext = 1;
+    i = 0;
+    while (i < r->corners) {
+        int knext = 1;
+        int k = 0;
+        while (k < i) {
+            if (i - 1 == k || (k == 0 && i == r->corners - 1)) {
+                // Neighboring walls, ignore.
+                // (They'll collide with their corner spots.)
+                knext++;
+                if (knext >= r->corners) knext = 0;
+                k++;
+                continue;
+            }
+            // Collision check:
+            int64_t wix, wiy;
+            if (math_lineintersect2di(
+                    r->corner_x[i], r->corner_y[i],
+                    r->corner_x[inext], r->corner_y[inext],
+                    r->corner_x[k], r->corner_y[k],
+                    r->corner_x[knext], r->corner_y[knext],
+                    &wix, &wiy
+                    )) {
+                return 0;
+            }
+            knext++;
+            if (knext >= r->corners) knext = 0;
+            k++;
+        }
+        inext++;
+        if (inext >= r->corners) inext = 0;
+        i++;
+    }
     return 1;
 }
 

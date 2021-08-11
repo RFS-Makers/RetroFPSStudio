@@ -135,6 +135,7 @@ int secrandom_GetBytes(char *ptr, size_t amount) {
     if (!hProvider)
         _secrandom_initProvider();
     memset(ptr, 0, amount);
-    return (CryptGenRandom(hProvider, amount, (uint8_t *)ptr) != FALSE);
+    return (CryptGenRandom(hProvider, amount,
+        (uint8_t *)ptr) != FALSE);
     #endif
 }

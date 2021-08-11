@@ -185,6 +185,21 @@ static void __attribute__((constructor))
     assert(result != 0);
 }
 
+int math_checkpolyccw2di(int corners, int64_t *x, int64_t *y) {
+    int64_t sum = 0;
+    if (corners < 3)
+        return 0;
+    int inext = 1;
+    int i = 0;
+    while (i < corners) {
+        sum += (x[inext] - x[i]) * (y[inext] + y[i]);
+        inext++;
+        if (inext >= corners) inext = 0;
+        i++;
+    }
+    return (sum > 0);
+}
+
 HOTSPOT int math_pointalmostonline2di(
         int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
         int64_t px, int64_t py, int range
@@ -462,15 +477,16 @@ int math_polyintersect2di_ex(
     // iwall to intersected section number, and
     // ix/iy to the intersection point.
     // Otherwise, returns 0.
-    // THIS ASSUMES CONVEX POLYGONS.
+    // Convex/concave polygons are both supported.
 
+    if (corner_count < 3) return 0;
     int contains1 = math_polycontains2di(
         lx1, ly1, corner_count, cx, cy
     );
     int contains2 = math_polycontains2di(
         lx2, ly2, corner_count, cx, cy
     );
-    if (unlikely(contains1 && contains2))
+    if (unlikely(contains1 && contains2 && corner_count == 3))
         return 0;
     if (!contains1 && contains2) {
         int64_t tx = lx1;
@@ -514,7 +530,7 @@ int math_polyintersect2di_ex(
                 lx1, ly1, lx2, ly2,
                 &wix, &wiy
                 )) {
-            if (likely(contains1 && !contains2)) {
+            if (likely(corner_count == 3 && contains1 && !contains2)) {
                 // No other collision possible, since convex polygon.
                 assert(iprev >= 0);
                 *iwall = iprev;

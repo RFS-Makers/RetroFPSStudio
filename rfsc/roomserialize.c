@@ -331,7 +331,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
             char buf[256];
             snprintf(buf, sizeof(buf) - 1,
                 "room with id %" PRIu64 " has invalid "
-                "corner geometry that isn't convex, or "
+                "corner geometry that has wall overlaps, or "
                 "not specified counter-clockwise, or "
                 "with two corners merged in one spot",
                 room_id);

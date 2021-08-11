@@ -11,6 +11,8 @@
 #include <stdint.h>
 
 
+int math_checkpolyccw2di(int corners, int64_t *x, int64_t *y);
+
 double math_fixanglef(double deg);
 
 int32_t math_fixanglei(int32_t deg);  // input is deg * ANGLE_SCALAR

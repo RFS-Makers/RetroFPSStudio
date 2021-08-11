@@ -10,7 +10,8 @@
 #include <stdio.h>
 
 void *_PhysFS_Io_partialFileReadOnlyStruct(
-    FILE *f, uint64_t start, uint64_t len
+    FILE *f, uint64_t start, uint64_t len,
+    int use_sillyencrypt, uint32_t sillycrypt_seed
 );
 
 #endif  // RFS2_VFSPARTIALFILEIO_H_
