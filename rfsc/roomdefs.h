@@ -47,7 +47,8 @@
 #define VIEWPLANE_RAY_LENGTH_DIVIDER 128
 #define WALL_BATCH_DIVIDER 16
 #define MAX_LIGHT_RANGE ((int64_t)(ONE_METER_IN_UNITS * 10))
-#define LIGHT_COLOR_SCALAR 128
+#define LIGHT_COLOR_SCALAR 32
+#define DRAW_CORNER_COORD_UPSCALE 16
 
 // Door and elevator directions:
 #define ROOM_DIR_UP 1

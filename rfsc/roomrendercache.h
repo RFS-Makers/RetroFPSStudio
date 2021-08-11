@@ -20,6 +20,10 @@ typedef struct roomrendercache {
     int corners_to_screenxcol[ROOM_MAX_CORNERS];
     int corners_minscreenxcol,
         corners_maxscreenxcol;
+
+    uint8_t upscaledcorners_set;
+    int64_t upscaledcorner_x[ROOM_MAX_CORNERS];
+    int64_t upscaledcorner_y[ROOM_MAX_CORNERS];
 } roomrendercache;
 
 void room_ClearRenderCache();
@@ -29,6 +33,10 @@ roomrendercache *room_GetRenderCache(uint64_t id);
 int roomrendercache_SetXCols(
     roomrendercache *rcache, room *r, roomcam *cam,
     int canvasw, int canvash
+);
+
+int roomrendercache_FillUpscaledCoords(
+    roomrendercache *rcache, room *r
 );
 
 #endif  // ROOMRENDERCACHE_H_

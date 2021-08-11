@@ -245,9 +245,9 @@ room *room_Create(roomlayer *lr, uint64_t id) {
     r->floor_tex.tex_scaleinty = TEX_FULLSCALE_INT;
     r->ceiling_tex.tex_scaleintx = TEX_FULLSCALE_INT;
     r->ceiling_tex.tex_scaleinty = TEX_FULLSCALE_INT;    
-    r->sector_light_r = TEX_FULLSCALE_INT;
-    r->sector_light_g = TEX_FULLSCALE_INT;
-    r->sector_light_b = TEX_FULLSCALE_INT;
+    r->sector_light_r = LIGHT_COLOR_SCALAR;
+    r->sector_light_g = LIGHT_COLOR_SCALAR;
+    r->sector_light_b = LIGHT_COLOR_SCALAR;
     r->floor_tex.tex = roomlayer_MakeTexRef(
         lr, ROOM_DEF_FLOOR_TEX);
     r->ceiling_tex.tex = roomlayer_MakeTexRef(

@@ -74,6 +74,24 @@ roomrendercache *room_GetRenderCache(uint64_t id) {
     return rcache;
 }
 
+int roomrendercache_FillUpscaledCoords(
+        roomrendercache *rcache, room *r
+        ) {
+    if (rcache->upscaledcorners_set)
+        return 1;
+    rcache->upscaledcorners_set = 1;
+    int i = 0;
+    while (i < r->corners) {
+        rcache->upscaledcorner_x[i] = (
+            r->corner_x[i] * DRAW_CORNER_COORD_UPSCALE
+        );
+        rcache->upscaledcorner_y[i] = (
+            r->corner_y[i] * DRAW_CORNER_COORD_UPSCALE
+        );
+        i++;
+    }
+    return 1;
+}
 
 int roomrendercache_SetXCols(
         roomrendercache *rcache, room *r, roomcam *cam,

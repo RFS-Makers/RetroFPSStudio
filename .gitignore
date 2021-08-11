@@ -6,5 +6,6 @@
 /RFS2
 /RFS2.exe
 *.o
+/coreapi.rfspak_unencrypted
 /coreapi.rfspak
 *~
