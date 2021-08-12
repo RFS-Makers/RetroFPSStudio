@@ -24,6 +24,7 @@ function rfseditor.titlescene.load_demo_level()
     if rfseditor._demolevel ~= nil then
         return
     end
+    rfseditor._demopososcillate = 0
     local lvl = rfs.roomlayer.new(1)
     local obj = rfs.movable.new_invisible()
     obj:set_light(1, 0.8, 0)
@@ -31,7 +32,7 @@ function rfseditor.titlescene.load_demo_level()
     local rid = 1
     lvl:deserialize_rooms({{
         id=rid,
-        light={0.5, 0.4, 0.5},
+        light={1.5, 0.4, 0.5},
         floor_z=-(rfseditor.defaults.one_meter_units * 1),
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={
@@ -173,8 +174,28 @@ function rfseditor.titlescene.on_draw()
             rfseditor._democam:set_angle(
                 rfseditor._democam:get_angle() + 0.1
             )
+            rfseditor._demopososcillate = (
+                rfseditor._demopososcillate + 1
+            )
+            while rfseditor._demopososcillate >= 1000 do
+                rfseditor._demopososcillate = (
+                    rfseditor._demopososcillate - 1000
+                )
+            end
             rfseditor._democamts = rfseditor._democamts + 20
         end
+        local xoffset = (
+            rfseditor.defaults.one_meter_units *
+            math.sin(rfseditor._demopososcillate * math.pi * 2 / 1000.0) / 2.0
+        )
+        local zoffset = (
+            rfseditor.defaults.one_meter_units *
+            math.sin((rfseditor._demopososcillate + 300) * math.pi * 2 /
+            1000.0) / 6.0
+        )
+        rfseditor._democam:set_pos(
+            xoffset, 0, zoffset
+        )
         rfseditor._democam:draw(
             0, 0, rfs.window.renderw, rfs.window.renderh
         )

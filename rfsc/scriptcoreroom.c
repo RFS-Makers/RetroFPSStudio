@@ -448,14 +448,14 @@ static int _roomobj_setpos(lua_State *l) {
         goto wrongargs;
 
     int64_t x = 0;
-    if (lua_isinteger(l, 1)) x = lua_tointeger(l, 1);
-    else x = round(lua_tonumber(l, 1));
+    if (lua_isinteger(l, 2)) x = lua_tointeger(l, 2);
+    else x = round(lua_tonumber(l, 2));
     int64_t y = 0;
-    if (lua_isinteger(l, 1)) y = lua_tointeger(l, 1);
-    else y = round(lua_tonumber(l, 1));
+    if (lua_isinteger(l, 3)) y = lua_tointeger(l, 3);
+    else y = round(lua_tonumber(l, 3));
     int64_t z = 0;
-    if (lua_isinteger(l, 1)) z = lua_tointeger(l, 1);
-    else z = round(lua_tonumber(l, 1));
+    if (lua_isinteger(l, 4)) z = lua_tointeger(l, 4);
+    else z = round(lua_tonumber(l, 4));
 
     obj->x = x;
     obj->y = y;
