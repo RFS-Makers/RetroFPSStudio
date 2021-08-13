@@ -820,18 +820,18 @@ int roomcam_WallSliceHeight(
     int64_t world_to_pixel_scalar = (
         ((int64_t)h * 100000L) / screenheightatwall
     );
-    int64_t topoff_world = (screentopatwall - (
-        geometry_floor_z + geometry_height
-    ));
-    int64_t _topworldz = (
-        (screentopatwall >= geometry_floor_z + geometry_height) ?
-        (geometry_floor_z + geometry_height) : screentopatwall);
-    if (topoff_world < 0) {
-        topoff_world = 0;
-    }
+    int64_t _topworldz = geometry_floor_z + geometry_height;
+    assert(world_to_pixel_scalar >= 0);
     int64_t topoff_screen = (
-        (topoff_world * world_to_pixel_scalar) / 100000L
+        ((screentopatwall - _topworldz) *
+            world_to_pixel_scalar) / 100000L
     );
+    if (topoff_screen < 0) {
+        topoff_screen = 0;
+        assert(screentopatwall < _topworldz);
+        _topworldz = (_topworldz - (
+            _topworldz - screentopatwall));
+    }
     int64_t bottomoff_world = (screentopatwall - (
         geometry_floor_z
     ));
@@ -847,7 +847,7 @@ int roomcam_WallSliceHeight(
         ((bottomoff_screen - topoff_screen) * 100000L)
         / world_to_pixel_scalar
     );
-    if (topoff_screen > bottomoff_screen)
+    if (unlikely(topoff_screen > bottomoff_screen))
         return 0;
     /*if (topoff_screen == 0 && 0)
         printf("render res %dx%d, screen top at wall: %d, "
@@ -954,29 +954,30 @@ void roomcam_WallCubeMapping(
     int64_t _wtop = wtop;
     if (r->wall[wallid].wall_tex.
             tex_stickyside == ROOM_DIR_UP) {
-        _wtop = relevant_wall_segment_top - wtop;
+        _wtop = relevant_wall_segment_top - _wtop;
     } else if (r->wall[wallid].wall_tex.
             tex_stickyside == ROOM_DIR_DOWN) {
-        _wtop = relevant_wall_segment_bottom - wtop;
+        _wtop = relevant_wall_segment_bottom - _wtop;
     }
     int64_t reference_z = (
-        (-_wtop + (int64_t)texinfo->
+        (_wtop + (int64_t)texinfo->
             tex_gamestate_scrolly + (int64_t)texinfo->
             tex_shifty)
     );
     if (reference_z > 0) {
         *ty1 = (reference_z % repeat_units_y) *
-            TEX_REPEAT_UNITS / repeat_units_y;
+            TEX_COORD_SCALER / repeat_units_y;
     } else {
-        *ty1 = TEX_COORD_SCALER - (
-            ((-reference_z) % repeat_units_y) *
+        *ty1 = ((repeat_units_y - 1 - (
+            ((-reference_z) - 1) % repeat_units_y)) *
             TEX_COORD_SCALER / repeat_units_y
         );
     }
     int64_t reference_zheight = (
         wsliceheight
     );
-    *ty2 = *ty1 + (
+    if (reference_zheight < 0) reference_zheight = 0;
+    *ty2 = *ty1 - (
         (reference_zheight * TEX_COORD_SCALER) / repeat_units_y
     );
 }
@@ -1037,6 +1038,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
             topworldz - bottomworldz,
             &tx, &ty1, &ty2
         );
+        assert(ty2 <= ty1);
         const int targetw = rendertarget->w;
         uint8_t *tgpixels = rendertarget->pixels;
         const uint8_t *srcpixels = srf->pixels;
@@ -1062,13 +1064,16 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int32_t ty1toty2diff = (ty2 - ty1);
         while (likely(k <= screenbottom)) {
             ty = (
-                ty1 + (ty1toty2diff * (screenbottom - k) /
+                ty1 + ((ty1toty2diff * (k - screentop)) /
                     slicepixellen)
             );
-            assert(ty >= 0);
+            if (ty < 0) ty = (TEX_COORD_SCALER - 1 - (((-ty) - 1) %
+                TEX_COORD_SCALER));
+            else ty = ty % TEX_COORD_SCALER;
+            assert(ty >= 0 && ty < TEX_COORD_SCALER);
             // Remember, we're using the sideways tex.
             int sourcex = (
-                (srf->w * (TEX_COORD_SCALER - 1 - (ty % TEX_COORD_SCALER)))
+                (srf->w * (TEX_COORD_SCALER - 1 - ty))
                 / TEX_COORD_SCALER
             );
             const int tgoffset = (
@@ -1858,10 +1863,6 @@ int roomcam_Render(
         ) {
     if (!graphics_PushRenderScissors(x, y, w, h))
         return 0;
-    if (!graphics_ClearTarget()) {
-        graphics_PopRenderScissors();
-        return 0;
-    }
 
     // Prepare render stats first:
     renderstatistics *stats = &cam->cache->stats;

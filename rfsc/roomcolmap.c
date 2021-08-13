@@ -473,8 +473,8 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
             roomobj *obj, uint8_t reached_through_layer_portal,
             int64_t portal_x, int64_t portal_y,
             int64_t distance, void *userdata),
-        roomobj ***seen_in_portals, int *seen_in_portals_count,
-        int *seen_in_portals_alloc,
+        roomobj ***seen_in_portals, int64_t **seen_in_portals_dist,
+        int *seen_in_portals_count, int *seen_in_portals_alloc,
         uint8_t *seen_in_portals_onheap) {
     // Compute top-left cell to scan from:
     int64_t topleft_x = x - radius;
@@ -524,6 +524,7 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
             int i = 0;
             while (i < ocount) {
                 roomobj *o = colmap->cell_objects[index][i];
+                assert(o->parentlayer == colmap->parentlayer);
                 // See if object is near enough or we don't care:
                 int64_t dist = 0;  // Intentionally remains zero
                                    // if enforce_exact_radius == 0.
@@ -538,6 +539,16 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
                         while (k < *seen_in_portals_count) {
                             if (unlikely((*seen_in_portals)[k] == o)) {
                                 duplicate = 1;
+                                if (enforce_exact_radius &&
+                                        (*seen_in_portals_dist)[k] >
+                                        dist) {
+                                    // Need to update the distance, in
+                                    // case we visited this through a
+                                    // nearer portal. (Since with
+                                    // enforce_exact_radius=1 we return
+                                    // exact closest distance.)
+                                    (*seen_in_portals_dist)[k] = dist;
+                                }
                                 break;
                             }
                             k++;
@@ -548,11 +559,19 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
                             continue;
                         }
                     }
-                    // Do callback on object:
-                    int result = iter_callback(colmap->parentlayer,
-                        o, 0, 0, 0, dist, userdata);
-                    if (!result)
-                        return 0;  // stop iteration
+                    if (enforce_exact_radius) {
+                        // NOTE: in this case we DON'T callback just yet,
+                        // since we might find it through another portal
+                        // at closer distance.
+                        //
+                        // The actual callbacks are done at the very end.
+                    } else {
+                        // Do callback on object:
+                        int result = iter_callback(colmap->parentlayer,
+                            o, 0, 0, 0, dist, userdata);
+                        if (!result)
+                            return 0;  // stop iteration
+                    }
                     // If in layer portal, register object as seen:
                     if (in_portal) {
                         if (*seen_in_portals_count >=
@@ -567,22 +586,44 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
                             );
                             if (!new_seen_in_portals)
                                 return -1;  // oom
+                            int64_t *new_seen_in_portals_dist = malloc(
+                                sizeof(*new_seen_in_portals_dist) *
+                                new_alloc
+                            );
+                            if (!new_seen_in_portals_dist) {
+                                free(new_seen_in_portals);
+                                return -1;  // oom
+                            }
                             memcpy(
-                                *seen_in_portals, new_seen_in_portals,
+                                *seen_in_portals_dist,
+                                new_seen_in_portals_dist,
+                                sizeof(*new_seen_in_portals_dist) *
+                                    (*seen_in_portals_count)
+                            );
+                            memcpy(
+                                *seen_in_portals,
+                                new_seen_in_portals,
                                 sizeof(*new_seen_in_portals) *
                                     (*seen_in_portals_count)
                             );
                             if (*seen_in_portals_onheap)
                                 free(*seen_in_portals);
+                            *seen_in_portals_dist = (
+                                new_seen_in_portals_dist
+                            );
                             *seen_in_portals = new_seen_in_portals;
                             *seen_in_portals_onheap = 1;
                             *seen_in_portals_alloc = new_alloc;
+                            // Ok, reallocation done.
                         }
                         // Add object to list:
                         (*seen_in_portals_count)++;
                         (*seen_in_portals)[
                             (*seen_in_portals_count) - 1
                         ] = o;
+                        (*seen_in_portals_dist)[
+                            (*seen_in_portals_count) - 1
+                        ] = dist;
                     }
                 }
                 i++;
@@ -630,7 +671,8 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
                                     colmap, portalx, portaly,
                                 remaining_radius, enforce_exact_radius,
                                 1, 1, userdata, iter_callback,
-                                seen_in_portals, seen_in_portals_count,
+                                seen_in_portals, seen_in_portals_dist,
+                                seen_in_portals_count,
                                 seen_in_portals_alloc,
                                 seen_in_portals_onheap
                             )
@@ -646,6 +688,21 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
         }
         ix++;
     }
+    if (!in_portal && enforce_exact_radius &&
+            follow_layer_portals) {
+        // Do the callbacks for all reached-through-portals things,
+        // since we put those off to find the nearest distance.
+        int i = 0;
+        while (i < *seen_in_portals_count) {
+            roomobj *obj = (*seen_in_portals)[i];
+            int64_t dist = (*seen_in_portals_dist)[i];
+            int result = iter_callback(obj->parentlayer,
+                obj, 0, 0, 0, dist, userdata);
+            if (!result)
+                return 0;  // stop iteration
+            i++;
+        }
+    }
     return 1;
 }
 
@@ -659,7 +716,11 @@ int roomcolmap_IterateObjectsInRange_Ex(
             int64_t distance, void *userdata)
         ) {
     roomobj *seen_in_portals_buf[256];
-    roomobj **seen_in_portals = (roomobj**)seen_in_portals_buf;
+    int64_t seen_in_portals_distbuf[256];
+    roomobj **seen_in_portals = (roomobj **)seen_in_portals_buf;
+    int64_t *seen_in_portals_dist = (
+        (int64_t *)seen_in_portals_distbuf
+    );
     int seen_in_portals_alloc = 256;
     int seen_in_portals_count = 0;
     uint8_t seen_in_portals_onheap = 0;
@@ -668,7 +729,8 @@ int roomcolmap_IterateObjectsInRange_Ex(
         colmap, x, y, radius,
         enforce_exact_radius, follow_layer_portals, 0,
         userdata, iter_callback,
-        &seen_in_portals, &seen_in_portals_count,
+        &seen_in_portals, &seen_in_portals_dist,
+        &seen_in_portals_count,
         &seen_in_portals_alloc, &seen_in_portals_onheap
     );
     if (seen_in_portals_onheap) {
