@@ -45,7 +45,7 @@ Here are some interesting locations:
 
   - `rfsc/room.h` holds the lowlevel map structure definitions
     of the [rooms](
-    https://rfs.horse64.org/docs/concept#what-is-a-room).
+    https://rfs.horse64.org/docs/concepts#what-is-a-room).
 
   - `rfsc/roomserialize.c` takes room data from Lua's so-called tables,
     or dumps it back to them, for serialization of levels.
