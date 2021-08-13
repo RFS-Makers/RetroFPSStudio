@@ -25,7 +25,9 @@
 #define TEX_FULLSCALE_INT ((int64_t)1024LL)
 #define ONE_METER_IN_UNITS ((int64_t)128LL)
 #define GRID_UNITS (ONE_METER_IN_UNITS/4LL)
-#define TEX_REPEAT_UNITS (ONE_METER_IN_UNITS * 1LL)
+#define TEX_REPEAT_UNITS ((int64_t)(\
+    ONE_METER_IN_UNITS * 1LL\
+))
 
 // Default textures:
 #define ROOM_DEF_WALL_TEX "rfslua/res/default-game-res/texture/brick1"
@@ -38,7 +40,7 @@
 #define DEFAULT_COLLIDER_UNITS ((int64_t)(ONE_METER_IN_UNITS * 0.75))
 #define COLMAP_UNITS ((int64_t)(ONE_METER_IN_UNITS * (int64_t)4))
 #define COLMAP_CELLS_PER_AXIS 64
-#define ROOM_MAX_EXTENTS_LEN ((int64_t)(COLMAP_UNITS * (int64_t)3))
+#define ROOM_MAX_EXTENTS_LEN ((int64_t)(ONE_METER_IN_UNITS * (int64_t)8))
 
 // Drawing:
 #define _RAYCAST_LENGTH_MAYBE ((int64_t)COLMAP_UNITS * 64LL)
@@ -46,10 +48,11 @@
     _RAYCAST_LENGTH_MAYBE > 6000LL ? _RAYCAST_LENGTH_MAYBE :\
     6000LL))
 #define VIEWPLANE_RAY_LENGTH_DIVIDER 128
-#define WALL_BATCH_DIVIDER 16
+#define WALL_BATCH_DIVIDER 32
 #define MAX_LIGHT_RANGE ((int64_t)(ONE_METER_IN_UNITS * 10))
 #define LIGHT_COLOR_SCALAR 32
 #define DRAW_CORNER_COORD_UPSCALE 16
+#define MAX_DRAWN_LIGHTS_PER_ROOM 4
 
 // Door and elevator directions:
 #define ROOM_DIR_UP 1

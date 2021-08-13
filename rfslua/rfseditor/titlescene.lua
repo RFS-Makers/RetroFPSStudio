@@ -26,28 +26,25 @@ function rfseditor.titlescene.load_demo_level()
     end
     rfseditor._demopososcillate = 0
     local lvl = rfs.roomlayer.new(1)
-    local obj = rfs.movable.new_invisible()
-    obj:set_light(1, 0.8, 0)
-    obj:set_layer(lvl)
     local rid = 1
     lvl:deserialize_rooms({{
         id=rid,
-        light={1.5, 0.4, 0.5},
+        light={0.5, 0.4, 0.5},
         floor_z=-(rfseditor.defaults.one_meter_units * 1),
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={
-            {corner_x=(rfseditor.defaults.one_meter_units * 5),
-             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+            {corner_x=(rfseditor.defaults.one_meter_units * 3.5),
+             corner_y=-(rfseditor.defaults.one_meter_units * 4.5),
              texpath="rfslua/res/default-game-res/texture/brick1",
              portal_to=2},
             {corner_x=(rfseditor.defaults.one_meter_units * 1),
-             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+             corner_y=-(rfseditor.defaults.one_meter_units * 3.5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
-            {corner_x=-(rfseditor.defaults.one_meter_units * 5),
-             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+            {corner_x=-(rfseditor.defaults.one_meter_units * 3.5),
+             corner_y=-(rfseditor.defaults.one_meter_units * 3.3),
              texpath="rfslua/res/default-game-res/texture/brick1"},
             {corner_x=(0 * 5),
-             corner_y=(rfseditor.defaults.one_meter_units * 5),
+             corner_y=(rfseditor.defaults.one_meter_units * 3.5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
         },
         ceiling={texpath="rfslua/res/default-game-res/texture/wood1"},
@@ -58,18 +55,21 @@ function rfseditor.titlescene.load_demo_level()
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={
             {corner_x=(rfseditor.defaults.one_meter_units * 1),
-             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+             corner_y=-(rfseditor.defaults.one_meter_units * 3.5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
-            {corner_x=(rfseditor.defaults.one_meter_units * 5),
-             corner_y=-(rfseditor.defaults.one_meter_units * 5),
+            {corner_x=(rfseditor.defaults.one_meter_units * 3.5),
+             corner_y=-(rfseditor.defaults.one_meter_units * 4.5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
-            {corner_x=(rfseditor.defaults.one_meter_units * 3),
-             corner_y=-(rfseditor.defaults.one_meter_units * 15),
+            {corner_x=(rfseditor.defaults.one_meter_units * 2.5),  -- 3.5 -> bug
+             corner_y=-(rfseditor.defaults.one_meter_units * 7),
              texpath="rfslua/res/default-game-res/texture/brick1"},
         },
         ceiling={texpath="rfslua/res/default-game-res/texture/wood1"},
         floor={texpath="rfslua/res/default-game-res/texture/wood1"},  
     }})
+    local obj = rfs.movable.new_invisible()
+    obj:set_light(1, 0.8, 0)
+    obj:set_layer(lvl)
     rfseditor._demolevel = lvl
     if rfseditor._democam == nil then
         rfseditor._democam = rfs.roomcam.new()
@@ -188,10 +188,10 @@ function rfseditor.titlescene.on_draw()
             rfseditor.defaults.one_meter_units *
             math.sin(rfseditor._demopososcillate * math.pi * 2 / 1000.0) / 2.0
         )
-        local zoffset = (
+        local zoffset = -(
             rfseditor.defaults.one_meter_units *
             math.sin((rfseditor._demopososcillate + 300) * math.pi * 2 /
-            1000.0) / 6.0
+            1000.0) / 2.0
         )
         rfseditor._democam:set_pos(
             xoffset, 0, zoffset

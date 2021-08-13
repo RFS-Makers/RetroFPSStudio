@@ -76,7 +76,7 @@ static int _movable_setemit(lua_State *l) {
             LIGHT_COLOR_SCALAR);
         b = round(fmax(0.0, fmin(1.0, lua_tonumber(l, 4))) *
             LIGHT_COLOR_SCALAR);
-        radius = ONE_METER_IN_UNITS * 3;
+        radius = ONE_METER_IN_UNITS * 6;
         if (radius > MAX_LIGHT_RANGE)
             radius = MAX_LIGHT_RANGE;
         if (r == 0 && g == 0 && b == 0)
@@ -101,6 +101,7 @@ static int _movable_setemit(lua_State *l) {
     cmov->emit_r = r;
     cmov->emit_g = g;
     cmov->emit_b = b;
+    cmov->emit_range = radius;
     return 0;
 }
 

@@ -19,7 +19,7 @@ typedef struct movable {
     int32_t col_radius, height;
 
     uint8_t does_emit;
-    int32_t emit_r, emit_g, emit_b, emit_radius;
+    int32_t emit_r, emit_g, emit_b, emit_range;
 } movable;
 
 

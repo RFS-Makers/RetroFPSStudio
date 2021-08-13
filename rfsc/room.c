@@ -98,14 +98,16 @@ int room_VerifyBasicGeometry(room *r) {
     room_ComputeExtents(r, &min_x, &min_y, &max_x, &max_y);
     assert(max_x >= min_y && max_y >= min_y);
     if (max_x - min_x > ROOM_MAX_EXTENTS_LEN ||
-            max_y - min_y > ROOM_MAX_EXTENTS_LEN)
+            max_y - min_y > ROOM_MAX_EXTENTS_LEN) {
         return 0;
+    }
     if (r->parentlayer) {
         if (min_x < roomcolmap_MinX(r->parentlayer->colmap) ||
                 max_x > roomcolmap_MaxX(r->parentlayer->colmap) ||
                 min_y < roomcolmap_MinY(r->parentlayer->colmap) ||
-                max_y > roomcolmap_MaxY(r->parentlayer->colmap))
+                max_y > roomcolmap_MaxY(r->parentlayer->colmap)) {
             return 0;
+        }
     }
 
     // Check it's counter-clockwise:

@@ -15,6 +15,16 @@
 typedef struct room room;
 typedef struct roomcam roomcam;
 
+typedef struct cachedlightinfo {
+    int64_t x, y, dist;
+    int r, g, b, range;
+} cachedlightinfo;
+
+typedef struct cachedlightcornerinfo {
+    int light_count;
+    cachedlightinfo light[MAX_DRAWN_LIGHTS_PER_ROOM];
+} cachedlightcornerinfo;
+
 typedef struct roomrendercache {
     uint8_t screenxcols_set;
     int corners_to_screenxcol[ROOM_MAX_CORNERS];
@@ -24,6 +34,11 @@ typedef struct roomrendercache {
     uint8_t upscaledcorners_set;
     int64_t upscaledcorner_x[ROOM_MAX_CORNERS];
     int64_t upscaledcorner_y[ROOM_MAX_CORNERS];
+
+    uint8_t dynlights_set;
+    cachedlightcornerinfo dynlight_sample[
+        ROOM_MAX_CORNERS * 2 + 1
+    ];
 } roomrendercache;
 
 void room_ClearRenderCache();
@@ -36,6 +51,10 @@ int roomrendercache_SetXCols(
 );
 
 int roomrendercache_FillUpscaledCoords(
+    roomrendercache *rcache, room *r
+);
+
+int roomrendercache_SetDynLights(
     roomrendercache *rcache, room *r
 );
 
