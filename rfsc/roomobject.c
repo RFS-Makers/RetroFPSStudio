@@ -130,16 +130,24 @@ roomobj *roomobj_Create(uint64_t id,
     return obj;
 }
 
-void roomobj_UpdatePos(roomobj *obj, int updateroom) {
+void roomobj_UpdatePos(
+        roomobj *obj, int updateroom,
+        int64_t oldx, int64_t oldy
+        ) {
     if (obj->parentlayer) {
         roomcolmap_MovedObject(
+            obj->parentlayer->colmap, obj, oldx, oldy
+        );
+        #ifndef NDEBUG
+        roomcolmap_Debug_AssertObjectIsRegistered(
             obj->parentlayer->colmap, obj
         );
-    }
-    if (updateroom) {
-        obj->parentroom = roomcolmap_PickFromPos(
-            obj->parentlayer->colmap, obj->x, obj->y
-        );
+        #endif
+        if (updateroom) {
+            obj->parentroom = roomcolmap_PickFromPos(
+                obj->parentlayer->colmap, obj->x, obj->y
+            );
+        }
     }
 }
 
@@ -170,9 +178,9 @@ void roomobj_Destroy(roomobj *obj) {
             " not found in global list\n",
             obj, obj->id);
     }
-    if (obj->parentroom && obj->parentroom->parentlayer) {
-        roomcolmap_MovedObject(
-            obj->parentroom->parentlayer->colmap, obj
+    if (obj->parentlayer) {
+        roomcolmap_UnregisterObject(
+            obj->parentlayer->colmap, obj
         );
     }
     hash_BytesMapUnset(

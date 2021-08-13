@@ -31,16 +31,16 @@ typedef struct roomcolmap {
     room ***cell_rooms;
     int *cell_rooms_count;
     roomobj ***cell_objects;
-    int *cell_objects_count;
+    int *cell_objects_count, *cell_objects_alloc;
 } roomcolmap;
 
 roomcolmap *roomcolmap_Create();
 
-void roolcolmap_Debug_AssertRoomIsNotRegistered(
+void roomcolmap_Debug_AssertRoomIsNotRegistered(
     roomcolmap *colmap, room *r
 );
 
-void roolcolmap_Debug_AssertRoomIsRegistered(
+void roomcolmap_Debug_AssertRoomIsRegistered(
     roomcolmap *colmap, room *r
 );
 
@@ -67,7 +67,10 @@ void roomcolmap_RegisterObject(roomcolmap *colmap, roomobj *obj);
 
 void roomcolmap_UnregisterObject(roomcolmap *colmap, roomobj *obj);
 
-void roomcolmap_MovedObject(roomcolmap *colmap, roomobj *obj);
+void roomcolmap_MovedObject(
+    roomcolmap *colmap, roomobj *obj,
+    int64_t oldx, int64_t oldy
+);
 
 int roomcolmap_IterateObjectsInRange(
     roomcolmap *colmap, int64_t x, int64_t y, int64_t radius,
@@ -80,6 +83,10 @@ int roomcolmap_IterateObjectsInRange(
 
 room *roomcolmap_PickFromPos(
     roomcolmap *colmap, int64_t x, int64_t y
+);
+
+void roomcolmap_Debug_AssertObjectIsRegistered(
+    roomcolmap *colmap, roomobj *o
 );
 
 #endif  // RFS2_ROOMCOLMAP_H_

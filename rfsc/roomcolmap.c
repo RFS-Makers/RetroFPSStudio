@@ -87,7 +87,7 @@ roomcolmap *roomcolmap_Create(roomlayer *lr) {
         cmap->cells_x * cmap->cells_y
     );
     if (!cmap->cell_rooms) {
-        free(cmap);
+        roomcolmap_Destroy(cmap);
         return 0;
     }
     cmap->cell_rooms_count = malloc(
@@ -95,8 +95,15 @@ roomcolmap *roomcolmap_Create(roomlayer *lr) {
         cmap->cells_x * cmap->cells_y
     );
     if (!cmap->cell_rooms_count) {
-        free(cmap->cell_rooms);
-        free(cmap);
+        roomcolmap_Destroy(cmap);
+        return 0;
+    }
+    cmap->cell_objects_alloc = malloc(
+        sizeof(*cmap->cell_objects_alloc) *
+        cmap->cells_x * cmap->cells_y
+    );
+    if (!cmap->cell_objects_alloc) {
+        roomcolmap_Destroy(cmap);
         return 0;
     }
     cmap->cell_objects = malloc(
@@ -104,9 +111,7 @@ roomcolmap *roomcolmap_Create(roomlayer *lr) {
         cmap->cells_x * cmap->cells_y
     );
     if (!cmap->cell_objects) {
-        free(cmap->cell_rooms);
-        free(cmap->cell_rooms_count);
-        free(cmap);
+        roomcolmap_Destroy(cmap);
         return 0;
     }
     cmap->cell_objects_count = malloc(
@@ -114,10 +119,7 @@ roomcolmap *roomcolmap_Create(roomlayer *lr) {
         cmap->cells_x * cmap->cells_y
     );
     if (!cmap->cell_objects_count) {
-        free(cmap->cell_rooms);
-        free(cmap->cell_rooms_count);
-        free(cmap->cell_objects);
-        free(cmap);
+        roomcolmap_Destroy(cmap);
         return 0;
     }
     memset(
@@ -140,11 +142,27 @@ roomcolmap *roomcolmap_Create(roomlayer *lr) {
         sizeof(*cmap->cell_objects_count) *
         cmap->cells_x * cmap->cells_y
     );
+    memset(
+        cmap->cell_objects_alloc, 0,
+        sizeof(*cmap->cell_objects_alloc) *
+        cmap->cells_x * cmap->cells_y
+    );
     return cmap;
 }
 
-void roomcolmap_Destroy(roomcolmap *colmap) {
-
+void roomcolmap_Destroy(roomcolmap *cmap) {
+    if (!cmap) return;
+    free(cmap->cell_rooms);
+    free(cmap->cell_rooms_count);
+    int i = 0;
+    while (i < cmap->cells_x * cmap->cells_y) {
+        if (cmap->cell_objects)
+            free(cmap->cell_objects[i]);
+        i++;
+    }
+    free(cmap->cell_objects);
+    free(cmap->cell_objects_alloc);
+    free(cmap);
 }
 
 int roomcolmap_PosToCell(
@@ -231,7 +249,42 @@ void roomcolmap_RegisterRoom(roomcolmap *colmap, room *r) {
     }
 }
 
-void roolcolmap_Debug_AssertRoomIsRegistered(
+void roomcolmap_Debug_AssertObjectIsRegistered(
+        roomcolmap *colmap, roomobj *o
+        ) {
+    #ifdef NDEBUG
+    return;
+    #else
+    int c = 0;
+    int32_t ix = 0;
+    while (ix < colmap->cells_x) {
+        int32_t iy = 0;
+        while (iy < colmap->cells_y) {
+            int32_t i = ix + iy * colmap->cells_x;
+            int32_t k = 0;
+            while (k < colmap->cell_objects_count[i]) {
+                if (colmap->cell_objects[i][k] == o)
+                    c++;
+                k++;
+            }
+            iy++;
+        }
+        ix++;
+    }
+    if (c != 1) {
+        fprintf(stderr,
+            "rfsc/roomcolmap.c: error: integrity "
+            "error, object unexpectedly "
+            "NOT registered exactly once but %d times\n",
+            c);
+        assert(0);
+        _exit(1);
+    }
+    #endif
+}
+
+
+void roomcolmap_Debug_AssertRoomIsRegistered(
         roomcolmap *colmap, room *r
         ) {
     #ifdef NDEBUG
@@ -261,7 +314,7 @@ void roolcolmap_Debug_AssertRoomIsRegistered(
     #endif
 }
 
-void roolcolmap_Debug_AssertRoomIsNotRegistered(
+void roomcolmap_Debug_AssertRoomIsNotRegistered(
         roomcolmap *colmap, room *r
         ) {
     #ifdef NDEBUG
@@ -293,15 +346,96 @@ void roolcolmap_Debug_AssertRoomIsNotRegistered(
 }
 
 void roomcolmap_RegisterObject(roomcolmap *colmap, roomobj *obj) {
+    int64_t x = obj->x;
+    int64_t y = obj->y;
+    x += ((colmap->cells_x / 2) * COLMAP_UNITS);
+    y += ((colmap->cells_y / 2) * COLMAP_UNITS);
+    int64_t cell_x = x / COLMAP_UNITS;
+    int64_t cell_y = y / COLMAP_UNITS;
+    if (cell_x < 0) cell_x = 0;
+    if (cell_y < 0) cell_y = 0;
+    if (cell_x >= colmap->cells_x) cell_x = colmap->cells_x - 1;
+    if (cell_y >= colmap->cells_y) cell_y = colmap->cells_y - 1;
 
+    int index = cell_x + cell_y * colmap->cells_x;
+    assert(index >= 0 && index < colmap->cells_x * colmap->cells_y);
+    #ifndef NDEBUG
+    {
+        const int c = colmap->cell_objects_count[index];
+        int i = 0;
+        while (i < c) {
+            assert(colmap->cell_objects[index][i] != obj);
+            i++;
+        }
+    }
+    #endif
+    if (colmap->cell_objects_count[index] >=
+            colmap->cell_objects_alloc[index]) {
+        int new_alloc = (
+            colmap->cell_objects_count[index] * 2
+        ) + 16;
+        roomobj **new_objects = realloc(
+            colmap->cell_objects[index],
+            sizeof(*new_objects) * new_alloc
+        );
+        if (!new_objects) {
+            fprintf(stderr,
+                "rfsc/roomcolmap.c: error: out of memory\n");
+            _exit(1);
+            return;
+        }
+        colmap->cell_objects[index] = new_objects;
+        colmap->cell_objects_alloc[index] = new_alloc;
+    }
+    colmap->cell_objects[index][
+        colmap->cell_objects_count[index]
+    ] = obj;
+    colmap->cell_objects_count[index]++;
 }
 
 void roomcolmap_UnregisterObject(roomcolmap *colmap, roomobj *obj) {
+    int64_t x = obj->x;
+    int64_t y = obj->y;
+    x += ((colmap->cells_x / 2) * COLMAP_UNITS);
+    y += ((colmap->cells_y / 2) * COLMAP_UNITS);
+    int64_t cell_x = x / COLMAP_UNITS;
+    int64_t cell_y = y / COLMAP_UNITS;
+    if (cell_x < 0) cell_x = 0;
+    if (cell_y < 0) cell_y = 0;
+    if (cell_x >= colmap->cells_x) cell_x = colmap->cells_x - 1;
+    if (cell_y >= colmap->cells_y) cell_y = colmap->cells_y - 1;
 
+    int index = cell_x + cell_y * colmap->cells_x;
+    const int c = colmap->cell_objects_count[index];
+    roomobj **objs_of_cell = colmap->cell_objects[index];
+    int i = 0;
+    while (i < c) {
+        if (objs_of_cell[i] == obj) {
+            objs_of_cell[i] = NULL;
+            if (i + 1 < c)
+                memmove(&objs_of_cell[i],
+                    &objs_of_cell[i + 1],
+                    sizeof(*objs_of_cell) * (c - i - 1));
+            colmap->cell_objects_count[index]--;
+            return;
+        }
+        i++;
+    }
+    assert(0);
 }
 
-void roomcolmap_MovedObject(roomcolmap *colmap, roomobj *obj) {
-
+void roomcolmap_MovedObject(
+        roomcolmap *colmap, roomobj *obj,
+        int64_t oldx, int64_t oldy
+        ) {
+    int64_t newx = obj->x;
+    int64_t newy = obj->y;
+    obj->x = oldx;
+    obj->y = oldy;
+    roomcolmap_UnregisterObject(colmap, obj);
+    obj->x = newx;
+    obj->y = newy;
+    roomcolmap_RegisterObject(colmap, obj);
 }
 
 room *roomcolmap_PickFromPos(

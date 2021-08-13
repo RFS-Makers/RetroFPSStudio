@@ -180,7 +180,7 @@ int room_RecomputePosExtent(room *r) {
         max_radius = max_radius_2;
     roomcolmap_UnregisterRoom(r->parentlayer->colmap, r);
     #ifndef NDEBUG
-    roolcolmap_Debug_AssertRoomIsNotRegistered(
+    roomcolmap_Debug_AssertRoomIsNotRegistered(
         r->parentlayer->colmap, r
     );
     #endif
@@ -189,7 +189,7 @@ int room_RecomputePosExtent(room *r) {
     r->max_radius = max_radius;
     roomcolmap_RegisterRoom(r->parentlayer->colmap, r);
     #ifndef NDEBUG
-    roolcolmap_Debug_AssertRoomIsRegistered(
+    roomcolmap_Debug_AssertRoomIsRegistered(
         r->parentlayer->colmap, r
     );
     #endif

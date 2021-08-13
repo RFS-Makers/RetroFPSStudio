@@ -53,7 +53,9 @@ roomobj *roomobj_Create(
 
 void roomobj_Destroy(roomobj *obj);
 
-void roomobj_UpdatePos(roomobj *obj, int updateroom);
+void roomobj_UpdatePos(
+    roomobj *obj, int updateroom, int64_t oldx, int64_t oldy
+);
 
 void roomobj_SetLayer(roomobj *obj, roomlayer *lr);
 

@@ -14,6 +14,7 @@
 #include "math2d.h"
 #include "room.h"
 #include "roomcam.h"
+#include "roomcolmap.h"
 #include "roomlayer.h"
 #include "roomobject.h"
 #include "roomobject_movable.h"
@@ -457,10 +458,19 @@ static int _roomobj_setpos(lua_State *l) {
     if (lua_isinteger(l, 4)) z = lua_tointeger(l, 4);
     else z = round(lua_tonumber(l, 4));
 
+    int64_t oldx = obj->x;
+    int64_t oldy = obj->y;
     obj->x = x;
     obj->y = y;
     obj->z = z;
-    roomobj_UpdatePos(obj, 1);
+    roomobj_UpdatePos(obj, 1, oldx, oldy);
+    #ifndef NDEBUG
+    if (obj->parentlayer) {
+        roomcolmap_Debug_AssertObjectIsRegistered(
+            obj->parentlayer->colmap, obj
+        );
+    }
+    #endif
     return 0;
 }
 
