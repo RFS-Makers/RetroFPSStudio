@@ -635,6 +635,8 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
                                 seen_in_portals_onheap
                             )
                         );
+                        if (result != 1)
+                            return result;
                     }
                     k++;
                 }
