@@ -48,6 +48,31 @@ uint64_t room_GetNewId(roomlayer *lr) {
     return 0;
 }
 
+void room_ComputeExtents(room *r, int64_t *min_x, int64_t *min_y,
+            int64_t *max_x, int64_t *max_y) {
+    int64_t _min_x = r->corner_x[0];
+    int64_t _max_x = r->corner_x[0];
+    int64_t _min_y = r->corner_y[0];
+    int64_t _max_y = r->corner_y[0];
+
+    int i = 1;
+    while (i < r->corners) {
+        if (r->corner_x[i] < _min_x)
+            _min_x = r->corner_x[i];
+        if (r->corner_x[i] > _max_x)
+            _max_x = r->corner_x[i];
+        if (r->corner_y[i] < _min_y)
+            _min_y = r->corner_y[i];
+        if (r->corner_y[i] > _max_y)
+            _max_y = r->corner_y[i];
+        i++;
+    }
+    *min_x = _min_x;
+    *min_y = _min_y;
+    *max_x = _max_x;
+    *max_y = _max_y;
+}
+
 int room_VerifyBasicGeometry(room *r) {
     if (r->corners < 3)
         return 0;
@@ -66,6 +91,21 @@ int room_VerifyBasicGeometry(room *r) {
             k++;
         }
         i++;
+    }
+
+    // Ensure it's not too large, and inside colmap range:
+    int64_t min_x, min_y, max_x, max_y;
+    room_ComputeExtents(r, &min_x, &min_y, &max_x, &max_y);
+    assert(max_x >= min_y && max_y >= min_y);
+    if (max_x - min_x > ROOM_MAX_EXTENTS_LEN ||
+            max_y - min_y > ROOM_MAX_EXTENTS_LEN)
+        return 0;
+    if (r->parentlayer) {
+        if (min_x < roomcolmap_MinX(r->parentlayer->colmap) ||
+                max_x > roomcolmap_MaxX(r->parentlayer->colmap) ||
+                min_y < roomcolmap_MinY(r->parentlayer->colmap) ||
+                max_y > roomcolmap_MaxY(r->parentlayer->colmap))
+            return 0;
     }
 
     // Check it's counter-clockwise:
@@ -113,11 +153,8 @@ int room_VerifyBasicGeometry(room *r) {
 
 int room_RecomputePosExtent(room *r) {
     assert(r->corners > 0);
-    int64_t min_x = r->corner_x[0];
-    int64_t max_x = r->corner_x[0];
-    int64_t min_y = r->corner_y[0];
-    int64_t max_y = r->corner_y[0];
-
+    int64_t min_x, min_y, max_x, max_y;
+    room_ComputeExtents(r, &min_x, &min_y, &max_x, &max_y);
     int i = 0;
     while (i < r->corners) {
         if (r->corner_x[i] < min_x)

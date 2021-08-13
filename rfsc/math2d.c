@@ -35,6 +35,52 @@ int32_t math_fixanglei(int32_t deg) {
     return deg;
 }
 
+void math_nearestpointonsegment(
+        int64_t nearesttox, int64_t nearesttoy,
+        int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,
+        int64_t *resultx, int64_t *resulty
+        ) {
+    if (lx1 == lx2 && ly1 == ly2) {
+        *resultx = lx1;
+        *resulty = ly1;
+        return;
+    }
+    // Rotate things to be seen locally to the line:
+    int32_t angle_segment = math_angle2di(
+        lx2 - lx1, ly2 - ly1
+    );
+    int64_t len_segment = math_veclen2di(lx2 - lx1, ly2 - ly1);
+    assert(len_segment >= 0);
+    nearesttox -= lx1;
+    nearesttoy -= ly1;
+    math_rotate2di(&nearesttox, &nearesttoy, -angle_segment);
+    if (nearesttox < 0) {
+        *resultx = lx1;
+        *resulty = ly1;
+    } else if (nearesttox > len_segment) {
+        *resultx = lx2;
+        *resulty = ly2;
+    } else {
+        // Rotate result back into world space:
+        *resultx = nearesttox;
+        *resulty = 0;
+        math_rotate2di(resultx, resulty, angle_segment);
+        (*resultx) += lx1;
+        (*resulty) += ly1;
+    }
+}
+
+int64_t math_pointdisttosegment(
+        int64_t px, int64_t py, int64_t lx1, int64_t ly1,
+        int64_t lx2, int64_t ly2
+        ) {
+    int64_t wallx, wally;
+    math_nearestpointonsegment(
+        px, py, lx1, ly1, lx2, ly2, &wallx, &wally
+    );
+    return math_veclen2di((px - wallx), (py - wally));
+}
+
 double math_angle2df(double x, double y) {
     // Angles: (1.0, 0.0) returns 0 degrees angle,
     // CCW rotation increases angle.

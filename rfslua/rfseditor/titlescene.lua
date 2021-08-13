@@ -32,7 +32,7 @@ function rfseditor.titlescene.load_demo_level()
     local rid = 1
     lvl:deserialize_rooms({{
         id=rid,
-        light={1.5, 0.4, 0.5},
+        light={0.5, 0.4, 0.5},
         floor_z=-(rfseditor.defaults.one_meter_units * 1),
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={

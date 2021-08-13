@@ -38,6 +38,7 @@
 #define DEFAULT_COLLIDER_UNITS ((int64_t)(ONE_METER_IN_UNITS * 0.75))
 #define COLMAP_UNITS ((int64_t)(ONE_METER_IN_UNITS * (int64_t)4))
 #define COLMAP_CELLS_PER_AXIS 64
+#define ROOM_MAX_EXTENTS_LEN ((int64_t)(COLMAP_UNITS * (int64_t)3))
 
 // Drawing:
 #define _RAYCAST_LENGTH_MAYBE ((int64_t)COLMAP_UNITS * 64LL)

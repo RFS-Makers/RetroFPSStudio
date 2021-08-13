@@ -69,6 +69,15 @@ void roomcolmap_UnregisterObject(roomcolmap *colmap, roomobj *obj);
 
 void roomcolmap_MovedObject(roomcolmap *colmap, roomobj *obj);
 
+int roomcolmap_IterateObjectsInRange(
+    roomcolmap *colmap, int64_t x, int64_t y, int64_t radius,
+    int enforce_exact_radius, void *userdata,
+    int (*iter_callback)(roomlayer *layer,
+        roomobj *obj, uint8_t reached_through_layer_portal,
+        int64_t portal_x, int64_t portal_y,
+        int64_t distance, void *userdata)
+);
+
 room *roomcolmap_PickFromPos(
     roomcolmap *colmap, int64_t x, int64_t y
 );
