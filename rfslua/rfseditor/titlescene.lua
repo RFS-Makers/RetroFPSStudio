@@ -60,7 +60,7 @@ function rfseditor.titlescene.load_demo_level()
             {corner_x=(rfseditor.defaults.one_meter_units * 3.5),
              corner_y=-(rfseditor.defaults.one_meter_units * 4.5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
-            {corner_x=(rfseditor.defaults.one_meter_units * 2.5),  -- 3.5 -> bug
+            {corner_x=(rfseditor.defaults.one_meter_units * 3.5),  -- 3.5 -> bug
              corner_y=-(rfseditor.defaults.one_meter_units * 7),
              texpath="rfslua/res/default-game-res/texture/brick1"},
         },

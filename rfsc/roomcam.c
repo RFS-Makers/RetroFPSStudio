@@ -1907,7 +1907,7 @@ int roomcam_RenderRoom(
         // Find out where wall segment ends:
         int endcol = _roomcam_XYToViewplaneX_NoRecalc(
             cam, r->corner_x[wallno], r->corner_y[wallno]
-        );
+        );  // This assumes rooms are CCW.
         if (endcol < col)
             endcol = col;
         if (endcol >= w || endcol > max_xoffset)
