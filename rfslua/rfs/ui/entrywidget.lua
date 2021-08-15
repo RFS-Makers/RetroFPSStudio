@@ -4,12 +4,12 @@
 -- See LICENSE.md for details
 
 if rfs.ui == nil then rfs.ui = {} end
-if rfs.ui.entry == nil then
-    rfs.ui.entry = {}
-    rfs.ui.entry.classtable = {}
+if rfs.ui.entrywidget == nil then
+    rfs.ui.entrywidget = {}
+    rfs.ui.entrywidget.classtable = {}
 end
 
-function rfs.ui.entry.new(font, pt_size, width, multiline)
+function rfs.ui.entrywidget.new(font, pt_size, width, multiline)
     if type(font) ~= "table" or type(font.calcheight) ~= "function" then
         error("expected arg #1 to be RFS font")
     end
@@ -34,13 +34,13 @@ function rfs.ui.entry.new(font, pt_size, width, multiline)
         self.displaylines = 1
     end
     setmetatable(self, {
-        __index = rfs.ui.entry.classtable
+        __index = rfs.ui.entrywidget.classtable
     })
     self:update_size()
     return self
 end
 
-function rfs.ui.entry.classtable.on_text(self, t)
+function rfs.ui.entrywidget.classtable.on_text(self, t)
     if not self.multiline then
         t = t:gsub("\r", "")
         t = t:gsub("\n", "")
@@ -48,7 +48,7 @@ function rfs.ui.entry.classtable.on_text(self, t)
     self.text = self.text .. t
 end
 
-function rfs.ui.entry.classtable.on_keydown(self, k)
+function rfs.ui.entrywidget.classtable.on_keydown(self, k)
     if k == "backspace" then
         self.text = self.text:sub(1, #self.text - 1)
     elseif k == "v" then
@@ -59,26 +59,26 @@ function rfs.ui.entry.classtable.on_keydown(self, k)
 end
 
 
-function rfs.ui.entry.classtable.set_focus(self)
+function rfs.ui.entrywidget.classtable.set_focus(self)
     self.focused = true
     rfs.events.start_text_input()
 end
 
-function rfs.ui.entry.classtable.unset_focus(self)
+function rfs.ui.entrywidget.classtable.unset_focus(self)
     self.focused = false
     rfs.events.stop_text_input()
 end
 
-function rfs.ui.entry.classtable.set_width(self, w)
+function rfs.ui.entrywidget.classtable.set_width(self, w)
     self.width = w
 end
 
-function rfs.ui.entry.classtable.set_pt(self, pt_size)
+function rfs.ui.entrywidget.classtable.set_pt(self, pt_size)
     self.pt_size = math.max(1, math.round(pt_size))
     self:update_size()
 end
 
-function rfs.ui.entry.classtable.update_size(self)
+function rfs.ui.entrywidget.classtable.update_size(self)
     self.border_size = math.max(1, math.round(self.pt_size * 0.3))
     local t = "Hello"
     local i = 1
@@ -92,7 +92,7 @@ function rfs.ui.entry.classtable.update_size(self)
     self.height = lineheight + self.border_size * 2
 end
 
-function rfs.ui.entry.classtable.draw(self, x, y)
+function rfs.ui.entrywidget.classtable.draw(self, x, y)
     local fgr = 0.7
     local fgg = 0.7
     local fgb = 0.7

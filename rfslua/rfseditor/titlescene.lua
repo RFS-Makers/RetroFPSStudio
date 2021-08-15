@@ -20,6 +20,59 @@ function rfseditor.titlescene.on_debugstr()
     return ""
 end
 
+function rfseditor.titlescene.show_titlemenu()
+    rfseditor.state = "titlemenu"
+    local scaler = rfs.ui.scaler
+    rfseditor.titlescene._menu = (
+        rfs.ui.menuwidget.new(nil, 14 * scaler, 50)
+    )
+    rfseditor.titlescene._menu:set_centered(true)
+    rfseditor.titlescene._menu.id = "titlemenu"
+    rfseditor.titlescene._menu:add_entry(
+        nil, "rfslua/res/ui/$rgsmenu_create"
+    )
+    rfseditor.titlescene._menu:add_entry(
+        nil, "rfslua/res/ui/$rgsmenu_play"
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Settings"
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Quit"
+    )
+    rfseditor.titlescene.update_menu()
+end
+
+function rfseditor.titlescene.update_menu()
+    local scaler = rfs.ui.scaler
+    if rfseditor.titlescene._menu ~= nil and
+            rfseditor.titlescene._menu.id == "titlemenu" then
+        rfseditor.titlescene._menu:set_pt(
+            math.max(1, math.round(14 * scaler))
+        )
+        rfseditor.titlescene._menu:set_width(
+            math.max(1, math.round(rfs.window.renderw * 0.3))
+        )
+        if rfseditor.titlescene.horimenu then
+            rfseditor.titlescene._menu.x = (
+                rfs.window.renderw * 0.6
+            )
+            rfseditor.titlescene._menu.y = math.max(0,
+                math.round((
+                    rfs.window.renderh * 0.5 -
+                    rfseditor.titlescene._menu.height * 0.5
+                )))
+        else
+            rfseditor.titlescene._menu.x = (
+                rfs.window.renderw * 0.35
+            )
+            rfseditor.titlescene._menu.y = (
+                rfs.window.renderh * 0.4
+            )
+        end
+    end
+end
+
 function rfseditor.titlescene.load_demo_level()
     if rfseditor._demolevel ~= nil then
         return
@@ -60,7 +113,7 @@ function rfseditor.titlescene.load_demo_level()
             {corner_x=(rfseditor.defaults.one_meter_units * 3.5),
              corner_y=-(rfseditor.defaults.one_meter_units * 4.5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
-            {corner_x=(rfseditor.defaults.one_meter_units * 3.5),  -- 3.5 -> bug
+            {corner_x=(rfseditor.defaults.one_meter_units * 2.5),  -- 3.5 -> bug
              corner_y=-(rfseditor.defaults.one_meter_units * 7),
              texpath="rfslua/res/default-game-res/texture/brick1"},
         },
@@ -79,6 +132,7 @@ function rfseditor.titlescene.load_demo_level()
 end
 
 function rfseditor.titlescene.on_enter()
+    rfseditor.titlescene._menu = nil
     rfseditor._democamts = nil
     if rfseditor._updatetask == nil then
         rfseditor.show_any_key_ts = rfs.time.ticks()
@@ -115,17 +169,26 @@ function rfseditor.titlescene.on_click(x, y, button)
 end
 
 function rfseditor.titlescene.on_update()
+    rfseditor.titlescene.update_menu()
     _titlescreen_update_on_update()
     _titlescreen_license_on_update()
 end
 
 function rfseditor.titlescene.on_draw()
     local scaler = rfs.ui.scaler
-    local horimenu = (rfs.window.renderw > rfs.window.renderh * 1.45)
+    rfseditor.titlescene.horimenu = (
+        rfs.window.renderw > rfs.window.renderh * 1.45
+    )
     if rfseditor.state == "show_press_any_key" or
             rfseditor.state == "do_update_task" then
-        horimenu = false
+        rfseditor.titlescene.horimenu = false
     end
+    if rfseditor.state == "titlemenu" and
+            (rfseditor.titlescene._menu == nil or
+            rfseditor.titlescene._menu.id ~= "titlemenu") then
+        rfseditor.titlescene.show_titlemenu()
+    end
+    rfseditor.titlescene.update_menu()
 
     -- Nonsense test particles:
     --[[if true then
@@ -207,7 +270,7 @@ function rfseditor.titlescene.on_draw()
     )
     logow = logow * 1.5 * scaler
     logoh = logoh * 1.5 * scaler
-    if horimenu then
+    if rfseditor.titlescene.horimenu then
         rfs.gfx.draw_tex(
             rfs.gfx.get_tex("rfslua/res/ui/$logo"),
             rfs.window.renderw * 0.25 - logow * 0.5,
@@ -264,6 +327,15 @@ function rfseditor.titlescene.on_draw()
             rfs.window.renderw / 2 - show_width / 2,
             rfs.window.renderh / 2, rfs.window.renderw,
             1, 0.9 * animf, 1.0, 0.7
+        )
+    end
+
+    -- Draw menu if any:
+    if rfseditor.state == "titlemenu" and
+            rfseditor.titlescene._menu ~= nil then
+        rfseditor.titlescene._menu:draw(
+            rfseditor.titlescene._menu.x,
+            rfseditor.titlescene._menu.y
         )
     end
 end

@@ -320,7 +320,7 @@ function rfs.ui.dlg.show(text, buttons, widget, icon)
     rfs.ui.dlg.widget = nil
     rfs.ui.dlg.widget_info = widget
     if widget.type == "entry" then
-        rfs.ui.dlg.widget = rfs.ui.entry.new(
+        rfs.ui.dlg.widget = rfs.ui.entrywidget.new(
             rfs.ui.dlg.font, rfs.ui.dlg.__fontpt,
             64, widget.multiline == true)
         if rfs.ui.dlg.widget.set_focus ~= nil then

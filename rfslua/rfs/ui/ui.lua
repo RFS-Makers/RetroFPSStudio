@@ -7,7 +7,8 @@ if rfs == nil then rfs = {} end
 if rfs.ui == nil then rfs.ui = {} end
 
 dofile("rfslua/rfs/ui/dlg.lua")
-dofile("rfslua/rfs/ui/entry.lua")
+dofile("rfslua/rfs/ui/entrywidget.lua")
+dofile("rfslua/rfs/ui/menuwidget.lua")
 
 rfs.ui.default_font = "rfslua/res/ui/font/font_default"
 

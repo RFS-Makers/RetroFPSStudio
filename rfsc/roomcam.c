@@ -1233,7 +1233,10 @@ HOTSPOT static int roomcam_DrawWallSlice(
         assert(screentop >= 0);
         if (screenbottom == h)
             screenbottom--;
-        const int slicepixellen = (screenbottom - screentop);
+        const int slicepixellen = (
+            (screenbottom - screentop) > 0 ?
+            (screenbottom - screentop) : 1
+        );
         const int32_t ty1toty2diff = (ty2 - ty1);
         while (likely(k <= screenbottom)) {
             ty = (
