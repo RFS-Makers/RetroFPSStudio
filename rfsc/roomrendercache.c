@@ -12,6 +12,7 @@
 #include "math2d.h"
 #include "room.h"
 #include "roomcam.h"
+#include "roomcamcache.h"
 #include "roomcolmap.h"
 #include "roomlayer.h"
 #include "roomobject.h"
@@ -97,46 +98,18 @@ int roomrendercache_FillUpscaledCoords(
     return 1;
 }
 
-int roomrendercache_SetXCols(
+
+int roomrendercache_SetCullInfo(
         roomrendercache *rcache, room *r, roomcam *cam,
         int canvasw, int canvash
         ) {
-    if (!rcache->screenxcols_set) {
-        // (Note: without this margin we sometimes get render gaps
-        // between wall segments due to precision issues.)
-        const int outercolmargin = 3;
-
-        // Calculate outer screen columns of the room's polygon:
-        rcache->screenxcols_set = 1;
-        int i = 0;
-        while (i < r->corners) {
-            int32_t result;
-            if (!roomcam_XYToViewplaneX(
-                    cam, canvasw, canvash,
-                    r->corner_x[i], r->corner_y[i],
-                    &result
-                    ))
-                return 0;
-            rcache->corners_to_screenxcol[i] = result;
-            if (i == 0) {
-                rcache->corners_minscreenxcol =
-                    rcache->corners_to_screenxcol[i] -
-                        outercolmargin;
-                rcache->corners_maxscreenxcol =
-                    rcache->corners_to_screenxcol[i] +
-                        outercolmargin;
-            } else {
-                rcache->corners_minscreenxcol = imin(
-                    rcache->corners_minscreenxcol,
-                    rcache->corners_to_screenxcol[i] -
-                        outercolmargin);
-                rcache->corners_maxscreenxcol = imax(
-                    rcache->corners_maxscreenxcol,
-                    rcache->corners_to_screenxcol[i] +
-                        outercolmargin);
-            }
-            i++;
-        }
+    if (!rcache->cullinfo_set) {
+        if (!roomcamcull_ComputePolyCull(
+                cam, r->corners, r->corner_x, r->corner_y,
+                canvasw, canvash, &rcache->cullinfo
+                ))
+            return 0;
+        rcache->cullinfo_set = 1;
     }
     return 1;
 }

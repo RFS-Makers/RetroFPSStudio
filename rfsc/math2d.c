@@ -130,61 +130,7 @@ int math_lineintersect2df(
     // If the two line segments intersect,
     // returns 1 and sets ix, iy coordinates of intersection.
     // Otherwise, returns 0.
-    int l1vert = (
-        fabs(l1x2 - l1x1) < 0.001 && (
-        fabs(l1x2 - l1x1) <=
-            fabs(l1y2 - l1y1) * 0.1 ||
-        l1x2 - l2x1 == 0)
-    );
-    int l2vert = (
-        fabs(l1x2 - l1x1) < 0.001 && (
-        fabs(l1x2 - l1x1) <=
-            fabs(l1y2 - l1y1) * 0.1 ||
-        l2x2 - l2x1 == 0)
-    );
-    if (l2vert && !l1vert) {
-        int tvert = l1vert;
-        l1vert = l2vert;
-        l2vert = tvert;
-        double t1x1, t1y1, t1x2, t1y2;
-        t1x1 = l1x1; t1y1 = l1y1; t1x2 = l1x2; t1y2 = l1y2;
-        l1x1 = l2x1; l1y1 = l2y1; l1x2 = l2x2; l1y2 = l2y2;
-        l2x1 = t1x1; l2y1 = t1y1; l2x2 = t1x2; l2y2 = t1y2;
-    }
-    if (l1vert) {
-        if (l1y1 < l1y2) {
-            double t = l1y1;
-            l1y1 = l1y2;
-            l1y2 = t;
-        }
-        if (l2vert) {
-            if (fabs(l1x1 - l2x2) > 0.00001) {
-                return 0;
-            }
-            if (l2y1 < l2y2) {
-                double t = l2y1;
-                l2y1 = l2y2;
-                l2y2 = t;
-            }
-            if (l2y1 > l1y2 || l2y2 < l1y1) {
-                return 0;
-            }
-            *ix = l1x1;
-            *iy = l1y1;
-            if (l2y1 > l1y1) *iy = l2y1;
-            return 1;
-        }
-        double l2d = (l2y2 - l2y1) / (l2x2 - l2y1);
-        double y2 = l2y1 + l2d * (
-            (l1x1 - l2x1)
-        );
-        if (y2 < l1y1 || y2 > l1y2) {
-            return 0;
-        }
-        *ix = l1x1;
-        *iy = y2;
-        return 1;
-    }
+
     // Based on https://github.com/psalaets/line-intersect,
     // also see 3RDPARTYCREDITS.md:
     double dval = ((l2y2 - l2y1) * (l1x2 - l1x1)) -
@@ -286,54 +232,7 @@ HOTSPOT int math_lineintersect2di(
     // If the two line segments intersect,
     // returns 1 and sets ix, iy coordinates of intersection.
     // Otherwise, returns 0.
-    int l1vert = (l1x2 - l1x1 == 0LL);
-    int l2vert = (l1x2 - l1x1 == 0LL);
-    if (l2vert && !l1vert) {
-        int tvert = l1vert;
-        l1vert = l2vert;
-        l2vert = tvert;
-        int64_t t1x1, t1y1, t1x2, t1y2;
-        t1x1 = l1x1; t1y1 = l1y1; t1x2 = l1x2; t1y2 = l1y2;
-        l1x1 = l2x1; l1y1 = l2y1; l1x2 = l2x2; l1y2 = l2y2;
-        l2x1 = t1x1; l2y1 = t1y1; l2x2 = t1x2; l2y2 = t1y2;
-    }
-    if (l1vert) {
-        if (l1y1 < l1y2) {
-            int64_t t = l1y1;
-            l1y1 = l1y2;
-            l1y2 = t;
-        }
-        if (l2vert) {
-            if (l1x1 - l2x2 > 0) {
-                return 0;
-            }
-            if (l2y1 < l2y2) {
-                int64_t t = l2y1;
-                l2y1 = l2y2;
-                l2y2 = t;
-            }
-            if (l2y1 > l1y2 || l2y2 < l1y1) {
-                return 0;
-            }
-            *ix = l1x1;
-            *iy = l1y1;
-            if (l2y1 > l1y1) *iy = l2y1;
-            return 1;
-        }
-        long double l2d = (
-            ((long double)(l2y2 - l2y1)) /
-            ((long double)(l2x2 - l2y1))
-        );
-        int64_t y2 = roundl((long double)l2y1 + l2d * (
-            (l1x1 - l2x1)
-        ));
-        if (y2 < l1y1 || y2 > l1y2) {
-            return 0;
-        }
-        *ix = l1x1;
-        *iy = y2;
-        return 1;
-    }
+
     // Based on https://github.com/psalaets/line-intersect,
     // also see 3RDPARTYCREDITS.md:
     int64_t dval = ((l2y2 - l2y1) * (l1x2 - l1x1)) -
@@ -358,9 +257,27 @@ HOTSPOT int math_lineintersect2di(
 
 static __attribute__((constructor)) void _test_math_lineintersect2d() {
     // x,y_x,y 128,-128_0,128   AND  x,y_x,y 0,0_17363,9924
-    #ifndef NDEBUG
+    #if !defined(NDEBUG)
     int64_t ix, iy;
-    int result = math_lineintersect2di(
+    int result;
+
+    result = math_lineintersect2di(
+        0,448,448,-576,
+        63,0,-3265,40960,
+        &ix, &iy
+    );
+    assert(result != 0);
+    assert(llabs(ix - 33) <= 5);
+    assert(llabs(iy - 373) <= 5);
+    result = math_lineintersect2di(
+        448,-576,448,-896,
+        0,0,22144,-34560,
+        &ix, &iy
+    );
+    assert(result != 0);
+    assert(llabs(ix - 448) <= 5);
+    assert(llabs(iy - (-699)) <= 5);
+    result = math_lineintersect2di(
         128,-128,0,128,
         0,0,17363,9924,
         &ix, &iy
@@ -512,6 +429,7 @@ int math_polyintersect2di(
         iwall, ix, iy
     );
 }
+
 
 int math_polyintersect2di_ex(
         int64_t lx1, int64_t ly1, int64_t lx2, int64_t ly2,

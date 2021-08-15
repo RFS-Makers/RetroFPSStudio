@@ -10,6 +10,8 @@
 
 #include <stdint.h>
 
+#include "roomcamrenderstatistics.h"
+
 typedef struct room room;
 typedef struct roomobj roomobj;
 typedef struct roomcamcache roomcamcache;
@@ -23,17 +25,6 @@ typedef struct roomcam {
     roomcamcache *cache;
 } roomcam;
 
-typedef struct renderstatistics {
-    int base_geometry_slices_rendered;
-    int base_geometry_rays_cast;
-    int base_geometry_rooms_recursed;
-    int32_t last_canvas_width, last_canvas_height,
-        last_fov, last_fovh, last_fovv;
-
-    uint64_t fps_ts;
-    int32_t frames_accumulator;
-    int32_t fps;
-} renderstatistics;
 
 roomcam *roomcam_Create();
 
@@ -48,7 +39,7 @@ int32_t roomcam_XYZToViewplaneY(
 
 int roomcam_XYToViewplaneX(
     roomcam *cam, int w, int h, int64_t px, int64_t py,
-    int32_t *result
+    int32_t *result, uint8_t *resultbehindcam
 );
 
 renderstatistics *roomcam_GetStats(roomcam *c);

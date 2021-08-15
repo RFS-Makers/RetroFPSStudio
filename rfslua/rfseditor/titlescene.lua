@@ -113,7 +113,7 @@ function rfseditor.titlescene.load_demo_level()
             {corner_x=(rfseditor.defaults.one_meter_units * 3.5),
              corner_y=-(rfseditor.defaults.one_meter_units * 4.5),
              texpath="rfslua/res/default-game-res/texture/brick1"},
-            {corner_x=(rfseditor.defaults.one_meter_units * 2.5),  -- 3.5 -> bug
+            {corner_x=(rfseditor.defaults.one_meter_units * 2.5),
              corner_y=-(rfseditor.defaults.one_meter_units * 7),
              texpath="rfslua/res/default-game-res/texture/brick1"},
         },
@@ -172,6 +172,40 @@ function rfseditor.titlescene.on_update()
     rfseditor.titlescene.update_menu()
     _titlescreen_update_on_update()
     _titlescreen_license_on_update()
+
+    -- 3D world pos update:
+    if rfseditor._democam ~= nil then
+        local now = rfs.time.ticks()
+        if rfseditor._democamts == nil then
+            rfseditor._democamts = now
+        end
+        while rfseditor._democamts < now do
+            rfseditor._democam:set_angle(
+                rfseditor._democam:get_angle() + 0.1
+            )
+            rfseditor._demopososcillate = (
+                rfseditor._demopososcillate + 1
+            )
+            while rfseditor._demopososcillate >= 1000 do
+                rfseditor._demopososcillate = (
+                    rfseditor._demopososcillate - 1000
+                )
+            end
+            rfseditor._democamts = rfseditor._democamts + 20
+        end
+        local xoffset = (
+            rfseditor.defaults.one_meter_units *
+            math.sin(rfseditor._demopososcillate * math.pi * 2 / 1000.0) / 2.0
+        )
+        local zoffset = -(
+            rfseditor.defaults.one_meter_units *
+            math.sin((rfseditor._demopososcillate + 300) * math.pi * 2 /
+            1000.0) / 2.0
+        )
+        rfseditor._democam:set_pos(
+            xoffset, 0, zoffset
+        )
+    end
 end
 
 function rfseditor.titlescene.on_draw()
@@ -227,38 +261,8 @@ function rfseditor.titlescene.on_draw()
         end
     end]]
 
-    -- 3D world:
+    -- 3D world draw:
     if rfseditor._democam ~= nil then
-        local now = rfs.time.ticks()
-        if rfseditor._democamts == nil then
-            rfseditor._democamts = now
-        end
-        while rfseditor._democamts < now do
-            rfseditor._democam:set_angle(
-                rfseditor._democam:get_angle() + 0.1
-            )
-            rfseditor._demopososcillate = (
-                rfseditor._demopososcillate + 1
-            )
-            while rfseditor._demopososcillate >= 1000 do
-                rfseditor._demopososcillate = (
-                    rfseditor._demopososcillate - 1000
-                )
-            end
-            rfseditor._democamts = rfseditor._democamts + 20
-        end
-        local xoffset = (
-            rfseditor.defaults.one_meter_units *
-            math.sin(rfseditor._demopososcillate * math.pi * 2 / 1000.0) / 2.0
-        )
-        local zoffset = -(
-            rfseditor.defaults.one_meter_units *
-            math.sin((rfseditor._demopososcillate + 300) * math.pi * 2 /
-            1000.0) / 2.0
-        )
-        rfseditor._democam:set_pos(
-            xoffset, 0, zoffset
-        )
         rfseditor._democam:draw(
             0, 0, rfs.window.renderw, rfs.window.renderh
         )

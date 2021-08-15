@@ -19,33 +19,15 @@
 #include "math2d.h"
 #include "room.h"
 #include "roomcam.h"
+#include "roomcamcache.h"
+#include "roomcamcull.h"
+#include "roomcamrenderstatistics.h"
 #include "roomdefs.h"
 #include "roomlayer.h"
 #include "roomobject.h"
 #include "roomobject_block.h"
 #include "roomrendercache.h"
 #include "rfssurf.h"
-
-typedef struct renderstatistics renderstatistics;
-
-typedef struct roomcamcache {
-    int cachedangle, cachedvangle, cachedfov, cachedw, cachedh;
-
-    int32_t cachedfovh, cachedfovv;
-    int64_t planedist, planew, planeh;
-    int64_t unrotatedplanevecs_left_x;
-    int64_t unrotatedplanevecs_left_y;
-    int64_t unrotatedplanevecs_right_x;
-    int64_t unrotatedplanevecs_right_y;
-    int64_t *planevecs_len;
-    int32_t planevecs_alloc, vertivecs_alloc;
-
-    int64_t *vertivecs_x, *vertivecs_z;
-    int64_t *rotatedplanevecs_x, *rotatedplanevecs_y;
-    int32_t rotatedalloc;
-
-    renderstatistics stats;
-} roomcamcache;
 
 
 static HOTSPOT inline int pixclip(int v) {
@@ -135,8 +117,10 @@ int32_t _roomcam_XYZToViewplaneY_NoRecalc(
     return res;
 }
 
+
 int32_t _roomcam_XYToViewplaneX_NoRecalc(
-        roomcam *cam, int64_t px, int64_t py
+        roomcam *cam, int64_t px, int64_t py,
+        uint8_t *isbehindcam
         ) {
     const int w = cam->cache->cachedw;
 
@@ -147,12 +131,14 @@ int32_t _roomcam_XYToViewplaneX_NoRecalc(
 
     // Special case of behind camera:
     if (px <= 0) {
+        if (isbehindcam) *isbehindcam = 1;
         if (py < 0)
             return -1;
         if (py > 0)
             return w;
         return 0;
     }
+    if (isbehindcam) *isbehindcam = 0;
 
     // Scale vec down to exactly viewplane distance:
     int64_t scalef = 10000LL * cam->cache->planedist / px;
@@ -178,7 +164,7 @@ int GetFloorCeilingSafeInterpolationColumns(
         roomcam *cam, room *r, roomrendercache *rcache,
         int xcol, int *result
         ) {
-    if (!roomrendercache_SetXCols(
+    if (!roomrendercache_SetCullInfo(
             rcache, r, cam, cam->cache->cachedw,
             cam->cache->cachedh))
         return 0;
@@ -187,9 +173,11 @@ int GetFloorCeilingSafeInterpolationColumns(
     );
     int k = 0;
     while (k < r->corners) {
-        if (rcache->corners_to_screenxcol[k] >= xcol) {
+        if (rcache->cullinfo.
+                corners_to_screenxcol[k] >= xcol) {
             int corner_ahead = (
-                rcache->corners_to_screenxcol[k] - xcol
+                rcache->cullinfo.
+                corners_to_screenxcol[k] - xcol
             ) + 1;
             if (max_cols_ahead > corner_ahead)
                 max_cols_ahead = corner_ahead;
@@ -1170,14 +1158,16 @@ int32_t roomcam_XYZToViewplaneY(
 
 int roomcam_XYToViewplaneX(
         roomcam *cam, int w, int h, int64_t px, int64_t py,
-        int32_t *result
+        int32_t *result, uint8_t *resultbehindcam
         ) {
     if (w <= 0 || h <= 0)
         return 0;
     if (!roomcam_CalculateViewPlane(cam, w, h)) {
         return 0;
     }
-    *result = _roomcam_XYToViewplaneX_NoRecalc(cam, px, py);
+    *result = _roomcam_XYToViewplaneX_NoRecalc(
+        cam, px, py, resultbehindcam
+    );
     return 1;
 }
 
@@ -1348,13 +1338,22 @@ int roomcam_DrawFloorCeiling(
         }
         int64_t top2wx, top2wy, bottom2wx, bottom2wy;
         int32_t top2offset, bottom2offset;
+        int endcolslicefail = 0;
         int onscreen2 = 0;
-        if (!roomcam_FloorCeilingSliceHeight(
+        while (!roomcam_FloorCeilingSliceHeight(
                 cam, geom,
                 h, innerendcol, 1, &onscreen2,
                 &top2wx, &top2wy, &bottom2wx, &bottom2wy,
                 &top2offset, &bottom2offset
                 )) {
+            if (innerendcol > z + 1) {
+                innerendcol--;
+            } else {
+                endcolslicefail = 1;
+                break;
+            }
+        }
+        if (endcolslicefail) {
             prev_valuesset = 0;
             z = innerendcol + 1;
             break;
@@ -1612,14 +1611,14 @@ int roomcam_DrawWall(
     if (endcol < xcol) return 1;
     if (!rcache || !r)
         return 0;
-    roomrendercache_SetXCols(  // require column data
+    roomrendercache_SetCullInfo(  // require culling data
         rcache, r, cam, cam->cache->cachedw, cam->cache->cachedh
     );
-    if (endcol < rcache->corners_minscreenxcol ||
-            xcol > rcache->corners_maxscreenxcol)
+    if (endcol < rcache->cullinfo.corners_minscreenxcol ||
+            xcol > rcache->cullinfo.corners_maxscreenxcol)
         return 1;
-    if (xcol < rcache->corners_minscreenxcol)
-        xcol = rcache->corners_minscreenxcol;
+    if (xcol < rcache->cullinfo.corners_minscreenxcol)
+        xcol = rcache->cullinfo.corners_minscreenxcol;
     if (endcol >= w)
         endcol = w - 1;
     if (endcol < xcol)
@@ -1747,26 +1746,26 @@ int roomcam_DrawWall(
             assert(z <= endcol);
             int64_t ix = (
                 start_hitx + ((end_hitx - start_hitx) *
-                (z - xcol)) / imax(1, endcol - xcol)
+                (z - xcol)) / imax(1, max_render_ahead)
             );
             int64_t iy = (
                 start_hity + ((end_hity - start_hity) *
-                (z - xcol)) / imax(1, endcol - xcol)
+                (z - xcol)) / imax(1, max_render_ahead)
             );
             int64_t dynr = (
                 dynlightstart_r + ((dynlightend_r -
                 dynlightstart_r) * (z - xcol)) /
-                imax(1, endcol - xcol)
+                imax(1, max_render_ahead)
             );
             int64_t dyng = (
                 dynlightstart_g + ((dynlightend_g -
                 dynlightstart_g) * (z - xcol)) /
-                imax(1, endcol - xcol)
+                imax(1, max_render_ahead)
             );
             int64_t dynb = (
                 dynlightstart_b + ((dynlightend_b -
                 dynlightstart_b) * (z - xcol)) /
-                imax(1, endcol - xcol)
+                imax(1, max_render_ahead)
             );
 
             // Calculate above wall slice height:
@@ -1811,6 +1810,7 @@ int roomcam_DrawWall(
     return 1;
 }
 
+
 int roomcam_RenderRoom(
         roomcam *cam, room *r, int x, int y, int w, int h,
         int xoffset, int max_xoffset, int nestdepth,
@@ -1838,9 +1838,8 @@ int roomcam_RenderRoom(
     const int rendertargetcopylen = (
         rendertarget->hasalpha ? 4 : 3
     );
-    const int batchwidth = (
-        imax(16, w / WALL_BATCH_DIVIDER)
-    );
+    const int batchwidth = (imax(MIN_WALL_BATCH_LEN,
+        w / WALL_BATCH_DIVIDER));
 
     // Drawing loop over all screen columns:
     int col = xoffset;
@@ -1909,7 +1908,8 @@ int roomcam_RenderRoom(
 
         // Find out where wall segment ends:
         int endcol = _roomcam_XYToViewplaneX_NoRecalc(
-            cam, r->corner_x[wallno], r->corner_y[wallno]
+            cam, r->corner_x[wallno], r->corner_y[wallno],
+            NULL
         );  // This assumes rooms are CCW.
         if (endcol < col)
             endcol = col;

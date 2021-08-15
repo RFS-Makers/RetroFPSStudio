@@ -10,7 +10,9 @@
 
 #include <stdint.h>
 
+#include "roomcamcull.h"
 #include "roomdefs.h"
+
 
 typedef struct room room;
 typedef struct roomcam roomcam;
@@ -26,10 +28,8 @@ typedef struct cachedlightcornerinfo {
 } cachedlightcornerinfo;
 
 typedef struct roomrendercache {
-    uint8_t screenxcols_set;
-    int corners_to_screenxcol[ROOM_MAX_CORNERS];
-    int corners_minscreenxcol,
-        corners_maxscreenxcol;
+    uint8_t cullinfo_set;
+    polycullinfo cullinfo;
 
     uint8_t upscaledcorners_set;
     int64_t upscaledcorner_x[ROOM_MAX_CORNERS];
@@ -45,7 +45,7 @@ void room_ClearRenderCache();
 
 roomrendercache *room_GetRenderCache(uint64_t id);
 
-int roomrendercache_SetXCols(
+int roomrendercache_SetCullInfo(
     roomrendercache *rcache, room *r, roomcam *cam,
     int canvasw, int canvash
 );

@@ -14,6 +14,7 @@
 #include "math2d.h"
 #include "room.h"
 #include "roomcam.h"
+#include "roomcamrenderstatistics.h"
 #include "roomcolmap.h"
 #include "roomlayer.h"
 #include "roomobject.h"
