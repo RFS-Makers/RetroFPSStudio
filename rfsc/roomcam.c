@@ -162,7 +162,7 @@ int32_t _roomcam_XYToViewplaneX_NoRecalc(
 
 int GetFloorCeilingSafeInterpolationColumns(
         roomcam *cam, room *r, roomrendercache *rcache,
-        int xcol, int *result
+        int xcol, int wallno_if_known, int *result
         ) {
     if (!roomrendercache_SetCullInfo(
             rcache, r, cam, cam->cache->cachedw,
@@ -171,6 +171,19 @@ int GetFloorCeilingSafeInterpolationColumns(
     int max_cols_ahead = (
         cam->cache->cachedw / (WALL_BATCH_DIVIDER * 1)
     );
+    if (wallno_if_known >= 0) {
+        if (rcache->cullinfo.corners_to_screenxcol[
+                wallno_if_known] > xcol) {
+            *result = imin(cam->cache->cachedw - 1 - xcol,
+                imin(max_cols_ahead,
+                rcache->cullinfo.
+                    corners_to_screenxcol[
+                    wallno_if_known] - xcol));
+        } else {
+            *result = (xcol < cam->cache->cachedw ? 1 : 0);
+        }
+        return 1;
+    }
     int k = 0;
     while (k < r->corners) {
         if (rcache->cullinfo.
@@ -251,7 +264,7 @@ int roomcam_DynlightFalloff(
         int64_t dist, int64_t light_range
         ) {
     assert(dist >= 0 && light_range >= 0);
-    if (dist > light_range)
+    if (dist >= light_range)
         return 0;
     int64_t linear = 1000 * (light_range - dist) / light_range;
     int64_t exponential = 1000 * fmin(1.0,
@@ -259,7 +272,11 @@ int roomcam_DynlightFalloff(
             (double)(light_range + 1), 2.0)
     );
     assert(linear <= 1000 && exponential <= 1000);
-    int mixtolinear = imax(0, (linear - 500) * 2);
+    int mixtolinear = imax(300, (linear - 500) * 2);
+    if (dist < light_range / 10)
+        linear = imax(linear,
+            (light_range / 10 - dist) * 1000 / imax(1,
+            light_range / 10));
     int antimixtolinear = 1000 - mixtolinear;
     int result = (
         (linear * mixtolinear +
@@ -267,6 +284,20 @@ int roomcam_DynlightFalloff(
     );
     assert(result >= 0 && result <= 1000);
     return result;
+}
+
+int roomcam_DynlightFactorFloorCeilOrPoint(
+        int64_t light_z, int64_t light_range,
+        int64_t light_dist,
+        int64_t geo_z, int facing_up, int facing_down
+        ) {
+    if (facing_up && geo_z >= light_z)
+        return 0;
+    if (facing_down && geo_z <= light_z)
+        return 0;
+    return roomcam_DynlightFalloff(
+        light_dist, light_range
+    );
 }
 
 int roomcam_DynlightFactorWall(
@@ -294,11 +325,11 @@ int roomcam_DynlightFactorWall(
 
 int roomcam_DynamicLightAtXY(
         roomrendercache *rcache, room *r,
-        int64_t x, int64_t y, int isatwallno,
-        int isfacingup,
+        int64_t x, int64_t y, int64_t z, int isatwallno,
+        int isfacingup, int isfacingdown, int scaletorange,
         int32_t *cr, int32_t *cg, int32_t *cb
         ) {
-    assert(isatwallno < 0 || !isfacingup);
+    assert(isatwallno < 0 || (!isfacingup && !isfacingdown));
     assert(isatwallno < r->corners);
     if (!roomrendercache_SetDynLights(
             rcache, r
@@ -337,6 +368,8 @@ int roomcam_DynamicLightAtXY(
             lightsamplei2 = 2 * wallidnext;
             mixlightscalar = (mixlightscalar - 500) * 2;
         }
+        assert(mixlightscalar >= 0 && mixlightscalar <= 1000);
+        int antimixlightscalar = 1000 - mixlightscalar;
         assert(rcache->dynlights_set);
         int64_t mix_r[2] = {0};
         int64_t mix_g[2] = {0};
@@ -356,16 +389,22 @@ int roomcam_DynamicLightAtXY(
                     rcache->dynlight_sample[sampleidx].light[z]
                 );
                 int64_t strength_scalar = roomcam_DynlightFactorWall(
-                    linfo->x, linfo->y, linfo->range, linfo->dist,
+                    linfo->x, linfo->y, linfo->range,
+                    linfo->dist,
                     r->corner_x[wallid], r->corner_y[wallid],
                     r->corner_x[wallidnext], r->corner_y[wallidnext],
                     r->wall[wallid].normal_x,
                     r->wall[wallid].normal_y
                 );
-                assert(strength_scalar >= 0 && strength_scalar <= 1000);
-                mix_r[i] += (strength_scalar * linfo->r);
-                mix_g[i] += (strength_scalar * linfo->g);
-                mix_b[i] += (strength_scalar * linfo->b);
+                assert(linfo->r >= 0 && linfo->r <= LIGHT_COLOR_SCALAR);
+                assert(linfo->g >= 0 && linfo->g <= LIGHT_COLOR_SCALAR);
+                assert(linfo->b >= 0 && linfo->b <= LIGHT_COLOR_SCALAR);
+                mix_r[i] += (strength_scalar * linfo->r /
+                    LIGHT_COLOR_SCALAR);
+                mix_g[i] += (strength_scalar * linfo->g /
+                    LIGHT_COLOR_SCALAR);
+                mix_b[i] += (strength_scalar * linfo->b /
+                    LIGHT_COLOR_SCALAR);
                 z++;
             }
             if (lcount > 1) {
@@ -379,20 +418,99 @@ int roomcam_DynamicLightAtXY(
             i++;
         }
         result_r = (
-            (mix_r[0] + mix_r[1]) * LIGHT_COLOR_SCALAR / 2000
+            ((mix_r[0] * antimixlightscalar + mix_r[1] *
+                mixlightscalar) / 1000)
+                * scaletorange / 2000
         );
         result_g = (
-            (mix_g[0] + mix_g[1]) * LIGHT_COLOR_SCALAR / 2000
+            ((mix_g[0] * antimixlightscalar + mix_g[1] *
+                mixlightscalar) / 1000)
+                * scaletorange / 2000
         );
         result_b = (
-            (mix_b[0] + mix_b[1]) * LIGHT_COLOR_SCALAR / 2000
+            ((mix_b[0] * antimixlightscalar + mix_b[1] *
+                mixlightscalar) / 1000)
+                * scaletorange / 2000
         );
     } else {
-
+        int64_t mix_r = 0;
+        int64_t mix_g = 0;
+        int64_t mix_b = 0;
+        int64_t dists[ROOM_MAX_CORNERS * 2 + 1];
+        int64_t maxdist = 0;
+        int sampleidx = 0;
+        while (sampleidx <= 2 * r->corners) {
+            dists[sampleidx] = math_veclen2di(
+                x - rcache->dynlight_sample[
+                    sampleidx].samplex,
+                y - rcache->dynlight_sample[
+                    sampleidx].sampley
+            );
+            if (dists[sampleidx] > maxdist) maxdist = dists[sampleidx];
+            sampleidx++;
+        }
+        int64_t strengthblendsum = 0;
+        sampleidx = 0;
+        while (sampleidx <= 2 * r->corners) {
+            int strength = 1000 - (dists[sampleidx] * 1000 / maxdist);
+            if (strength <= 30) {
+                sampleidx++;
+                continue;
+            }
+            assert(strength >= 0 && strength <= 1000);
+            const int lcount = (
+                rcache->dynlight_sample[sampleidx].
+                    light_count);
+            int64_t cx = 0;
+            int64_t cy = 0;
+            int64_t cz = 0;
+            int k = 0;
+            while (k < lcount) {
+                cachedlightinfo *linfo = &(
+                    rcache->dynlight_sample[sampleidx].light[k]
+                );
+                int64_t strength_scalar = (
+                    roomcam_DynlightFactorFloorCeilOrPoint(
+                        linfo->z, linfo->range,
+                        linfo->dist, z, isfacingup, isfacingdown
+                    ));
+                assert(linfo->r >= 0 && linfo->r <= LIGHT_COLOR_SCALAR);
+                assert(linfo->g >= 0 && linfo->g <= LIGHT_COLOR_SCALAR);
+                assert(linfo->b >= 0 && linfo->b <= LIGHT_COLOR_SCALAR);
+                cx += (strength_scalar * linfo->r /
+                    LIGHT_COLOR_SCALAR);
+                cy += (strength_scalar * linfo->g /
+                    LIGHT_COLOR_SCALAR);
+                cz += (strength_scalar * linfo->b /
+                    LIGHT_COLOR_SCALAR);
+                k++;
+            }
+            if (lcount >= 1) {
+                cx /= lcount;
+                cy /= lcount;
+                cz /= lcount;
+            }
+            assert(cx >= 0 && cx < 1000);
+            assert(cy >= 0 && cy < 1000);
+            assert(cz >= 0 && cz < 1000);
+            mix_r += cx * strength;
+            mix_g += cy * strength;
+            mix_b += cz * strength;
+            strengthblendsum += strength * 1000;
+            sampleidx++;
+        }
+        result_r = mix_r * scaletorange / strengthblendsum;
+        result_g = mix_g * scaletorange / strengthblendsum;
+        result_b = mix_b * scaletorange / strengthblendsum;
+        /* TEST HACK CODE:
+        result_r = ((x * 20) % scaletorange);
+        if (result_r < 0) result_r = scaletorange - 1 -
+            ((-x * 20) % scaletorange);
+        result_b = 10; result_g = 10;*/
     }
-    assert(result_r >= 0 && result_r <= LIGHT_COLOR_SCALAR);
-    assert(result_g >= 0 && result_g <= LIGHT_COLOR_SCALAR);
-    assert(result_b >= 0 && result_b <= LIGHT_COLOR_SCALAR);
+    assert(result_r >= 0 && result_r <= scaletorange);
+    assert(result_g >= 0 && result_g <= scaletorange);
+    assert(result_b >= 0 && result_b <= scaletorange);
     *cr = result_r;
     *cg = result_g;
     *cb = result_b;
@@ -513,7 +631,7 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
     int row = screentop;
     int64_t past_world_x = top_world_x;
     int64_t past_world_y = top_world_y;
-    while (row <= screenbottom) {
+    while (likely(row <= screenbottom)) {
         int endrow = row + max_perspective_cheat_columns;
         if (endrow > screenbottom) endrow = screenbottom;
         assert(endrow >= row);
@@ -554,21 +672,28 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int cg1to2diff = (cg2 - cg);
         const int cb1to2diff = (cb2 - cb);
         const int slicepixellen = (endrow - row) + 1;
+        int tgoffset = (
+            (x + xoffset + (y + row) * targetw) *
+            rendertargetcopylen
+        );
+        const int fullslicelen = (screenbottom - screentop + 1);
+        const int tgoffsetplus = targetw * rendertargetcopylen;
         while (likely(row <= endrow)) {
-            int red = cr + ((cr1to2diff * (row - startrow)) /
-                slicepixellen);
-            int green = cg + ((cg1to2diff * (row - startrow)) /
-                slicepixellen);
-            int blue = cb + ((cb1to2diff * (row - startrow)) /
-                slicepixellen);
+            const int rowoffset = (row - startrow);
+            int red = cr + ((cr1to2diff * (rowoffset + startrow)) /
+                fullslicelen);
+            int green = cg + ((cg1to2diff * (rowoffset + startrow)) /
+                fullslicelen);
+            int blue = cb + ((cb1to2diff * (rowoffset + startrow)) /
+                fullslicelen);
             int64_t tx = (
-                toptx + ((tx1totx2diff * (row - startrow)) /
+                toptx + ((tx1totx2diff * rowoffset) /
                     slicepixellen));
             if (tx < 0) tx = (TEX_COORD_SCALER - 1 - (((-tx) - 1) %
                 TEX_COORD_SCALER));
             else tx = tx % TEX_COORD_SCALER;
             int64_t ty = (
-                topty + ((ty1toty2diff * (row - startrow)) /
+                topty + ((ty1toty2diff * rowoffset) /
                     slicepixellen));
             if (ty < 0) ty = (TEX_COORD_SCALER - 1 - (((-ty) - 1) %
                 TEX_COORD_SCALER));
@@ -576,12 +701,8 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             // Here, we're using the non-sideways regular tex.
             const int srcoffset = (
                 ((tx * srf->w) / TEX_COORD_SCALER) +
-                srf->w * ((ty * srf->h) / TEX_COORD_SCALER)
+                (srf->w * ((ty * srf->h) / TEX_COORD_SCALER))
             ) * srccopylen;
-            const int tgoffset = (
-                (x + xoffset + (y + row) * targetw) *
-                rendertargetcopylen
-            );
             assert(srcoffset >= 0 &&
                 srcoffset < srf->w * srf->h * srccopylen);
             assert(tgoffset >= 0 && tgoffset < rendertarget->w *
@@ -601,6 +722,7 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             if (rendertarget->hasalpha)
                 tgpixels[tgoffset + 3] = 255;
             row++;
+            tgoffset += tgoffsetplus;
         }
         assert(row == endrow + 1);
         past_world_x = target_world_x;
@@ -1228,6 +1350,11 @@ HOTSPOT static int roomcam_DrawWallSlice(
             (screenbottom - screentop) : 1
         );
         const int32_t ty1toty2diff = (ty2 - ty1);
+        int tgoffset = (x + (y + k) * targetw) *
+            rendertargetcopylen;
+        const int tgoffsetplus = (
+            targetw * rendertargetcopylen
+        );
         while (likely(k <= screenbottom)) {
             ty = (
                 ty1 + ((ty1toty2diff * (k - screentop)) /
@@ -1241,10 +1368,6 @@ HOTSPOT static int roomcam_DrawWallSlice(
             int sourcex = (
                 (srf->w * (TEX_COORD_SCALER - 1 - ty))
                 / TEX_COORD_SCALER
-            );
-            const int tgoffset = (
-                (x + (y + k) * targetw) *
-                rendertargetcopylen
             );
             const int srcoffset = (
                 sourcex + sourcey_multiplied_w) *
@@ -1265,6 +1388,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
             tgpixels[tgoffset + 2] = finalb;
             if (rendertarget->hasalpha)
                 tgpixels[tgoffset + 3] = 255;
+            tgoffset += tgoffsetplus;
             k++;
         }
     }
@@ -1303,7 +1427,7 @@ int roomcam_DrawFloorCeiling(
         // Check over which segment to interpolate the perspective:
         int max_safe_next_cols = -1;
         if (!GetFloorCeilingSafeInterpolationColumns(
-                cam, r, rcache, z, &max_safe_next_cols
+                cam, r, rcache, z, -1, &max_safe_next_cols
                 )) {
             return 0;
         }
@@ -1368,6 +1492,45 @@ int roomcam_DrawFloorCeiling(
             prev_onscreen = onscreen2;
         }
 
+        // Calculate dynamic light colors to interpolate between:
+        const int lightsamplevaluerange = 1000;
+        int32_t dynlightstarttop_r = 0;
+        int32_t dynlightstarttop_g = 0;
+        int32_t dynlightstarttop_b = 0;
+        roomcam_DynamicLightAtXY(
+            rcache, r, top1wx, top1wy, r->floor_z, -1,
+            1, 0, lightsamplevaluerange,
+            &dynlightstarttop_r, &dynlightstarttop_g,
+            &dynlightstarttop_b
+        );
+        int32_t dynlightendtop_r = 0;
+        int32_t dynlightendtop_g = 0;
+        int32_t dynlightendtop_b = 0;
+        roomcam_DynamicLightAtXY(
+            rcache, r, top2wx, top2wy, r->floor_z, -1,
+            1, 0, lightsamplevaluerange,
+            &dynlightendtop_r, &dynlightendtop_g,
+            &dynlightendtop_b
+        );
+        int32_t dynlightstartbottom_r = 0;
+        int32_t dynlightstartbottom_g = 0;
+        int32_t dynlightstartbottom_b = 0;
+        roomcam_DynamicLightAtXY(
+            rcache, r, bottom1wx, bottom1wy, r->floor_z, -1,
+            1, 0, lightsamplevaluerange,
+            &dynlightstartbottom_r, &dynlightstartbottom_g,
+            &dynlightstartbottom_b
+        );
+        int32_t dynlightendbottom_r = 0;
+        int32_t dynlightendbottom_g = 0;
+        int32_t dynlightendbottom_b = 0;
+        roomcam_DynamicLightAtXY(
+            rcache, r, bottom2wx, bottom2wy, r->floor_z, -1,
+            1, 0, lightsamplevaluerange,
+            &dynlightendbottom_r, &dynlightendbottom_g,
+            &dynlightendbottom_b
+        );
+
         // Render floor by interpolating over above info:
         roomtexinfo *texinfo = NULL;
         if (geom->type == DRAWGEOM_ROOM) {
@@ -1414,12 +1577,42 @@ int roomcam_DrawFloorCeiling(
                     (int)topoffset, (int)bottomoffset);
             }*/
             if (bottomoffset >= topoffset) {
+                int64_t dyntopr = (
+                    dynlightstarttop_r + ((dynlightendtop_r -
+                    dynlightstarttop_r) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dyntopg = (
+                    dynlightstarttop_g + ((dynlightendtop_g -
+                    dynlightstarttop_g) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dyntopb = (
+                    dynlightstarttop_b + ((dynlightendtop_b -
+                    dynlightstarttop_b) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dynbottomr = (
+                    dynlightstartbottom_r + ((dynlightendbottom_r -
+                    dynlightstartbottom_r) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dynbottomg = (
+                    dynlightstartbottom_g + ((dynlightendbottom_g -
+                    dynlightstartbottom_g) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dynbottomb = (
+                    dynlightstartbottom_b + ((dynlightendbottom_b -
+                    dynlightstartbottom_b) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
                 int cr = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                    r->sector_light_r));
+                    r->sector_light_r + dyntopr * 2));
                 int cg = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                    r->sector_light_g));
+                    r->sector_light_g + dyntopg * 2));
                 int cb = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                    r->sector_light_b));
+                    r->sector_light_b + dyntopb * 2));
+                int c2r = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_r + dynbottomr * 2));
+                int c2g = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_g + dynbottomg * 2));
+                int c2b = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_b + dynbottomb * 2));
                 assert(
                     math_veclen2di(
                         topwx - cam->obj->x, topwy - cam->obj->y
@@ -1433,7 +1626,7 @@ int roomcam_DrawFloorCeiling(
                     bottomwx, bottomwy, r->floor_z,
                     texinfo, topoffset, bottomoffset,
                     canvasx, canvasy, h, cr, cg, cb,
-                    cr, cg, cb
+                    c2r, c2g, c2b
                 );
                 /*graphics_DrawRectangle(
                     1, fmin(1.0, ((double)r->id) * 0.2), 0.5, 1,
@@ -1453,7 +1646,7 @@ int roomcam_DrawFloorCeiling(
         // Check over which segment to interpolate the perspective:
         int max_safe_next_cols = -1;
         if (!GetFloorCeilingSafeInterpolationColumns(
-                cam, r, rcache, z, &max_safe_next_cols
+                cam, r, rcache, z, -1, &max_safe_next_cols
                 )) {
             return 0;
         }
@@ -1509,7 +1702,47 @@ int roomcam_DrawFloorCeiling(
             prev_onscreen = onscreen2;
         }
 
-        // Render floor by interpolating over above info:
+        // Calculate dynamic light colors to interpolate between:
+        const int lightsamplevaluerange = 1000;
+        int32_t dynlightstarttop_r = 0;
+        int32_t dynlightstarttop_g = 0;
+        int32_t dynlightstarttop_b = 0;
+        int64_t ceil_z = r->floor_z + r->height;
+        roomcam_DynamicLightAtXY(
+            rcache, r, top1wx, top1wy, ceil_z, -1,
+            0, 1, lightsamplevaluerange,
+            &dynlightstarttop_r, &dynlightstarttop_g,
+            &dynlightstarttop_b
+        );
+        int32_t dynlightendtop_r = 0;
+        int32_t dynlightendtop_g = 0;
+        int32_t dynlightendtop_b = 0;
+        roomcam_DynamicLightAtXY(
+            rcache, r, top2wx, top2wy, ceil_z, -1,
+            0, 1, lightsamplevaluerange,
+            &dynlightendtop_r, &dynlightendtop_g,
+            &dynlightendtop_b
+        );
+        int32_t dynlightstartbottom_r = 0;
+        int32_t dynlightstartbottom_g = 0;
+        int32_t dynlightstartbottom_b = 0;
+        roomcam_DynamicLightAtXY(
+            rcache, r, bottom1wx, bottom1wy, ceil_z, -1,
+            0, 1, lightsamplevaluerange,
+            &dynlightstartbottom_r, &dynlightstartbottom_g,
+            &dynlightstartbottom_b
+        );
+        int32_t dynlightendbottom_r = 0;
+        int32_t dynlightendbottom_g = 0;
+        int32_t dynlightendbottom_b = 0;
+        roomcam_DynamicLightAtXY(
+            rcache, r, bottom2wx, bottom2wy, ceil_z, -1,
+            0, 1, lightsamplevaluerange,
+            &dynlightendbottom_r, &dynlightendbottom_g,
+            &dynlightendbottom_b
+        );
+
+        // Render ceiling by interpolating over above info:
         roomtexinfo *texinfo = NULL;
         if (geom->type == DRAWGEOM_ROOM) {
             texinfo = &geom->r->floor_tex;
@@ -1547,12 +1780,42 @@ int roomcam_DrawFloorCeiling(
                 scalar) / scalarrange
             ));
             if (bottomoffset >= topoffset) {
+                int64_t dyntopr = (
+                    dynlightstarttop_r + ((dynlightendtop_r -
+                    dynlightstarttop_r) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dyntopg = (
+                    dynlightstarttop_g + ((dynlightendtop_g -
+                    dynlightstarttop_g) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dyntopb = (
+                    dynlightstarttop_b + ((dynlightendtop_b -
+                    dynlightstarttop_b) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dynbottomr = (
+                    dynlightstartbottom_r + ((dynlightendbottom_r -
+                    dynlightstartbottom_r) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dynbottomg = (
+                    dynlightstartbottom_g + ((dynlightendbottom_g -
+                    dynlightstartbottom_g) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dynbottomb = (
+                    dynlightstartbottom_b + ((dynlightendbottom_b -
+                    dynlightstartbottom_b) * scalar) / scalarrange
+                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
                 int cr = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                    r->sector_light_r));
+                    r->sector_light_r + dyntopr * 2));
                 int cg = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                    r->sector_light_g));
+                    r->sector_light_g + dyntopg * 2));
                 int cb = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                    r->sector_light_b));
+                    r->sector_light_b + dyntopb * 2));
+                int c2r = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_r + dynbottomr * 2));
+                int c2g = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_g + dynbottomg * 2));
+                int c2b = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
+                    r->sector_light_b + dynbottomb * 2));
                 /*assert(
                     math_veclen2di(
                         topwx - cam->obj->x, topwy - cam->obj->y
@@ -1566,7 +1829,7 @@ int roomcam_DrawFloorCeiling(
                     bottomwx, bottomwy, r->floor_z,
                     texinfo, topoffset, bottomoffset,
                     canvasx, canvasy, h, cr, cg, cb,
-                    cr, cg, cb
+                    c2r, c2g, c2b
                 );
             }
             z++;
@@ -1576,6 +1839,7 @@ int roomcam_DrawFloorCeiling(
     return 1;
 }
 
+
 int roomcam_DrawWall(
         roomcam *cam, drawgeom *geom,
         int canvasx, int canvasy,
@@ -1584,6 +1848,7 @@ int roomcam_DrawWall(
         int64_t wall_floor_z, int64_t wall_height
         ) {
     // First, extract some info:
+    int wallno = -1;
     room *r = NULL;
     if (geom->type == DRAWGEOM_ROOM) {
         r = geom->r;
@@ -1672,7 +1937,8 @@ int roomcam_DrawWall(
         }
         int max_safe_next_segment = -1;
         if (!GetFloorCeilingSafeInterpolationColumns(
-                cam, r, rcache, xcol, &max_safe_next_segment
+                cam, r, rcache, xcol, start_wallno,
+                &max_safe_next_segment
                 )) {
             return 0;
         }
@@ -1723,20 +1989,23 @@ int roomcam_DrawWall(
         }
 
         // Calculate dynamic light colors to interpolate between:
+        const int lightsamplevaluerange = 1000;
         int32_t dynlightstart_r = 0;
         int32_t dynlightstart_g = 0;
         int32_t dynlightstart_b = 0;
         roomcam_DynamicLightAtXY(
-            rcache, r, start_hitx, start_hity, start_wallno,
-            0, &dynlightstart_r, &dynlightstart_g,
+            rcache, r, start_hitx, start_hity, 0, start_wallno,
+            0, 0, lightsamplevaluerange,
+            &dynlightstart_r, &dynlightstart_g,
             &dynlightstart_b
         );
         int32_t dynlightend_r = 0;
         int32_t dynlightend_g = 0;
         int32_t dynlightend_b = 0;
         roomcam_DynamicLightAtXY(
-            rcache, r, end_hitx, end_hity, start_wallno,
-            0, &dynlightend_r, &dynlightend_g,
+            rcache, r, end_hitx, end_hity, 0, start_wallno,
+            0, 0, lightsamplevaluerange,
+            &dynlightend_r, &dynlightend_g,
             &dynlightend_b
         );
 
@@ -1756,17 +2025,17 @@ int roomcam_DrawWall(
                 dynlightstart_r + ((dynlightend_r -
                 dynlightstart_r) * (z - xcol)) /
                 imax(1, max_render_ahead)
-            );
+            ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
             int64_t dyng = (
                 dynlightstart_g + ((dynlightend_g -
                 dynlightstart_g) * (z - xcol)) /
                 imax(1, max_render_ahead)
-            );
+            ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
             int64_t dynb = (
                 dynlightstart_b + ((dynlightend_b -
                 dynlightstart_b) * (z - xcol)) /
                 imax(1, max_render_ahead)
-            );
+            ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
 
             // Calculate above wall slice height:
             int32_t top, bottom;
@@ -1784,11 +2053,11 @@ int roomcam_DrawWall(
 
             // Calculate the color for this slice:
             int cr = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                r->sector_light_r + dynr));
+                r->sector_light_r + dynr * 2));
             int cg = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                r->sector_light_g + dyng));
+                r->sector_light_g + dyng * 2));
             int cb = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
-                r->sector_light_b + dynb));
+                r->sector_light_b + dynb * 2));
 
             // Draw slice:
             assert(top >= 0 && bottom >= top && bottom <= h - 1);

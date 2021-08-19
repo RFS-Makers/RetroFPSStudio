@@ -18,11 +18,12 @@ typedef struct room room;
 typedef struct roomcam roomcam;
 
 typedef struct cachedlightinfo {
-    int64_t x, y, dist;
+    int64_t x, y, z, dist;
     int r, g, b, range;
 } cachedlightinfo;
 
 typedef struct cachedlightcornerinfo {
+    int64_t samplex, sampley;
     int light_count;
     cachedlightinfo light[MAX_DRAWN_LIGHTS_PER_ROOM];
 } cachedlightcornerinfo;

@@ -43,6 +43,25 @@ static int _roomobj_newinvismovable(lua_State *l) {
     return 1;
 }
 
+static int _roomobj_getid(lua_State *l) {
+    if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+                OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+                OBJREF_ROOMOBJ) {
+        wrongargs:;
+        lua_pushstring(l, "expected arg of type roomobj");
+        return lua_error(l);
+    }
+    roomobj *obj = roomobj_ById(
+        (uint64_t)((scriptobjref *)lua_touserdata(l, 1))->value
+    );
+    if (!obj)
+        goto wrongargs;
+    lua_pushinteger(l, obj->id);
+    return 1;
+}
+
 static int _movable_setemit(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
@@ -77,7 +96,7 @@ static int _movable_setemit(lua_State *l) {
             LIGHT_COLOR_SCALAR);
         b = round(fmax(0.0, fmin(1.0, lua_tonumber(l, 4))) *
             LIGHT_COLOR_SCALAR);
-        radius = ONE_METER_IN_UNITS * 6;
+        radius = ONE_METER_IN_UNITS * 4;
         if (radius > MAX_LIGHT_RANGE)
             radius = MAX_LIGHT_RANGE;
         if (r == 0 && g == 0 && b == 0)
@@ -694,6 +713,8 @@ void scriptcoreroom_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_roomcam_new");
     lua_pushcfunction(l, _roomobj_destroy);
     lua_setglobal(l, "_roomobj_destroy");
+    lua_pushcfunction(l, _roomobj_getid);
+    lua_setglobal(l, "_roomobj_getid");
     lua_pushcfunction(l, _roomcam_render);
     lua_setglobal(l, "_roomcam_render");
     lua_pushcfunction(l, _roomobj_setpos);

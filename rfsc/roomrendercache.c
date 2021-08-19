@@ -116,6 +116,7 @@ int roomrendercache_SetCullInfo(
 
 typedef struct dynlight_cbinfo {
     roomrendercache *rcache;
+    roomlayer *ourlayer;
     int64_t samplex, sampley;
     int calc_idx;
 } dynlight_cbinfo;
@@ -167,6 +168,12 @@ int roomrendercache_CallBack_AddDynLight(
     linfo->light[k].dist = distance;
     linfo->light[k].x = obj->x;
     linfo->light[k].y = obj->y;
+    linfo->light[k].z = obj->z;
+    // Debug: if light is not through portal (=> distance an odd
+    // approximation), make sure the distance is plausible:
+    assert(llabs(linfo->light[k].dist - math_veclen2di(
+        cbinfo->samplex - obj->x, cbinfo->sampley - obj->y
+    )) < 3 || obj->parentlayer != cbinfo->ourlayer);
     return 1;
 }
 
@@ -177,13 +184,16 @@ int roomrendercache_SetDynLights(
             !r->parentlayer)
         return 1;
     int i = 0;
-    while (i < ROOM_MAX_CORNERS * 2 + 1) {
+    while (i < ROOM_MAX_CORNERS * 2 + 1 &&
+            i < r->corners * 2 + 1) {
         int64_t samplepos_x = 0;
         int64_t samplepos_y = 0;
-        if (i == (ROOM_MAX_CORNERS * 2 + 1) - 1) {
+        if (i == (ROOM_MAX_CORNERS * 2 + 1) - 1 ||
+                i == (r->corners * 2 + 1) - 1) {
             samplepos_x = r->center_x;
             samplepos_y = r->center_y;
         } else {
+            assert(i < ROOM_MAX_CORNERS * 2);
             int corner = (i / 2);
             int corner_next = corner + 1;
             if (corner_next >= r->corners) corner_next = 0;
@@ -194,17 +204,20 @@ int roomrendercache_SetDynLights(
                 samplepos_x = (r->corner_x[corner] +
                     r->corner_x[corner_next]) / 2;
                 samplepos_y = (r->corner_y[corner] +
-                    r->corner_x[corner_next]) / 2;
+                    r->corner_y[corner_next]) / 2;
             }
         }
+        rcache->dynlight_sample[i].samplex = samplepos_x;
+        rcache->dynlight_sample[i].sampley = samplepos_x;
         dynlight_cbinfo c;
         c.samplex = samplepos_x;
-        c.sampley = samplepos_x;
+        c.sampley = samplepos_y;
         c.calc_idx = i;
         c.rcache = rcache;
+        c.ourlayer = r->parentlayer;
         int result = roomcolmap_IterateObjectsInRange(
             r->parentlayer->colmap, samplepos_x, samplepos_y,
-            MAX_LIGHT_RANGE, 1, &rcache,
+            MAX_LIGHT_RANGE * 10 / 12, 1, &c,
             roomrendercache_CallBack_AddDynLight
         );
         if (!result) {

@@ -559,7 +559,7 @@ int _roomcolmap_IterateObjectsInRange_Ex_Do(
                             continue;
                         }
                     }
-                    if (enforce_exact_radius) {
+                    if (enforce_exact_radius && in_portal) {
                         // NOTE: in this case we DON'T callback just yet,
                         // since we might find it through another portal
                         // at closer distance.

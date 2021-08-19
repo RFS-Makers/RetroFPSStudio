@@ -75,8 +75,12 @@ void roomobj_SetLayer(
     } else {
         assert(obj->parentroom == NULL);
     }
-    if (lr)
+    if (lr) {
         roomcolmap_RegisterObject(lr->colmap, obj);
+        roomcolmap_Debug_AssertObjectIsRegistered(
+            lr->colmap, obj
+        );
+    }
     obj->parentlayer = lr;
     if (lr) {
         obj->parentroom = roomcolmap_PickFromPos(

@@ -30,4 +30,5 @@ rfs.movable._class.set_angle = _roomobj_setangle
 rfs.movable._class.get_angle = _roomobj_getangle
 rfs.movable._class.set_layer = _roomobj_setlayer
 rfs.movable._class.set_light = _movable_setemit
+rfs.movable._class.get_obj_id = _roomobj_getid
 

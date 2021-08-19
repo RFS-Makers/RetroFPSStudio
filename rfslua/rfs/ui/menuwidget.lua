@@ -29,7 +29,7 @@ function rfs.ui.menuwidget.new(font, pt_size, width, centered)
         focused=false,
         entries={},
         pt_size=math.max(1, math.round(pt_size)),
-        border_size=math.max(1, math.round(pt_size * 1.2)),
+        border_size=math.max(1, math.round(pt_size * 1.5)),
         width=width,
         centered=(centered == true),
     }
@@ -195,7 +195,7 @@ end
 function rfs.ui.menuwidget.classtable.update_size(self)
     -- Update border size:
     self.border_size=math.max(
-        1, math.round(self.pt_size * 1.2)
+        1, math.round(self.pt_size * 1.5)
     )
     local border_size = (
         math.max(1, math.round(self.border_size))

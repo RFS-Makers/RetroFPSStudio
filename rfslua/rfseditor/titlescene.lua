@@ -24,7 +24,7 @@ function rfseditor.titlescene.show_titlemenu()
     rfseditor.state = "titlemenu"
     local scaler = rfs.ui.scaler
     rfseditor.titlescene._menu = (
-        rfs.ui.menuwidget.new(nil, 14 * scaler, 50)
+        rfs.ui.menuwidget.new(nil, 17 * scaler, 50)
     )
     rfseditor.titlescene._menu:set_centered(true)
     rfseditor.titlescene._menu.id = "titlemenu"
@@ -48,7 +48,7 @@ function rfseditor.titlescene.update_menu()
     if rfseditor.titlescene._menu ~= nil and
             rfseditor.titlescene._menu.id == "titlemenu" then
         rfseditor.titlescene._menu:set_pt(
-            math.max(1, math.round(14 * scaler))
+            math.max(1, math.round(17 * scaler))
         )
         rfseditor.titlescene._menu:set_width(
             math.max(1, math.round(rfs.window.renderw * 0.3))
@@ -82,7 +82,7 @@ function rfseditor.titlescene.load_demo_level()
     local rid = 1
     lvl:deserialize_rooms({{
         id=rid,
-        light={0.5, 0.4, 0.5},
+        light={0.25, 0.2, 0.25},
         floor_z=-(rfseditor.defaults.one_meter_units * 1),
         height=(rfseditor.defaults.one_meter_units * 2),
         walls={
@@ -121,7 +121,7 @@ function rfseditor.titlescene.load_demo_level()
         floor={texpath="rfslua/res/default-game-res/texture/wood1"},  
     }})
     local obj = rfs.movable.new_invisible()
-    obj:set_light(1, 0.8, 0)
+    obj:set_light(1, 0.8, 0, rfseditor.defaults.one_meter_units * 4)
     obj:set_layer(lvl)
     rfseditor._demolevel = lvl
     if rfseditor._democam == nil then
@@ -211,7 +211,7 @@ end
 function rfseditor.titlescene.on_draw()
     local scaler = rfs.ui.scaler
     rfseditor.titlescene.horimenu = (
-        rfs.window.renderw > rfs.window.renderh * 1.45
+        rfs.window.renderw > rfs.window.renderh * 1.0
     )
     if rfseditor.state == "show_press_any_key" or
             rfseditor.state == "do_update_task" then
