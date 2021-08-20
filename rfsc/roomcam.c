@@ -169,7 +169,8 @@ int GetFloorCeilingSafeInterpolationColumns(
             cam->cache->cachedh))
         return 0;
     int max_cols_ahead = (
-        cam->cache->cachedw / (WALL_BATCH_DIVIDER * 1)
+        (cam->cache->cachedw / WALL_BATCH_DIVIDER) > 0 ?
+        (cam->cache->cachedw / WALL_BATCH_DIVIDER) : 1
     );
     if (wallno_if_known >= 0) {
         if (rcache->cullinfo.corners_to_screenxcol[
@@ -502,11 +503,6 @@ int roomcam_DynamicLightAtXY(
         result_r = mix_r * scaletorange / strengthblendsum;
         result_g = mix_g * scaletorange / strengthblendsum;
         result_b = mix_b * scaletorange / strengthblendsum;
-        /* TEST HACK CODE:
-        result_r = ((x * 20) % scaletorange);
-        if (result_r < 0) result_r = scaletorange - 1 -
-            ((-x * 20) % scaletorange);
-        result_b = 10; result_g = 10;*/
     }
     assert(result_r >= 0 && result_r <= scaletorange);
     assert(result_g >= 0 && result_g <= scaletorange);
@@ -625,7 +621,10 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             bottom_world_x, bottom_world_y,
             top_world_x, top_world_y);
     }*/
-    const int max_perspective_cheat_columns = h / 20;
+    const int max_perspective_cheat_columns = (
+        (h / FLOORCEIL_BATCH_DIVIDER) > 0 ?
+        (h / FLOORCEIL_BATCH_DIVIDER) : 1
+    );
     assert(screentop >= 0 && screentop <= h);
     assert(screenbottom >= 0 && screenbottom <= h);
     int row = screentop;
@@ -677,15 +676,18 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             rendertargetcopylen
         );
         const int fullslicelen = (screenbottom - screentop + 1);
+        assert(fullslicelen >= 1);
         const int tgoffsetplus = targetw * rendertargetcopylen;
         while (likely(row <= endrow)) {
             const int rowoffset = (row - startrow);
-            int red = cr + ((cr1to2diff * (rowoffset + startrow)) /
+            int red = cr + ((cr1to2diff * (row - screentop)) /
                 fullslicelen);
-            int green = cg + ((cg1to2diff * (rowoffset + startrow)) /
+            int green = cg + ((cg1to2diff * (row - screentop)) /
                 fullslicelen);
-            int blue = cb + ((cb1to2diff * (rowoffset + startrow)) /
+            int blue = cb + ((cb1to2diff * (row - screentop)) /
                 fullslicelen);
+            assert(red >= cr || red >= cr2);
+            assert(red <= cr || red <= cr2);
             int64_t tx = (
                 toptx + ((tx1totx2diff * rowoffset) /
                     slicepixellen));
@@ -1030,16 +1032,6 @@ int roomcam_FloorCeilingSliceHeight(
         )));
     far_world_x /= DRAW_CORNER_COORD_UPSCALE;
     far_world_y /= DRAW_CORNER_COORD_UPSCALE;
-    /*if (d) {
-        printf("close x,y,z,screen: %" PRId64
-            ",%" PRId64 ",%" PRId64 ",%d\n",
-            close_world_x, close_world_y, geometry_z,
-            close_screen_offset);
-        printf("far x,y,z,screen: %" PRId64
-            ",%" PRId64 ",%" PRId64 ",%d\n",
-            far_world_x, far_world_y, geometry_z,
-            far_screen_offset);
-    }*/
     if ((isfacingup && (far_screen_offset >
             close_screen_offset)) ||
             (!isfacingup && (far_screen_offset <
@@ -1569,13 +1561,6 @@ int roomcam_DrawFloorCeiling(
                 bottom1offset + ((bottom2offset - bottom1offset) *
                 scalar) / scalarrange
             ));
-            /*if (1) {
-                printf("topwx,topwy: %" PRId64 ",%" PRId64 " "
-                    "bottomwx,bottomwy: %" PRId64 ",%" PRId64 " "
-                    "top screen: %d, bottom screen: %d\n",
-                    topwx, topwy, bottomwx, bottomwy,
-                    (int)topoffset, (int)bottomoffset);
-            }*/
             if (bottomoffset >= topoffset) {
                 int64_t dyntopr = (
                     dynlightstarttop_r + ((dynlightendtop_r -
@@ -1825,8 +1810,8 @@ int roomcam_DrawFloorCeiling(
                 );*/
                 roomcam_DrawFloorCeilingSlice(
                     rendertarget, cam, r, geom, 0, z,
-                    topwx, topwy, r->floor_z,
-                    bottomwx, bottomwy, r->floor_z,
+                    topwx, topwy, r->floor_z + r->height,
+                    bottomwx, bottomwy, r->floor_z + r->height,
                     texinfo, topoffset, bottomoffset,
                     canvasx, canvasy, h, cr, cg, cb,
                     c2r, c2g, c2b
