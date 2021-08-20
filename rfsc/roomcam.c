@@ -38,6 +38,12 @@ static HOTSPOT inline int pixclip(int v) {
     return v;
 }
 
+static HOTSPOT inline int pixcliptop(int v) {
+    if (unlikely(v > 255))
+        return 255;
+    return v;
+}
+
 renderstatistics *roomcam_GetStats(roomcam *c) {
     if (c && c->cache)
         return &c->cache->stats;
@@ -567,16 +573,16 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int fullslicelen = (screenbottom - screentop + 1);
         assert(fullslicelen >= 1);
         const int tgoffsetplus = targetw * rendertargetcopylen;
+        int red = 0;
+        int green = 0;
+        int blue = 0;
+        int updatecolorcounter = 0;
+        const int srfw = srf->w;
+        const int srfh = srf->h;
+        const int colorupdateinterval = imax(32,
+            h / 16 / (1 + DUPLICATE_FLOOR_PIX));
         while (likely(row <= endrow)) {
             const int rowoffset = (row - startrow);
-            int red = cr + ((cr1to2diff * (row - screentop)) /
-                fullslicelen);
-            int green = cg + ((cg1to2diff * (row - screentop)) /
-                fullslicelen);
-            int blue = cb + ((cb1to2diff * (row - screentop)) /
-                fullslicelen);
-            assert(red >= cr || red >= cr2);
-            assert(red <= cr || red <= cr2);
             int64_t tx = (
                 toptx + ((tx1totx2diff * rowoffset) /
                     slicepixellen));
@@ -591,38 +597,51 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             else ty = ty % TEX_COORD_SCALER;
             // Here, we're using the non-sideways regular tex.
             const int srcoffset = (
-                ((tx * srf->w) / TEX_COORD_SCALER) +
-                (srf->w * ((ty * srf->h) / TEX_COORD_SCALER))
+                ((tx * srfw) / TEX_COORD_SCALER) +
+                (srfw * ((ty * srfh) / TEX_COORD_SCALER))
             ) * srccopylen;
             assert(srcoffset >= 0 &&
-                srcoffset < srf->w * srf->h * srccopylen);
+                srcoffset < srfw * srfh * srccopylen);
             assert(tgoffset >= 0 && tgoffset < rendertarget->w *
                 rendertarget->h * rendertargetcopylen);
-            int finalr = pixclip(
+
+            if (unlikely(updatecolorcounter %
+                    colorupdateinterval == 0)) {
+                red = cr + ((cr1to2diff * (row - screentop)) /
+                    fullslicelen);
+                green = cg + ((cg1to2diff * (row - screentop)) /
+                    fullslicelen);
+                blue = cb + ((cb1to2diff * (row - screentop)) /
+                    fullslicelen);
+                red = imax(0, imin(LIGHT_COLOR_SCALAR * 2, red));
+                green = imax(0, imin(LIGHT_COLOR_SCALAR * 2, green));
+                blue = imax(0, imin(LIGHT_COLOR_SCALAR * 2, blue));
+                assert(red >= cr || red >= cr2);
+                assert(red <= cr || red <= cr2);
+            }
+            tgpixels[tgoffset + 0] = pixcliptop(
                 srcpixels[srcoffset + 0] * red /
                 LIGHT_COLOR_SCALAR);
-            int finalg = pixclip(
+            tgpixels[tgoffset + 1] = pixcliptop(
                 srcpixels[srcoffset + 1] * green /
                 LIGHT_COLOR_SCALAR);
-            int finalb = pixclip(
+            tgpixels[tgoffset + 2] = pixcliptop(
                 srcpixels[srcoffset + 2] * blue /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 0] = finalr;
-            tgpixels[tgoffset + 1] = finalg;
-            tgpixels[tgoffset + 2] = finalb;
-            if (rendertarget->hasalpha)
+            if (likely(rendertarget->hasalpha))
                 tgpixels[tgoffset + 3] = 255;
+            updatecolorcounter++;
             row++;
             tgoffset += tgoffsetplus;
             #if defined(DUPLICATE_FLOOR_PIX) && \
                     DUPLICATE_FLOOR_PIX > 1
             int extra = 0;
-            while (extra < DUPLICATE_FLOOR_PIX - 1 &&
-                    row <= endrow) {
-                tgpixels[tgoffset + 0] = finalr;
-                tgpixels[tgoffset + 1] = finalg;
-                tgpixels[tgoffset + 2] = finalb;
-                if (rendertarget->hasalpha)
+            while (likely(extra < DUPLICATE_FLOOR_PIX - 1 &&
+                    row <= endrow)) {
+                assert(tgoffset - tgoffsetplus > 0);
+                memcpy(&tgpixels[tgoffset],
+                    &tgpixels[tgoffset - tgoffsetplus], 3);
+                if (likely(rendertarget->hasalpha))
                     tgpixels[tgoffset + 3] = 255;
                 row++;
                 tgoffset += tgoffsetplus;
@@ -1198,6 +1217,9 @@ HOTSPOT static int roomcam_DrawWallSlice(
         int64_t topworldz, int64_t bottomworldz,
         int x, int y, int h, int cr, int cg, int cb
         ) {
+    if (cr < 0) cr = 0;
+    if (cg < 0) cg = 0;
+    if (cb < 0) cb = 0;
     rfs2tex *t = roomlayer_GetTexOfRef(texinfo->tex);
     rfssurf *srf = (
         t ? graphics_GetTexSideways(t) : NULL
@@ -1251,9 +1273,12 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int tgoffsetplus = (
             targetw * rendertargetcopylen
         );
-        while (likely(k <= screenbottom)) {
+        const int srfw = srf->w;
+        int koffset = 0;
+        const int kmaxoffset = screenbottom - k;
+        while (likely(koffset <= kmaxoffset)) {
             ty = (
-                ty1 + ((ty1toty2diff * (k - screentop)) /
+                ty1 + ((ty1toty2diff * (koffset)) /
                     slicepixellen)
             );
             if (ty < 0) ty = (TEX_COORD_SCALER - 1 - (((-ty) - 1) %
@@ -1262,7 +1287,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
             assert(ty >= 0 && ty < TEX_COORD_SCALER);
             // Remember, we're using the sideways tex.
             int sourcex = (
-                (srf->w * (TEX_COORD_SCALER - 1 - ty))
+                (srfw * (TEX_COORD_SCALER - 1 - ty))
                 / TEX_COORD_SCALER
             );
             const int srcoffset = (
@@ -1270,22 +1295,19 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 srccopylen;
             assert(srcoffset >= 0 &&
                 srcoffset < srf->w * srf->h * srccopylen);
-            int finalr = pixclip(
+            tgpixels[tgoffset + 0] = pixcliptop(
                 srcpixels[srcoffset + 0] * cr /
                 LIGHT_COLOR_SCALAR);
-            int finalg = pixclip(
+            tgpixels[tgoffset + 1] = pixcliptop(
                 srcpixels[srcoffset + 1] * cg /
                 LIGHT_COLOR_SCALAR);
-            int finalb = pixclip(
+            tgpixels[tgoffset + 2] = pixcliptop(
                 srcpixels[srcoffset + 2] * cb /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 0] = finalr;
-            tgpixels[tgoffset + 1] = finalg;
-            tgpixels[tgoffset + 2] = finalb;
             if (rendertarget->hasalpha)
                 tgpixels[tgoffset + 3] = 255;
             tgoffset += tgoffsetplus;
-            k++;
+            koffset++;
         }
     }
     return 1;
