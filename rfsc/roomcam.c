@@ -340,170 +340,59 @@ int roomcam_DynamicLightAtXY(
     int64_t result_r = 0;
     int64_t result_g = 0;
     int64_t result_b = 0;
+    int64_t wallnormal_x = 0;
+    int64_t wallnormal_y = 0;
+    int wallid = isatwallno;
+    int wallidnext = (isatwallno >= 0 ? isatwallno + 1 : -1);
+    if (wallidnext >= r->corners) wallidnext = 0;
     if (isatwallno >= 0) {
         // We're sampling for light at a wall.
-        // Therefore, assume given x/y is on the wall segment.
-        // Calculate our mix of colors accordingly:
-        int wallid = isatwallno;
-        int wallidnext = isatwallno + 1;
-        if (wallidnext >= r->corners) wallidnext = 0;
-        int64_t walllen = math_veclen2di(
-            r->corner_x[wallidnext] - r->corner_x[wallid],
-            r->corner_y[wallidnext] - r->corner_y[wallid]
-        );
-        int64_t firstcornertoposlen = math_veclen2di(
-            x - r->corner_x[wallid],
-            y - r->corner_y[wallid]
-        );
-        int64_t mixlightscalar = imin(1000,
-            (firstcornertoposlen * (int64_t)1000) /
-            walllen
-        );
-        int lightsamplei, lightsamplei2;
-        if (mixlightscalar < 500) {
-            lightsamplei = 2 * wallid;
-            lightsamplei2 = 2 * wallid + 1;
-            mixlightscalar *= 2;
-        } else {
-            lightsamplei = 2 * wallid + 1;
-            lightsamplei2 = 2 * wallidnext;
-            mixlightscalar = (mixlightscalar - 500) * 2;
-        }
-        assert(mixlightscalar >= 0 && mixlightscalar <= 1000);
-        int antimixlightscalar = 1000 - mixlightscalar;
-        assert(rcache->dynlights_set);
-        int64_t mix_r[2] = {0};
-        int64_t mix_g[2] = {0};
-        int64_t mix_b[2] = {0};
-        int addedcount = 0;
-        int i = 0;
-        while (i < 2) {
-            int sampleidx = (
-                i == 0 ? lightsamplei : lightsamplei2
-            );
-            const int lcount = (
-                rcache->dynlight_sample[sampleidx].
-                    light_count);
-            int z = 0;
-            while (z < lcount) {
-                cachedlightinfo *linfo = &(
-                    rcache->dynlight_sample[sampleidx].light[z]
-                );
-                int64_t strength_scalar = roomcam_DynlightFactorWall(
-                    linfo->x, linfo->y, linfo->range,
-                    linfo->dist,
-                    r->corner_x[wallid], r->corner_y[wallid],
-                    r->corner_x[wallidnext], r->corner_y[wallidnext],
-                    r->wall[wallid].normal_x,
-                    r->wall[wallid].normal_y
-                );
-                assert(linfo->r >= 0 && linfo->r <= LIGHT_COLOR_SCALAR);
-                assert(linfo->g >= 0 && linfo->g <= LIGHT_COLOR_SCALAR);
-                assert(linfo->b >= 0 && linfo->b <= LIGHT_COLOR_SCALAR);
-                mix_r[i] += (strength_scalar * linfo->r /
-                    LIGHT_COLOR_SCALAR);
-                mix_g[i] += (strength_scalar * linfo->g /
-                    LIGHT_COLOR_SCALAR);
-                mix_b[i] += (strength_scalar * linfo->b /
-                    LIGHT_COLOR_SCALAR);
-                z++;
-            }
-            if (lcount > 1) {
-                mix_r[i] /= (int64_t)lcount;
-                mix_g[i] /= (int64_t)lcount;
-                mix_b[i] /= (int64_t)lcount;
-            }
-            assert(mix_r[i] >= 0 && mix_r[i] <= 1000);
-            assert(mix_g[i] >= 0 && mix_g[i] <= 1000);
-            assert(mix_b[i] >= 0 && mix_b[i] <= 1000);
-            i++;
-        }
-        result_r = (
-            ((mix_r[0] * antimixlightscalar + mix_r[1] *
-                mixlightscalar) / 1000)
-                * scaletorange / 2000
-        );
-        result_g = (
-            ((mix_g[0] * antimixlightscalar + mix_g[1] *
-                mixlightscalar) / 1000)
-                * scaletorange / 2000
-        );
-        result_b = (
-            ((mix_b[0] * antimixlightscalar + mix_b[1] *
-                mixlightscalar) / 1000)
-                * scaletorange / 2000
-        );
+        wallnormal_x = r->wall[wallid].normal_x;
+        wallnormal_y = r->wall[wallid].normal_y;
     } else {
-        int64_t mix_r = 0;
-        int64_t mix_g = 0;
-        int64_t mix_b = 0;
-        int64_t dists[ROOM_MAX_CORNERS * 2 + 1];
-        int64_t maxdist = 0;
-        int sampleidx = 0;
-        while (sampleidx <= 2 * r->corners) {
-            dists[sampleidx] = math_veclen2di(
-                x - rcache->dynlight_sample[
-                    sampleidx].samplex,
-                y - rcache->dynlight_sample[
-                    sampleidx].sampley
-            );
-            if (dists[sampleidx] > maxdist) maxdist = dists[sampleidx];
-            sampleidx++;
-        }
-        int64_t strengthblendsum = 0;
-        sampleidx = 0;
-        while (sampleidx <= 2 * r->corners) {
-            int strength = 1000 - (dists[sampleidx] * 1000 / maxdist);
-            if (strength <= 30) {
-                sampleidx++;
-                continue;
-            }
-            assert(strength >= 0 && strength <= 1000);
-            const int lcount = (
-                rcache->dynlight_sample[sampleidx].
-                    light_count);
-            int64_t cx = 0;
-            int64_t cy = 0;
-            int64_t cz = 0;
-            int k = 0;
-            while (k < lcount) {
-                cachedlightinfo *linfo = &(
-                    rcache->dynlight_sample[sampleidx].light[k]
-                );
-                int64_t strength_scalar = (
-                    roomcam_DynlightFactorFloorCeilOrPoint(
-                        linfo->z, linfo->range,
-                        linfo->dist, z, isfacingup, isfacingdown
-                    ));
-                assert(linfo->r >= 0 && linfo->r <= LIGHT_COLOR_SCALAR);
-                assert(linfo->g >= 0 && linfo->g <= LIGHT_COLOR_SCALAR);
-                assert(linfo->b >= 0 && linfo->b <= LIGHT_COLOR_SCALAR);
-                cx += (strength_scalar * linfo->r /
-                    LIGHT_COLOR_SCALAR);
-                cy += (strength_scalar * linfo->g /
-                    LIGHT_COLOR_SCALAR);
-                cz += (strength_scalar * linfo->b /
-                    LIGHT_COLOR_SCALAR);
-                k++;
-            }
-            if (lcount >= 1) {
-                cx /= lcount;
-                cy /= lcount;
-                cz /= lcount;
-            }
-            assert(cx >= 0 && cx < 1000);
-            assert(cy >= 0 && cy < 1000);
-            assert(cz >= 0 && cz < 1000);
-            mix_r += cx * strength;
-            mix_g += cy * strength;
-            mix_b += cz * strength;
-            strengthblendsum += strength * 1000;
-            sampleidx++;
-        }
-        result_r = mix_r * scaletorange / strengthblendsum;
-        result_g = mix_g * scaletorange / strengthblendsum;
-        result_b = mix_b * scaletorange / strengthblendsum;
+        // We're sampling somewhere inside the room.
     }
+    // Just go through entire light list:
+    int64_t mix_r = 0;
+    int64_t mix_g = 0;
+    int64_t mix_b = 0;
+    int i = 0;
+    while (i < rcache->light_count) {
+        cachedlightinfo *linfo = &(
+            rcache->light[i]
+        );
+        const int64_t ldist = math_veclen2di(
+            linfo->x - x, linfo->y - y
+        );
+        int64_t strength_scalar = (isatwallno < 0 ?
+            roomcam_DynlightFactorFloorCeilOrPoint(
+                linfo->z, linfo->range,
+                ldist, z, isfacingup, isfacingdown
+            ) : roomcam_DynlightFactorWall(
+                linfo->x, linfo->y, linfo->range,
+                ldist,
+                r->corner_x[wallid], r->corner_y[wallid],
+                r->corner_x[wallidnext], r->corner_y[wallidnext],
+                r->wall[wallid].normal_x,
+                r->wall[wallid].normal_y
+            ));
+        assert(linfo->r >= 0 && linfo->r <= LIGHT_COLOR_SCALAR);
+        assert(linfo->g >= 0 && linfo->g <= LIGHT_COLOR_SCALAR);
+        assert(linfo->b >= 0 && linfo->b <= LIGHT_COLOR_SCALAR);
+        mix_r += (strength_scalar * linfo->r /
+            LIGHT_COLOR_SCALAR);
+        mix_g += (strength_scalar * linfo->g /
+            LIGHT_COLOR_SCALAR);
+        mix_b += (strength_scalar * linfo->b /
+            LIGHT_COLOR_SCALAR);
+        i++;
+    }
+    result_r = imax(0,
+        imin(scaletorange, (mix_r * scaletorange) / 1000));
+    result_g = imax(0,
+        imin(scaletorange, (mix_g * scaletorange) / 1000));
+    result_b = imax(0,
+        imin(scaletorange, (mix_b * scaletorange) / 1000));
     assert(result_r >= 0 && result_r <= scaletorange);
     assert(result_g >= 0 && result_g <= scaletorange);
     assert(result_b >= 0 && result_b <= scaletorange);
@@ -725,6 +614,21 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 tgpixels[tgoffset + 3] = 255;
             row++;
             tgoffset += tgoffsetplus;
+            #if defined(DUPLICATE_FLOOR_PIX) && \
+                    DUPLICATE_FLOOR_PIX > 1
+            int extra = 0;
+            while (extra < DUPLICATE_FLOOR_PIX - 1 &&
+                    row <= endrow) {
+                tgpixels[tgoffset + 0] = finalr;
+                tgpixels[tgoffset + 1] = finalg;
+                tgpixels[tgoffset + 2] = finalb;
+                if (rendertarget->hasalpha)
+                    tgpixels[tgoffset + 3] = 255;
+                row++;
+                tgoffset += tgoffsetplus;
+                extra++;
+            }
+            #endif
         }
         assert(row == endrow + 1);
         past_world_x = target_world_x;

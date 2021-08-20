@@ -14,19 +14,15 @@
 #include "roomdefs.h"
 
 
+typedef struct roomobj roomobj;
 typedef struct room room;
 typedef struct roomcam roomcam;
 
 typedef struct cachedlightinfo {
+    roomobj *obj;
     int64_t x, y, z, dist;
     int r, g, b, range;
 } cachedlightinfo;
-
-typedef struct cachedlightcornerinfo {
-    int64_t samplex, sampley;
-    int light_count;
-    cachedlightinfo light[MAX_DRAWN_LIGHTS_PER_ROOM];
-} cachedlightcornerinfo;
 
 typedef struct roomrendercache {
     uint8_t cullinfo_set;
@@ -37,9 +33,8 @@ typedef struct roomrendercache {
     int64_t upscaledcorner_y[ROOM_MAX_CORNERS];
 
     uint8_t dynlights_set;
-    cachedlightcornerinfo dynlight_sample[
-        ROOM_MAX_CORNERS * 2 + 1
-    ];
+    int light_count;
+    cachedlightinfo light[MAX_DRAWN_LIGHTS_PER_ROOM];
 } roomrendercache;
 
 void room_ClearRenderCache();

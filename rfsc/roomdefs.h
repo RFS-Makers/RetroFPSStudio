@@ -26,7 +26,7 @@
 #define ONE_METER_IN_UNITS ((int64_t)128LL)
 #define GRID_UNITS (ONE_METER_IN_UNITS/4LL)
 #define TEX_REPEAT_UNITS ((int64_t)(\
-    ONE_METER_IN_UNITS * 1LL\
+    ONE_METER_IN_UNITS * 2LL\
 ))
 
 // Default textures:
@@ -55,6 +55,7 @@
 #define LIGHT_COLOR_SCALAR 32
 #define DRAW_CORNER_COORD_UPSCALE 16
 #define MAX_DRAWN_LIGHTS_PER_ROOM 4
+#define DUPLICATE_FLOOR_PIX 1
 
 // Door and elevator directions:
 #define ROOM_DIR_UP 1
