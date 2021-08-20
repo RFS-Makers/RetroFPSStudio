@@ -1256,7 +1256,9 @@ HOTSPOT static int roomcam_DrawWallSlice(
         );
         if (sourcey < 0) sourcey = 0;
         if (sourcey >= srf->h) sourcey = srf->h - 1;
-        int sourcey_multiplied_w = sourcey * srf->w;
+        int sourcey_multiplied_w_copylen = (
+            sourcey * srf->w * srccopylen
+        );
         int k = screentop;
         assert(screenbottom >= screentop);
         assert(screenbottom <= h);
@@ -1278,7 +1280,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int kmaxoffset = screenbottom - k;
         while (likely(koffset <= kmaxoffset)) {
             ty = (
-                ty1 + ((ty1toty2diff * (koffset)) /
+                ty1 + ((ty1toty2diff * koffset) /
                     slicepixellen)
             );
             if (ty < 0) ty = (TEX_COORD_SCALER - 1 - (((-ty) - 1) %
@@ -1286,13 +1288,13 @@ HOTSPOT static int roomcam_DrawWallSlice(
             else ty = ty % TEX_COORD_SCALER;
             assert(ty >= 0 && ty < TEX_COORD_SCALER);
             // Remember, we're using the sideways tex.
-            int sourcex = (
+            const int sourcex = (
                 (srfw * (TEX_COORD_SCALER - 1 - ty))
                 / TEX_COORD_SCALER
-            );
+            ) * srccopylen;
             const int srcoffset = (
-                sourcex + sourcey_multiplied_w) *
-                srccopylen;
+                sourcex + sourcey_multiplied_w_copylen
+            );
             assert(srcoffset >= 0 &&
                 srcoffset < srf->w * srf->h * srccopylen);
             tgpixels[tgoffset + 0] = pixcliptop(
