@@ -30,20 +30,6 @@
 #include "rfssurf.h"
 
 
-static HOTSPOT inline int pixclip(int v) {
-    if (unlikely(v > 255))
-        return 255;
-    if (unlikely(v < 0))
-        return 0;
-    return v;
-}
-
-static HOTSPOT inline int pixcliptop(int v) {
-    if (unlikely(v > 255))
-        return 255;
-    return v;
-}
-
 renderstatistics *roomcam_GetStats(roomcam *c) {
     if (c && c->cache)
         return &c->cache->stats;
@@ -577,6 +563,7 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             (x + xoffset + (y + row) * targetw) *
             rendertargetcopylen
         );
+        const int origtgoffset = tgoffset;
         const int fullslicelen = (screenbottom - screentop + 1);
         assert(fullslicelen >= 1);
         const int tgoffsetplus = targetw * rendertargetcopylen;
@@ -591,12 +578,15 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int tghasalpha = rendertarget->hasalpha;
         int rowoffset = 0;
         int maxrowoffset = endrow - row;
+        const int alphaidx = (tghasalpha ? 3 : 0);
+        int tx1totx2diff_mult_rowoffset = 0;
+        int ty1toty2diff_mult_rowoffset = 0;
         while (likely(rowoffset <= maxrowoffset)) {
             int64_t tx = ((int32_t)(
-                toptx + ((tx1totx2diff * rowoffset) /
+                toptx + (tx1totx2diff_mult_rowoffset /
                     slicepixellen))) & texcoord_modulo_mask;
             int64_t ty = ((int32_t)(
-                topty + ((ty1toty2diff * rowoffset) /
+                topty + (ty1toty2diff_mult_rowoffset /
                     slicepixellen))) & texcoord_modulo_mask;
             // Here, we're using the non-sideways regular tex.
             const int srcoffset = (
@@ -612,31 +602,32 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                     colorupdateinterval == 0)) {
                 const int row = startrow + rowoffset;
                 const int screentoprowoffset = row - screentop;
-                red = cr + ((cr1to2diff * screentoprowoffset) /
-                    fullslicelen);
-                green = cg + ((cg1to2diff * screentoprowoffset) /
-                    fullslicelen);
-                blue = cb + ((cb1to2diff * screentoprowoffset) /
-                    fullslicelen);
+                red = cr + (cr1to2diff * screentoprowoffset) /
+                    fullslicelen;
+                green = cg + (cg1to2diff * screentoprowoffset) /
+                    fullslicelen;
+                blue = cb + (cb1to2diff * screentoprowoffset) /
+                    fullslicelen;
                 red = imax(0, imin(LIGHT_COLOR_SCALAR * 2, red));
                 green = imax(0, imin(LIGHT_COLOR_SCALAR * 2, green));
                 blue = imax(0, imin(LIGHT_COLOR_SCALAR * 2, blue));
                 assert(red >= cr || red >= cr2);
                 assert(red <= cr || red <= cr2);
             }
-            tgpixels[tgoffset + 0] = pixcliptop(
+            tgpixels[tgoffset + alphaidx] = 255;
+            tgpixels[tgoffset + 0] = math_pixcliptop(
                 srcpixels[srcoffset + 0] * red /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 1] = pixcliptop(
+            tgpixels[tgoffset + 1] = math_pixcliptop(
                 srcpixels[srcoffset + 1] * green /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 2] = pixcliptop(
+            tgpixels[tgoffset + 2] = math_pixcliptop(
                 srcpixels[srcoffset + 2] * blue /
                 LIGHT_COLOR_SCALAR);
-            if (likely(tghasalpha))
-                tgpixels[tgoffset + 3] = 255;
             updatecolorcounter++;
             rowoffset++;
+            tx1totx2diff_mult_rowoffset += tx1totx2diff;
+            ty1toty2diff_mult_rowoffset += ty1toty2diff;
             tgoffset += tgoffsetplus;
             #if defined(DUPLICATE_FLOOR_PIX) && \
                     DUPLICATE_FLOOR_PIX > 1
@@ -1281,6 +1272,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int32_t ty1toty2diff = (ty2 - ty1);
         int tgoffset = (x + (y + k) * targetw) *
             rendertargetcopylen;
+        const int origtgoffset = tgoffset;
         const int tgoffsetplus = (
             targetw * rendertargetcopylen
         );
@@ -1297,10 +1289,11 @@ HOTSPOT static int roomcam_DrawWallSlice(
             )
         );
         const int tghasalpha = rendertarget->hasalpha;
+        const int alphaidx = (tghasalpha ? 3 : 0);
         while (likely(rowoffset_mult_ty1toty2diff !=
                 pastmaxrowoffset_mult)) {
             ty = ((int32_t)(
-                ty1 + ((rowoffset_mult_ty1toty2diff)
+                ty1 + (rowoffset_mult_ty1toty2diff
                     / slicepixellen)
             )) & texcoord_modulo_mask;
             // Remember, we're using the sideways tex.
@@ -1313,16 +1306,16 @@ HOTSPOT static int roomcam_DrawWallSlice(
             );
             assert(srcoffset >= 0 &&
                 srcoffset < srf->w * srf->h * srccopylen);
-            tgpixels[tgoffset + 0] = pixcliptop(
+            tgpixels[tgoffset + alphaidx] = 255;
+            tgpixels[tgoffset + 0] = math_pixcliptop(
                 srcpixels[srcoffset + 0] * cr /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 1] = pixcliptop(
+            tgpixels[tgoffset + 1] = math_pixcliptop(
                 srcpixels[srcoffset + 1] * cg /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 2] = pixcliptop(
+            tgpixels[tgoffset + 2] = math_pixcliptop(
                 srcpixels[srcoffset + 2] * cb /
                 LIGHT_COLOR_SCALAR);
-            if (likely(tghasalpha)) tgpixels[tgoffset + 3] = 255;
             tgoffset += tgoffsetplus;
             rowoffset_mult_ty1toty2diff += ty1toty2diff;
         }

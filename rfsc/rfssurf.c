@@ -16,29 +16,9 @@
 #endif
 #include <unistd.h>
 
+#include "math2d.h"
 #include "rfssurf.h"
 
-
-
-static HOTSPOT inline int imin(int v1, int v2) {
-    if (v1 < v2)
-        return v1;
-    return v2;
-}
-
-static HOTSPOT inline int imax(int v1, int v2) {
-    if (v1 > v2)
-        return v1;
-    return v2;
-}
-
-static HOTSPOT inline int pixclip(int v) {
-    if (unlikely(v > 255))
-        return 255;
-    if (unlikely(v < 0))
-        return 0;
-    return v;
-}
 
 static int sanitize_clipping(int *intgx, int *intgy,
         int *inclipx, int *inclipy, int *inclipw, int *incliph,
@@ -245,20 +225,22 @@ void rfssurf_Rect(rfssurf *target,
             int targetoffset = (cy * target->w + x) * (
                 copylen
             );
+            assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
+            assert(alphar >= 0 && reverse_alphar >= 0);
+            assert(ir >= 0 && ig >= 0 && ib >= 0);
             cx = x;
             while (cx < maxx) {
-                assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
-                target->pixels[targetoffset + 0] = pixclip(
+                target->pixels[targetoffset + 0] = math_pixcliptop(
                     ((int)target->pixels[targetoffset + 0] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     (ir * alphar / INT_COLOR_SCALAR)
                 );
-                target->pixels[targetoffset + 1] = pixclip(
+                target->pixels[targetoffset + 1] = math_pixcliptop(
                     ((int)target->pixels[targetoffset + 1] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     (ig * alphar / INT_COLOR_SCALAR)
                 );
-                target->pixels[targetoffset + 2] = pixclip(
+                target->pixels[targetoffset + 2] = math_pixcliptop(
                     ((int)target->pixels[targetoffset + 2] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     (ib * alphar / INT_COLOR_SCALAR)
@@ -269,7 +251,7 @@ void rfssurf_Rect(rfssurf *target,
                     a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a);
-                    target->pixels[targetoffset + 3] = pixclip(
+                    target->pixels[targetoffset + 3] = math_pixcliptop(
                         a / INT_COLOR_SCALAR
                     );
                 }
@@ -289,9 +271,11 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
         return;
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
+    const int tghasalpha = target->hasalpha;
     const int INT_COLOR_SCALAR = 1024;
     const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
     assert(clipalpha > 0);
+    const int alphaindex = (target->hasalpha ? 3 : 0);
     const int maxy = tgy + cliph;
     int y = tgy;
     const int maxx = tgx + clipw;
@@ -317,14 +301,14 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
                 sourceoffset += sourcestep;
                 continue;
             }
+            assert(alphar >= 0);
             int reverse_alphar = 0;
             if (likely(alphar >= INT_COLOR_SCALAR)) {
+                target->pixels[targetoffset + alphaindex] = 255;
                 memcpy(
                     &target->pixels[targetoffset],
                     &source->pixels[sourceoffset], 3
                 );
-                if (likely(target->hasalpha))
-                    target->pixels[targetoffset + 3] = 255;
                 x++;
                 targetoffset += targetstep;
                 sourceoffset += sourcestep;
@@ -332,19 +316,32 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
             } else {
                 reverse_alphar = (INT_COLOR_SCALAR - alphar);
                 assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
-                target->pixels[targetoffset + 0] = pixclip(
+                if (tghasalpha) {
+                    // ^ possibly faster to branch for rgb-only surfaces,
+                    // since math_pixcliptop also branches anyway.
+                    int a = target->pixels[targetoffset + alphaindex] *
+                        INT_COLOR_SCALAR;
+                    a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
+                        INT_COLOR_SCALAR;
+                    a = (INT_COLOR_SCALAR * 255 - a);
+                    target->pixels[targetoffset + alphaindex] = math_pixcliptop(
+                        a / INT_COLOR_SCALAR
+                    );
+                }
+                // Blend in rgb now:
+                target->pixels[targetoffset + 0] = math_pixcliptop(
                     ((int)target->pixels[targetoffset + 0] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     ((int)source->pixels[sourceoffset + 0] *
                         alphar / INT_COLOR_SCALAR)
                 );
-                target->pixels[targetoffset + 1] = pixclip(
+                target->pixels[targetoffset + 1] = math_pixcliptop(
                     ((int)target->pixels[targetoffset + 1] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     ((int)source->pixels[sourceoffset + 1] *
                         alphar / INT_COLOR_SCALAR)
                 );
-                target->pixels[targetoffset + 2] = pixclip(
+                target->pixels[targetoffset + 2] = math_pixcliptop(
                     ((int)target->pixels[targetoffset + 2] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     ((int)source->pixels[sourceoffset + 2] *
@@ -357,7 +354,7 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
                 a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                     INT_COLOR_SCALAR;
                 a = (INT_COLOR_SCALAR * 255 - a);
-                target->pixels[targetoffset + 3] = pixclip(
+                target->pixels[targetoffset + 3] = math_pixclip(
                     a / INT_COLOR_SCALAR
                 );
             }
@@ -454,6 +451,8 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
             (y - tgy + clipy) * source->w + clipx
         ) * sourcestep;
         x = tgx;
+        assert(inta >= 0 && intr >= 0 && intg >= 0 && intb >= 0);
+        assert(intrwhite >= 0 && intgwhite >= 0 && intbwhite >= 0);
         while (x < maxx) {
             // XXX: assumes little endian. format is BGR/ABGR
             int alphar = inta;
@@ -470,7 +469,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
             if (unlikely(alphar > INT_COLOR_SCALAR))
                 alphar = INT_COLOR_SCALAR;
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
-            target->pixels[targetoffset + 0] = pixclip((
+            target->pixels[targetoffset + 0] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 0] *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)source->pixels[sourceoffset + 0] *
@@ -479,7 +478,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                     intrwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
             ));
-            target->pixels[targetoffset + 1] = pixclip((
+            target->pixels[targetoffset + 1] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 1] *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)source->pixels[sourceoffset + 1] *
@@ -488,7 +487,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                     intgwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
             ));
-            target->pixels[targetoffset + 2] = pixclip((
+            target->pixels[targetoffset + 2] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 2] *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)source->pixels[sourceoffset + 2] *
@@ -503,7 +502,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                 a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                     INT_COLOR_SCALAR;
                 a = (INT_COLOR_SCALAR * 255 - a);
-                target->pixels[targetoffset + 3] = pixclip(
+                target->pixels[targetoffset + 3] = math_pixcliptop(
                     a / INT_COLOR_SCALAR
                 );
             }
@@ -576,6 +575,8 @@ HOTSPOT void rfssurf_BlitScaled(
                 clipy)) *
             source->w + clipx
         ) * sourcestep;
+        assert(inta >= 0 && intr >= 0 && intg >= 0 && intb >= 0);
+        assert(intrwhite >= 0 && intgwhite >= 0 && intbwhite >= 0);
         x = tgx;
         while (x < maxx) {
             // XXX: assumes little endian. format is BGR/ABGR
@@ -599,7 +600,7 @@ HOTSPOT void rfssurf_BlitScaled(
             if (unlikely(alphar > INT_COLOR_SCALAR))
                 alphar = INT_COLOR_SCALAR;
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
-            target->pixels[targetoffset + 0] = pixclip((
+            target->pixels[targetoffset + 0] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 0] *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)source->pixels[sourceoffset + 0] *
@@ -608,7 +609,7 @@ HOTSPOT void rfssurf_BlitScaled(
                     intrwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
             ));
-            target->pixels[targetoffset + 1] = pixclip((
+            target->pixels[targetoffset + 1] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 1] *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)source->pixels[sourceoffset + 1] *
@@ -617,7 +618,7 @@ HOTSPOT void rfssurf_BlitScaled(
                     intgwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
             ));
-            target->pixels[targetoffset + 2] = pixclip((
+            target->pixels[targetoffset + 2] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 2] *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)source->pixels[sourceoffset + 2] *
@@ -632,7 +633,7 @@ HOTSPOT void rfssurf_BlitScaled(
                 a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                     INT_COLOR_SCALAR;
                 a = (INT_COLOR_SCALAR * 255 - a);
-                target->pixels[targetoffset + 3] = pixclip(
+                target->pixels[targetoffset + 3] = math_pixcliptop(
                     a / INT_COLOR_SCALAR
                 );
             }

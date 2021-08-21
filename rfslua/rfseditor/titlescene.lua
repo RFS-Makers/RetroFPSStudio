@@ -224,47 +224,16 @@ function rfseditor.titlescene.on_draw()
     end
     rfseditor.titlescene.update_menu()
 
-    -- Nonsense test particles:
-    --[[if true then
-        local t = rfs.gfx.get_tex("rfslua/res/ui/$logo")
-        if rfseditor.titlescene._particles == nil then
-            rfseditor.titlescene._particles = {}
-            local i = 1
-            while i < 150 do
-                table.insert(
-                    rfseditor.titlescene._particles,
-                    {math.random() * 1.2 - 0.1,
-                     math.random() * 1.2 - 0.1}
-                )
-                i = i + 1
-            end
-        end
-        local i = 1
-        while i < #rfseditor.titlescene._particles do
-            local pos = rfseditor.titlescene._particles[i]
-            pos[1] = pos[1] + 0.001
-            pos[2] = pos[2] + 0.002
-            if pos[1] > 1.1 then
-                pos[1] = -0.1
-            end
-            if pos[2] > 1.1 then
-                pos[2] = -0.1
-            end
-            rfseditor.titlescene._particles[i] = pos
-            rfs.gfx.draw_tex(
-                rfs.gfx.get_tex("rfslua/res/ui/$logo"),
-                pos[1] * rfs.window.renderw,
-                pos[2] * rfs.window.renderh,
-                0.5 * scaler, 0.5 * scaler, 1, 1, 1, 0.7
-            )
-            i = i + 1
-        end
-    end]]
-
     -- 3D world draw:
     if rfseditor._democam ~= nil then
         rfseditor._democam:draw(
             0, 0, rfs.window.renderw, rfs.window.renderh
+        )
+    else
+        -- Otherwise, clear with black:
+        rfs.gfx.draw_rect(
+            0, 0, rfs.window.renderw, rfs.window.renderh,
+            0.1, 0, 0.1, 1.0
         )
     end
 
