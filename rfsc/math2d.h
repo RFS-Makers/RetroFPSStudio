@@ -14,6 +14,40 @@
 #include "mathdefs.h"
 
 
+static inline int math_count_bits_until_zeros(uint32_t v) {
+    int count = 0;
+    while (1) {
+        if (v == 0)
+            return count;
+        v = (0x7FFFFFFF & (v >> 1));
+        count++;
+    }
+    return count;
+}
+
+static inline uint32_t math_one_bits_from_right(int bits) {
+    uint32_t result = 0;
+    uint32_t mask = 1;
+    while (bits > 0) {
+        result |= mask;
+        mask = (mask << 1);
+        bits--;
+    }
+    return result;
+}
+
+static inline int math_fixnpot(int v) {
+    int i = 2;
+    while (v > i) {
+        i *= 2;
+    }
+    return i;
+}
+
+static inline int math_isnpot(int v) {
+    return (v != math_fixnpot(v));
+}
+
 static inline double math_angle2df(double x, double y) {
     // Angles: (1.0, 0.0) returns 0 degrees angle,
     // CCW rotation increases angle.

@@ -35,14 +35,6 @@ static rfs2tex *_current_rt = NULL;
 static int _current_rt_is_void = 0;
 
 
-int fixnpot(int v) {
-    int i = 2;
-    while (v > i) {
-        i *= 2;
-    }
-    return i;
-}
-
 static void _texture_RemoveGlobalTexture(rfs2tex *tex) {
     if (!tex) return;
 
