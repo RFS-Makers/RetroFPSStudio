@@ -158,7 +158,7 @@ rfssurf *rfssurf_DuplicateNoAlpha(rfssurf *surf) {
     return newsrf;
 }
 
-void rfssurf_Rect(rfssurf *target,
+HOTSPOT void rfssurf_Rect(rfssurf *target,
         int x, int y, int w, int h,
         double r, double g, double b, double a) {
     if (x < 0) {
