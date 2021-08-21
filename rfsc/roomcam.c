@@ -635,12 +635,9 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             while (likely(extra < DUPLICATE_FLOOR_PIX - 1 &&
                     rowoffset <= maxrowoffset)) {
                 assert(tgoffset - tgoffsetplus > 0);
-                if (likely(tghasalpha))
-                    memcpy(&tgpixels[tgoffset],
-                        &tgpixels[tgoffset - tgoffsetplus], 4);
-                else
-                    memcpy(&tgpixels[tgoffset],
-                        &tgpixels[tgoffset - tgoffsetplus], 3);
+                tgpixels[tgoffset + alphaidx] = 255;
+                memcpy(&tgpixels[tgoffset],
+                    &tgpixels[tgoffset - tgoffsetplus], 3);
                 rowoffset++;
                 tgoffset += tgoffsetplus;
                 extra++;

@@ -455,19 +455,21 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
         assert(intrwhite >= 0 && intgwhite >= 0 && intbwhite >= 0);
         while (x < maxx) {
             // XXX: assumes little endian. format is BGR/ABGR
-            int alphar = inta;
-            if (likely(source->hasalpha))
+            int alphar;
+            if (likely(source->hasalpha)) {
+                if (likely(source->pixels[sourceoffset + 3] == 0)) {
+                    x++;
+                    sourceoffset += sourcestep;
+                    targetoffset += targetstep;
+                    continue;
+                }
                 alphar = (inta *
                     ((int)source->pixels[sourceoffset + 3]
                         * INT_COLOR_SCALAR / 255)) / INT_COLOR_SCALAR;
-            if (unlikely(alphar < clipalpha)) {
-                x++;
-                targetoffset += targetstep;
-                sourceoffset += sourcestep;
-                continue;
+                assert(alphar <= INT_COLOR_SCALAR);
+            } else {
+                alphar = inta;
             }
-            if (unlikely(alphar > INT_COLOR_SCALAR))
-                alphar = INT_COLOR_SCALAR;
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
             target->pixels[targetoffset + 0] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 0] *
@@ -563,6 +565,8 @@ HOTSPOT void rfssurf_BlitScaled(
     const int scaledivy = scaley * INT_COLOR_SCALAR;
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
+    const int sourcehasalpha = source->hasalpha;
+    const int targethasalpha = target->hasalpha;
     if (y >= maxy || x >= maxx)
         return;
     while (y < maxy) {
@@ -576,6 +580,7 @@ HOTSPOT void rfssurf_BlitScaled(
             source->w + clipx
         ) * sourcestep;
         assert(inta >= 0 && intr >= 0 && intg >= 0 && intb >= 0);
+        assert(inta <= INT_COLOR_SCALAR);
         assert(intrwhite >= 0 && intgwhite >= 0 && intbwhite >= 0);
         x = tgx;
         while (x < maxx) {
@@ -586,19 +591,20 @@ HOTSPOT void rfssurf_BlitScaled(
                     INT_COLOR_SCALAR / scaledivx))) *
                     sourcestep
             );
-            int alphar = inta;
-            if (likely(source->hasalpha)) {
+            int alphar;
+            if (likely(sourcehasalpha)) {
+                if (likely(source->pixels[sourceoffset + 3] == 0)) {
+                    x++;
+                    targetoffset += targetstep;
+                    continue;
+                }
                 alphar = (inta *
                     ((int)source->pixels[sourceoffset + 3]
                         * INT_COLOR_SCALAR / 255)) / INT_COLOR_SCALAR;
+                assert(alphar <= INT_COLOR_SCALAR);
+            } else {
+                alphar = inta;
             }
-            if (unlikely(alphar <= clipalpha)) {
-                x++;
-                targetoffset += targetstep;
-                continue;
-            }
-            if (unlikely(alphar > INT_COLOR_SCALAR))
-                alphar = INT_COLOR_SCALAR;
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
             target->pixels[targetoffset + 0] = math_pixcliptop((
                 (int)target->pixels[targetoffset + 0] *
