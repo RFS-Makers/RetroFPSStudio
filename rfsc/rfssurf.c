@@ -272,6 +272,7 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
     const int tghasalpha = target->hasalpha;
+    const int sourcehasalpha = source->hasalpha;
     const int INT_COLOR_SCALAR = 1024;
     const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
     assert(clipalpha > 0);
@@ -291,27 +292,38 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
         x = tgx;
         while (x < maxx) {
             // XXX: assumes little endian. format is BGR/ABGR
-            int alphar = INT_COLOR_SCALAR;
-            if (source->hasalpha)
+            int alphar;
+            if (likely(sourcehasalpha)) {
+                if (likely(source->pixels[sourceoffset + 3] == 0)) {
+                    while (likely(source->pixels[sourceoffset + 3] == 0 &&
+                            x < maxx)) {
+                        x++;
+                        sourceoffset += sourcestep;
+                        targetoffset += targetstep;
+                        continue;
+                    }
+                    continue;
+                }
                 alphar = (((int)source->pixels[sourceoffset + 3]
-                    * INT_COLOR_SCALAR / 255));
-            if (unlikely(alphar < clipalpha)) {
-                x++;
-                targetoffset += targetstep;
-                sourceoffset += sourcestep;
-                continue;
+                    * INT_COLOR_SCALAR) / 255);
+                assert(alphar <= INT_COLOR_SCALAR);
+            } else {
+                alphar = INT_COLOR_SCALAR;
             }
-            assert(alphar >= 0);
             int reverse_alphar = 0;
             if (likely(alphar >= INT_COLOR_SCALAR)) {
-                target->pixels[targetoffset + alphaindex] = 255;
-                memcpy(
-                    &target->pixels[targetoffset],
-                    &source->pixels[sourceoffset], 3
-                );
-                x++;
-                targetoffset += targetstep;
-                sourceoffset += sourcestep;
+                while (likely(source->pixels[sourceoffset + 3] == 255 &&
+                        x < maxx)) {
+                    target->pixels[targetoffset + alphaindex] = 255;
+                    memcpy(
+                        &target->pixels[targetoffset],
+                        &source->pixels[sourceoffset], 3
+                    );
+                    x++;
+                    targetoffset += targetstep;
+                    sourceoffset += sourcestep;
+                    continue;
+                }
                 continue;
             } else {
                 reverse_alphar = (INT_COLOR_SCALAR - alphar);
@@ -458,9 +470,14 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
             int alphar;
             if (likely(source->hasalpha)) {
                 if (likely(source->pixels[sourceoffset + 3] == 0)) {
-                    x++;
-                    sourceoffset += sourcestep;
-                    targetoffset += targetstep;
+                    while (likely(source->pixels[
+                            sourceoffset + 3] == 0 &&
+                            x < maxx)) {
+                        x++;
+                        sourceoffset += sourcestep;
+                        targetoffset += targetstep;
+                        continue;
+                    }
                     continue;
                 }
                 alphar = (inta *
