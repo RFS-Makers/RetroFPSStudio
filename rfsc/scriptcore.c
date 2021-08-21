@@ -24,6 +24,7 @@
 #include "scriptcoreevents.h"
 #include "scriptcorefilesys.h"
 #include "scriptcoregraphics.h"
+#include "scriptcoregraphicsfont.h"
 #include "scriptcorejson.h"
 #include "scriptcoremath.h"
 #include "scriptcorenetwork.h"
@@ -35,8 +36,8 @@
 #include "scriptcorewindow.h"
 #include "vfs.h"
 
-static lua_State *_mainstate = NULL;
 
+static lua_State *_mainstate = NULL;
 
 char *stringescape(const char *value) {
     if (!value)
@@ -183,6 +184,7 @@ int scriptcore_Run(int argc, const char **argv) {
     scriptcoretime_AddFunctions(l);
     scriptcorewindow_AddFunctions(l);
     scriptcoregraphics_AddFunctions(l);
+    scriptcoregraphicsfont_AddFunctions(l);
     scriptcoreuuid_AddFunctions(l);
     scriptcorearchive_AddFunctions(l);
     scriptcorenetwork_AddFunctions(l);

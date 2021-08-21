@@ -477,6 +477,7 @@ static int _graphics_drawtex(lua_State *l) {
     return 0;
 }
 
+
 void scriptcoregraphics_AddFunctions(lua_State *l) {
     lua_pushcfunction(l, _graphics_gettex);
     lua_setglobal(l, "_graphics_gettex");

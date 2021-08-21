@@ -3,12 +3,15 @@
 // Reading this code for personal education and curiosity is ENCOURAGED!
 // See LICENSE.md for details
 
-#ifndef RFS2_SCRIPTCOREGRAPHICS_H_
-#define RFS2_SCRIPTCOREGRAPHICS_H_
+#ifndef RFS2_SCRIPTCOREGRAPHICSFONT_H_
+#define RFS2_SCRIPTCOREGRAPHICSFONT_H_
 
 #include <lua.h>
 
-void scriptcoregraphics_AddFunctions(lua_State *l);
+void scriptcoregraphicsfont_AddFunctions(
+    lua_State *l
+);
 
 
-#endif  // RFS2_SCRIPTCOREGRAPHICS_H_
+#endif  // RFS2_SCRIPTCOREGRAPHICSFONT_H_
+

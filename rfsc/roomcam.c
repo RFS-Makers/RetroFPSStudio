@@ -578,7 +578,16 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int tghasalpha = rendertarget->hasalpha;
         int rowoffset = 0;
         int maxrowoffset = endrow - row;
-        const int alphaidx = (tghasalpha ? 3 : 0);
+        const int islowres = (
+            (cam->cache->cachedw + cam->cache->cachedh) <
+            (370 + 370)
+        );
+        #if defined(DUPLICATE_FLOOR_PIX) && \
+                    DUPLICATE_FLOOR_PIX >= 1
+        const int extradups = (islowres ? 1 : DUPLICATE_FLOOR_PIX);
+        #else
+        const int extradups = 0;
+        #endif
         int tx1totx2diff_mult_rowoffset = 0;
         int ty1toty2diff_mult_rowoffset = 0;
         while (likely(rowoffset <= maxrowoffset)) {
@@ -614,7 +623,8 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 assert(red >= cr || red >= cr2);
                 assert(red <= cr || red <= cr2);
             }
-            tgpixels[tgoffset + alphaidx] = 255;
+            if (tghasalpha)
+                tgpixels[tgoffset + 3] = 255;
             tgpixels[tgoffset + 0] = math_pixcliptop(
                 srcpixels[srcoffset + 0] * red /
                 LIGHT_COLOR_SCALAR);
@@ -630,17 +640,19 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             ty1toty2diff_mult_rowoffset += ty1toty2diff;
             tgoffset += tgoffsetplus;
             #if defined(DUPLICATE_FLOOR_PIX) && \
-                    DUPLICATE_FLOOR_PIX > 1
-            int extra = 0;
-            while (likely(extra < DUPLICATE_FLOOR_PIX - 1 &&
+                    DUPLICATE_FLOOR_PIX >= 1
+            int extratarget = rowoffset + extradups - 1;
+            while (likely(rowoffset <= extratarget &&
                     rowoffset <= maxrowoffset)) {
-                assert(tgoffset - tgoffsetplus > 0);
-                tgpixels[tgoffset + alphaidx] = 255;
+                assert(tgoffset - tgoffsetplus >= 0);
+                if (tghasalpha)
+                    tgpixels[tgoffset + 3] = 255;
                 memcpy(&tgpixels[tgoffset],
                     &tgpixels[tgoffset - tgoffsetplus], 3);
                 rowoffset++;
+                tx1totx2diff_mult_rowoffset += tx1totx2diff;
+                ty1toty2diff_mult_rowoffset += ty1toty2diff;
                 tgoffset += tgoffsetplus;
-                extra++;
             }
             #endif
         }
@@ -1286,7 +1298,6 @@ HOTSPOT static int roomcam_DrawWallSlice(
             )
         );
         const int tghasalpha = rendertarget->hasalpha;
-        const int alphaidx = (tghasalpha ? 3 : 0);
         while (likely(rowoffset_mult_ty1toty2diff !=
                 pastmaxrowoffset_mult)) {
             ty = ((int32_t)(
@@ -1303,7 +1314,8 @@ HOTSPOT static int roomcam_DrawWallSlice(
             );
             assert(srcoffset >= 0 &&
                 srcoffset < srf->w * srf->h * srccopylen);
-            tgpixels[tgoffset + alphaidx] = 255;
+            if (tghasalpha)
+                tgpixels[tgoffset + 3] = 255;
             tgpixels[tgoffset + 0] = math_pixcliptop(
                 srcpixels[srcoffset + 0] * cr /
                 LIGHT_COLOR_SCALAR);
@@ -1990,6 +2002,44 @@ int roomcam_DrawWall(
                 return 0;
             stats->base_geometry_slices_rendered++;
             z++;
+            #if defined(DUPLICATE_WALL_PIX) && \
+                    DUPLICATE_WALL_PIX >= 1
+            int extra_z = z + DUPLICATE_WALL_PIX;
+            while (likely(z < extra_z &&
+                    z < xcol + max_render_ahead)) {
+                int row = top + canvasy;
+                const int maxrow = (
+                    (bottom + canvasy) < (canvasy + h) ?
+                    (bottom + canvasy) :
+                    (canvasy + h - 1)
+                );
+                const int copylen = (rendertarget->hasalpha ? 4 : 3);
+                const int xbyteoffsetnew = copylen * (canvasx + z);
+                const int xbyteoffsetold = copylen * (canvasx + (z - 1));
+                int ybyteoffset = (
+                    copylen * rendertarget->w * (top + canvasy)
+                );
+                const int ybyteshift = copylen * rendertarget->w;
+                const int ybyteposttarget = (
+                    copylen * rendertarget->w * (bottom + 1 + canvasy)
+                );
+                while (row <= maxrow) {
+                    if (rendertarget->hasalpha)
+                        rendertarget->pixels[
+                            xbyteoffsetnew + ybyteoffset + 3
+                        ] = 255;
+                    memcpy(&rendertarget->pixels[
+                        xbyteoffsetnew + ybyteoffset
+                    ], &rendertarget->pixels[
+                        xbyteoffsetold + ybyteoffset
+                    ], 3);
+                    row++;
+                    ybyteoffset += ybyteshift;
+                }
+                stats->base_geometry_slices_rendered++;
+                z++;
+            }
+            #endif
         }
         xcol = z;
     }

@@ -276,7 +276,6 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
     const int INT_COLOR_SCALAR = 1024;
     const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
     assert(clipalpha > 0);
-    const int alphaindex = (target->hasalpha ? 3 : 0);
     const int maxy = tgy + cliph;
     int y = tgy;
     const int maxx = tgx + clipw;
@@ -314,7 +313,8 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
             if (likely(alphar >= INT_COLOR_SCALAR)) {
                 while (likely(source->pixels[sourceoffset + 3] == 255 &&
                         x < maxx)) {
-                    target->pixels[targetoffset + alphaindex] = 255;
+                    if (tghasalpha)
+                        target->pixels[targetoffset + 3] = 255;
                     memcpy(
                         &target->pixels[targetoffset],
                         &source->pixels[sourceoffset], 3
@@ -331,12 +331,12 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
                 if (tghasalpha) {
                     // ^ possibly faster to branch for rgb-only surfaces,
                     // since math_pixcliptop also branches anyway.
-                    int a = target->pixels[targetoffset + alphaindex] *
+                    int a = target->pixels[targetoffset + 3] *
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a);
-                    target->pixels[targetoffset + alphaindex] = math_pixcliptop(
+                    target->pixels[targetoffset + 3] = math_pixcliptop(
                         a / INT_COLOR_SCALAR
                     );
                 }

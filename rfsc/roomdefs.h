@@ -55,7 +55,13 @@
 #define LIGHT_COLOR_SCALAR 32
 #define DRAW_CORNER_COORD_UPSCALE 16
 #define MAX_DRAWN_LIGHTS_PER_ROOM 4
+#if !defined(LOWRES_3DRENDERER)
+#define DUPLICATE_WALL_PIX 0
 #define DUPLICATE_FLOOR_PIX 1
+#else
+#define DUPLICATE_WALL_PIX 2
+#define DUPLICATE_FLOOR_PIX 3
+#endif
 
 // Door and elevator directions:
 #define ROOM_DIR_UP 1
