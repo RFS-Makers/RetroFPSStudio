@@ -17,12 +17,17 @@ function rfs.debugoutput.draw()
             print(rfs.debugoutput._str)
         end]]
     end
+    if rfs.debugoutput._str == nil or
+            rfs.debugoutput._str == "" then
+        return
+    end
     local scaler = rfs.ui.scaler
     local font = rfs.font.load(rfs.ui.default_font)
     font:draw(
-        14 * scaler, rfs.debugoutput._str,
-        0, 0, rfs.window.renderw,
-        1, 1, 1, 1
+        rfs.debugoutput._str, rfs.window.renderw,
+        0, 0,
+        1, 1, 1, 1,
+        14 * scaler
     )
 end
 

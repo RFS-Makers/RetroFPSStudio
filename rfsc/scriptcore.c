@@ -15,7 +15,6 @@
 #endif
 
 #include "filesys.h"
-#include "luamem.h"
 #include "outputwindow.h"
 #include "scriptcore.h"
 #include "scriptcorearchive.h"
@@ -157,17 +156,11 @@ static int _lua_pcall(lua_State *l) {
 }
 
 int scriptcore_Run(int argc, const char **argv) {
-    lua_State *l = luamem_NewMemManagedState();
+    lua_State *l = luaL_newstate();
     _mainstate = l;
 
     luaL_openlibs(l);
 
-    char *executable_path = filesys_GetOwnExecutable();
-    if (!executable_path) {
-        fprintf(stderr, "Path alloc failed!\n");
-        lua_close(l);
-        return 1;
-    }
     const char *_loaderror_nofile = "no main.lua found";
     const char *loaderror = "generic I/O failure";
         

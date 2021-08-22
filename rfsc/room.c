@@ -323,7 +323,8 @@ room *room_Create(roomlayer *lr, uint64_t id) {
 void room_Destroy(room *r) {
     if (!r)
         return;
-    roomcolmap_UnregisterRoom(r->parentlayer->colmap, r);
+    if (r->parentlayer && r->parentlayer->colmap)
+        roomcolmap_UnregisterRoom(r->parentlayer->colmap, r);
     int i = 0;
     while (i < r->corners) {
         if (r->wall[i].wall_tex.tex) {
@@ -340,6 +341,7 @@ void room_Destroy(room *r) {
         if (r->wall[i].has_portal) {
             room *pr = r->wall[i].portal_targetroom;
             int i2 = r->wall[i].portal_targetwall;
+            assert(pr->wall[i2].portal_targetroom == r);
             if (pr->wall[i2].has_portaldoor) {
                 pr->wall[i2].has_portaldoor = 0;
                 if (pr->wall[i2].portaldoor_tex.tex)
@@ -352,6 +354,8 @@ void room_Destroy(room *r) {
                     pr->wall[i2].aboveportal_tex.tex->refcount--;
                 pr->wall[i2].aboveportal_tex.tex = NULL;
             }
+            pr->wall[i2].has_portal = 0;
+            pr->wall[i2].portal_targetroom = NULL;
         }
         int k = 0;
         while (k < r->wall[i].decals_count) {
@@ -379,7 +383,8 @@ void room_Destroy(room *r) {
                     memmove(
                         &r->parentlayer->rooms[i],
                         &r->parentlayer->rooms[i + 1],
-                        r->parentlayer->roomcount - i - 1
+                        sizeof(*r->parentlayer->rooms) *
+                            (r->parentlayer->roomcount - i - 1)
                     );
                 r->parentlayer->roomcount--;
                 break;

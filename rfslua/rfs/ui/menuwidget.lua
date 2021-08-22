@@ -14,8 +14,7 @@ function rfs.ui.menuwidget.new(font, pt_size, width, centered)
     if font == nil then
         font = rfs.font.load(rfs.ui.default_font)
     end
-    if type(font) ~= "table" or
-            type(font.calcheight) ~= "function" then
+    if type(font.calcheight) ~= "function" then
         error("expected arg #1 to be RFS font")
     end
     if type(pt_size) ~= "number" then
@@ -128,9 +127,10 @@ function rfs.ui.menuwidget.classtable.calculate_entry_size(
         math.max(1, math.round(self.border_size))
     )
     local line_height = self.font:calcheight(
+        "X", self.width,
         math.max(1, math.round(
             self.pt_size * self.entries[no].scale
-        )), "X", self.width
+        ))
     )
     local icon_width = 0
     local icon_height = 0
@@ -166,16 +166,16 @@ function rfs.ui.menuwidget.classtable.calculate_entry_size(
     local text_width = 0
     if self.entries[no].text ~= nil then
         text_width = self.font:calcwidth(
+            self.entries[no].text,
             math.max(1, math.round(self.pt_size *
-                self.entries[no].scale)),
-            self.entries[no].text)
+                self.entries[no].scale)))
         local text_max_width = math.max(1, self.width -
             icon_with_border_width)
         text_width = math.min(text_width, text_max_width)
         text_height = self.font:calcheight(
+            self.entries[no].text, text_width,
             math.max(1, math.round(self.pt_size *
-                self.entries[no].scale)),
-            self.entries[no].text, text_width)
+                self.entries[no].scale)))
     end
     self.entries[no].icon_size = {
         icon_width, icon_height
@@ -227,15 +227,14 @@ function rfs.ui.menuwidget.classtable.draw(self, x, y)
     while i <= #self.entries do
         if self.entries[i].text ~= nil then
             self.font:draw(
-                math.max(1, math.round(self.pt_size *
-                    self.entries[i].scale)),
-                self.entries[i].text .. "",
+                self.entries[i].text .. "", nil,
                 x + self.entries[i].text_x +
                     self.entries[i].x,
                 y + self.entries[i].y,
-                nil,
                 self.entries[i].red, self.entries[i].green,
-                self.entries[i].blue, 1
+                self.entries[i].blue, 1,
+                math.max(1, math.round(self.pt_size *
+                    self.entries[i].scale))
             )
         end
         if self.entries[i].icon ~= nil then

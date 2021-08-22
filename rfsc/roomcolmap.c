@@ -152,15 +152,23 @@ roomcolmap *roomcolmap_Create(roomlayer *lr) {
 
 void roomcolmap_Destroy(roomcolmap *cmap) {
     if (!cmap) return;
+    int i = 0;
+    while (i < cmap->cells_x * cmap->cells_y) {
+        if (cmap->cell_rooms &&
+                cmap->cell_rooms[i])
+            free(cmap->cell_rooms[i]);
+        i++;
+    }
     free(cmap->cell_rooms);
     free(cmap->cell_rooms_count);
-    int i = 0;
+    i = 0;
     while (i < cmap->cells_x * cmap->cells_y) {
         if (cmap->cell_objects)
             free(cmap->cell_objects[i]);
         i++;
     }
     free(cmap->cell_objects);
+    free(cmap->cell_objects_count);
     free(cmap->cell_objects_alloc);
     free(cmap);
 }

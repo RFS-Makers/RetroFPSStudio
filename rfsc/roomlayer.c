@@ -175,12 +175,23 @@ roomlayer *roomlayer_Create(uint64_t id) {
 void roomlayer_Destroy(roomlayer *lr) {
     if (!lr)
         return;
-    int i = 0;
-    while (i < lr->roomcount) {
-        room_Destroy(lr->rooms[i]);
-        i++;
+    while (lr->roomcount > 0) {
+        #ifndef NDEBUG
+        int oldcount = lr->roomcount;
+        #endif
+        room_Destroy(lr->rooms[0]);
+        assert(oldcount > lr->roomcount);
     }
     lr->roomcount = 0;
+    int i = 0;
+    while (i < lr->texrefcount) {
+        if (lr->texref[i]) {
+            free(lr->texref[i]->diskpath);
+            free(lr->texref[i]);
+        }
+        i++;
+    }
+    free(lr->texref);
     roomcolmap_Destroy(lr->colmap);
     free(lr->rooms);
     hash_BytesMapUnset(

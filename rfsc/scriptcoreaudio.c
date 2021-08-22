@@ -12,7 +12,6 @@
 #include <unistd.h>
 
 #include "audio.h"
-#include "luamem.h"
 #include "scriptcore.h"
 #include "scriptcoreaudio.h"
 #include "scriptcoreerror.h"
@@ -46,12 +45,6 @@ int _h3daudio_listsoundcards(lua_State *l) {
             return lua_error(l);
         }
         returnedcount++;
-        if (!luamem_EnsureFreePools(l) ||
-                !luamem_EnsureCanAllocSize(l, strlen(s) * 2)) {
-            free(s);
-            lua_pushstring(l, "out of memory");
-            return lua_error(l);
-        }
         lua_pushnumber(l, i + 1);
         lua_pushstring(l, s);
         lua_settable(l, -3);

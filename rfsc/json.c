@@ -14,7 +14,6 @@
 #include <string.h>
 
 #include "json.h"
-#include "luamem.h"
 
 
 static void skipwhitespace(const char **sptr) {
@@ -834,7 +833,7 @@ char *json_EncodedStrFromStackEx(
         ) {
     if (error)
         *error = NULL;
-    if (!luamem_EnsureFreePools(l) || maxdepth <= 0) {
+    if (maxdepth <= 0) {
         if (maxdepth <= 0) {
             if (error)
                 *error = strdup("table recursing too deep, cannot encode");
@@ -1109,10 +1108,6 @@ int json_PushEncodedStrToLuaStack(
     char *s = json_EncodedStrFromStackEx(l, valueindex, 64, error);
     if (!s)
         return 0;
-    if (!luamem_EnsureCanAllocSize(l, strlen(s) * 2)) {
-        free(s);
-        return 0;
-    }
     lua_pushstring(l, s);
     return 1;
 }
@@ -1120,7 +1115,7 @@ int json_PushEncodedStrToLuaStack(
 int json_PushDecodedValueToLuaStackEx(
         lua_State *l, jsonvalue *jv, int maxdepth
         ) {
-    if (!luamem_EnsureFreePools(l) || maxdepth <= 0)
+    if (maxdepth <= 0)
         return 0;
     if (jv->type == JSON_VALUE_NULL) {
         lua_pushnil(l);
@@ -1132,8 +1127,6 @@ int json_PushDecodedValueToLuaStackEx(
         lua_pushnumber(l, (double)jv->value_float);
         return 1;
     } else if (jv->type == JSON_VALUE_STR) {
-        if (!luamem_EnsureCanAllocSize(l, strlen(jv->value_str) * 2))
-            return 0;
         lua_pushstring(l, jv->value_str);
         return 1;
     } else if (jv->type == JSON_VALUE_BOOL) {
@@ -1162,11 +1155,6 @@ int json_PushDecodedValueToLuaStackEx(
         int failedpush = 0;
         int k = 0;
         while (k < jv->value_object.count) {
-            if (!luamem_EnsureCanAllocSize(l,
-                    strlen(jv->value_object.keys[k]) * 2)) {
-                lua_pop(l, 1);  // remove table
-                return 0;
-            }
             lua_pushstring(l, jv->value_object.keys[k]);
             if (!json_PushDecodedValueToLuaStackEx(
                     l, jv->value_object.values[k],

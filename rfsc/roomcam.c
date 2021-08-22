@@ -76,8 +76,8 @@ int32_t _roomcam_XYZToViewplaneY_NoRecalc(
         int64_t px, int64_t py, int64_t pz,
         int coordsextrascaler
         ) {
-    const int w = cam->cache->cachedw;
-    const int h = cam->cache->cachedh;
+    const int w = imax(1, cam->cache->cachedw);
+    const int h = imax(1, cam->cache->cachedh);
 
     // Rotate/move vec into camera-local space:
     px -= cam->obj->x * coordsextrascaler;
@@ -101,6 +101,14 @@ int32_t _roomcam_XYZToViewplaneY_NoRecalc(
     pz = (pz * scalef) / 1000LL;
     // (...we dont need px and py anymore, so ignore those)
 
+    if (unlikely(cam->cache->vertivecs_z[h - 1] ==
+            cam->cache->vertivecs_z[0])) {
+        // Viewplane has no height (e.g. output window 0,0 sized).
+        if (pz > cam->cache->vertivecs_z[0])
+            return -(h * 10);
+        else
+            return h + h * 10;
+    }
     int res = ((pz - cam->cache->vertivecs_z[0] *
         coordsextrascaler * (int64_t)10LL) * h) /
         ((cam->cache->vertivecs_z[h - 1] -
@@ -567,6 +575,13 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int fullslicelen = (screenbottom - screentop + 1);
         assert(fullslicelen >= 1);
         const int tgoffsetplus = targetw * rendertargetcopylen;
+        uint8_t *writepointer = (
+            tgpixels + (x + xoffset +
+            (y + row) * targetw) * rendertargetcopylen
+        );
+        const int writepointerplus = (
+            targetw * rendertargetcopylen - 3
+        );
         int red = 0;
         int green = 0;
         int blue = 0;
@@ -623,22 +638,25 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 assert(red >= cr || red >= cr2);
                 assert(red <= cr || red <= cr2);
             }
-            if (tghasalpha)
-                tgpixels[tgoffset + 3] = 255;
-            tgpixels[tgoffset + 0] = math_pixcliptop(
+            *writepointer = math_pixcliptop(
                 srcpixels[srcoffset + 0] * red /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 1] = math_pixcliptop(
+            writepointer++;
+            *writepointer = math_pixcliptop(
                 srcpixels[srcoffset + 1] * green /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 2] = math_pixcliptop(
+            writepointer++;
+            *writepointer = math_pixcliptop(
                 srcpixels[srcoffset + 2] * blue /
                 LIGHT_COLOR_SCALAR);
+            writepointer++;
+            if (tghasalpha) *writepointer = 255;
             updatecolorcounter++;
             rowoffset++;
             tx1totx2diff_mult_rowoffset += tx1totx2diff;
             ty1toty2diff_mult_rowoffset += ty1toty2diff;
             tgoffset += tgoffsetplus;
+            writepointer += writepointerplus;
             #if defined(DUPLICATE_FLOOR_PIX) && \
                     DUPLICATE_FLOOR_PIX >= 1
             int extratarget = rowoffset + extradups - 1;
@@ -647,8 +665,12 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 assert(tgoffset - tgoffsetplus >= 0);
                 if (tghasalpha)
                     tgpixels[tgoffset + 3] = 255;
-                memcpy(&tgpixels[tgoffset],
-                    &tgpixels[tgoffset - tgoffsetplus], 3);
+                memcpy(writepointer,
+                    writepointer - writepointerplus - 3,
+                    3);
+                writepointer += 3;
+                if (tghasalpha) *writepointer = 255;
+                writepointer += writepointerplus;
                 rowoffset++;
                 tx1totx2diff_mult_rowoffset += tx1totx2diff;
                 ty1toty2diff_mult_rowoffset += ty1toty2diff;
@@ -1022,7 +1044,8 @@ int roomcam_WallSliceHeight(
     );
     if (unlikely(screentopatwall < geometry_floor_z ||
             screentopatwall - screenheightatwall >
-            geometry_floor_z + geometry_height))
+            geometry_floor_z + geometry_height ||
+            screenheightatwall == 0))
         return 0;
     int64_t world_to_pixel_scalar = (
         ((int64_t)h * 100000L) / screenheightatwall
@@ -1279,12 +1302,9 @@ HOTSPOT static int roomcam_DrawWallSlice(
             (screenbottom - screentop) : 1
         );
         const int32_t ty1toty2diff = (ty2 - ty1);
-        int tgoffset = (x + (y + k) * targetw) *
-            rendertargetcopylen;
-        const int origtgoffset = tgoffset;
-        const int tgoffsetplus = (
+        const int writeoffsetplus = (
             targetw * rendertargetcopylen
-        );
+        ) - 3;
         const int srfw = srf->w;
         int rowoffset_mult_ty1toty2diff = 0;
         const int maxrowoffset = (screenbottom - k);
@@ -1297,6 +1317,9 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 math_count_bits_until_zeros(TEX_COORD_SCALER) - 1
             )
         );
+        uint8_t *targetwriteptr = &tgpixels[
+            (x + (y + k) * targetw) * rendertargetcopylen
+        ];
         const int tghasalpha = rendertarget->hasalpha;
         while (likely(rowoffset_mult_ty1toty2diff !=
                 pastmaxrowoffset_mult)) {
@@ -1314,18 +1337,21 @@ HOTSPOT static int roomcam_DrawWallSlice(
             );
             assert(srcoffset >= 0 &&
                 srcoffset < srf->w * srf->h * srccopylen);
-            if (tghasalpha)
-                tgpixels[tgoffset + 3] = 255;
-            tgpixels[tgoffset + 0] = math_pixcliptop(
+            *targetwriteptr = math_pixcliptop(
                 srcpixels[srcoffset + 0] * cr /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 1] = math_pixcliptop(
+            targetwriteptr++;
+            *targetwriteptr = math_pixcliptop(
                 srcpixels[srcoffset + 1] * cg /
                 LIGHT_COLOR_SCALAR);
-            tgpixels[tgoffset + 2] = math_pixcliptop(
+            targetwriteptr++;
+            *targetwriteptr = math_pixcliptop(
                 srcpixels[srcoffset + 2] * cb /
                 LIGHT_COLOR_SCALAR);
-            tgoffset += tgoffsetplus;
+            targetwriteptr++;
+            if (tghasalpha)
+                *targetwriteptr = 255;
+            targetwriteptr += writeoffsetplus;
             rowoffset_mult_ty1toty2diff += ty1toty2diff;
         }
     }

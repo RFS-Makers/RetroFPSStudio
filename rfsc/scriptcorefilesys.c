@@ -14,7 +14,6 @@
 
 
 #include "filesys.h"
-#include "luamem.h"
 #include "scriptcore.h"
 #include "scriptcoreerror.h"
 #include "scriptcorefilesys.h"
@@ -679,7 +678,7 @@ static int _vfs_package_require_module_loader(lua_State *l) {
         return lua_error(l);
     }
     char *abspath = vfs_NormalizePath(lua_tostring(l, -1));
-    if (!abspath || !luamem_EnsureFreePools(l)) {
+    if (!abspath) {
         if (abspath)
             free(abspath);
         free(contents);

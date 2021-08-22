@@ -202,8 +202,8 @@ function rfs.ui.dlg.update_text_height()
     end
     rfs.ui.dlg.font = rfs.font.load(rfs.ui.dlg.__fontname)
     rfs.ui.dlg.text_height = rfs.ui.dlg.font:calcheight(
-        rfs.ui.dlg.__fontpt * rfs.ui.scaler,
-        rfs.ui.dlg.text, rfs.ui.dlg.text_width
+        rfs.ui.dlg.text, rfs.ui.dlg.text_width,
+        rfs.ui.dlg.__fontpt * rfs.ui.scaler
     )
     return rfs.ui.dlg.text_height
 end
@@ -225,11 +225,10 @@ function rfs.ui.dlg.update_buttons_size()
     for _, button in ipairs(rfs.ui.dlg.buttons) do
         local t = tostring(button.text)
         local tw = rfs.ui.dlg.font:calcwidth(
-            rfs.ui.dlg.__fontpt * rfs.ui.scaler, t
+            t, rfs.ui.dlg.__fontpt * rfs.ui.scaler
         )
         local th = rfs.ui.dlg.font:calcheight(
-            rfs.ui.dlg.__fontpt * rfs.ui.scaler,
-            t, tw
+            t, tw, rfs.ui.dlg.__fontpt * rfs.ui.scaler
         )
         button.text_width = tw
         button.text_height = th
@@ -401,12 +400,11 @@ function rfs.ui.dlg.draw()
                 rfs.ui.dlg.effectiveborder)
         end
         rfs.ui.dlg.font:draw(
-            rfs.ui.dlg.__fontpt * rfs.ui.scaler,
-            rfs.ui.dlg.text,
+            rfs.ui.dlg.text, rfs.ui.dlg.text_width,
             rfs.ui.dlg.dlgx + effectiveborder * 1.5 + iconxspacing,
             rfs.ui.dlg.dlgy + effectiveborder * 1.5,
-            rfs.ui.dlg.text_width,
-            0, 0, 0, 1
+            0, 0, 0, 1,
+            rfs.ui.dlg.__fontpt * rfs.ui.scaler
         )
         if rfs.ui.dlg.widget ~= nil then
             rfs.ui.dlg.widget:draw(
@@ -442,13 +440,13 @@ function rfs.ui.dlg.draw()
                 br, bg, bb, 1
             )
             rfs.ui.dlg.font:draw(
-                rfs.ui.dlg.__fontpt * rfs.ui.scaler,
-                button.text, rfs.ui.dlg.dlgx + button.x +
+                button.text, nil,
+                rfs.ui.dlg.dlgx + button.x +
                 rfs.ui.dlg.button_border_width,
                 rfs.ui.dlg.dlgy +
                 button.y + rfs.ui.dlg.button_border_width,
-                nil,
-                0, 0, 0, 1
+                0, 0, 0, 1,
+                rfs.ui.dlg.__fontpt * rfs.ui.scaler
             )
         end
         rfs.gfx.update_render()

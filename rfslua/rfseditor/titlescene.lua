@@ -275,12 +275,12 @@ function rfseditor.titlescene.on_draw()
             return ""
         end)()
     local fontboxh = font:calcheight(
-        12 * scaler, text, rfs.window.renderw
+        text, rfs.window.renderw, 12 * scaler
     )
     font:draw(
-        12 * scaler, text,
-        0, rfs.window.renderh - fontboxh, rfs.window.renderw,
-        1, 0.9, 1.0, 0.7
+        text, rfs.window.renderw, 0,
+        rfs.window.renderh - fontboxh,
+        1, 0.9, 1.0, 0.7, 12 * scaler
     )
 
     -- Show the press any key
@@ -293,13 +293,14 @@ function rfseditor.titlescene.on_draw()
         end
         local t = "Press Key Or Tap To Start"
         local show_width = math.min(
-            font:calcwidth(14 * scaler, t), rfs.window.renderw
+            font:calcwidth(t, 14 * scaler), rfs.window.renderw
         )
+        local draw_x = rfs.window.renderw / 2 - show_width / 2
+        local draw_y = rfs.window.renderh / 2
         font:draw(
-            14 * scaler, t,
-            rfs.window.renderw / 2 - show_width / 2,
-            rfs.window.renderh / 2, rfs.window.renderw,
-            1, 0.9 * animf, 1.0, 0.7
+            t, rfs.window.renderw, draw_x, draw_y,
+            1, 0.9 * animf, 1.0, 0.7,
+            14 * scaler
         )
     end
 

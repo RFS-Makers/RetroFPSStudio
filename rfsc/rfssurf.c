@@ -94,10 +94,10 @@ static int sanitize_clipping_scaled(int *intgx, int *intgy,
         cliph -= round((double)-tgy / scaley);
         tgy = 0;
     }
-    if (tgx + floor(clipw * scalex) > target->w)
-        clipw = ceil((target->w - tgx) / scalex);
-    if (tgy + floor(cliph * scaley) > target->h)
-        cliph = ceil((target->h - tgy) / scaley);
+    if (tgx + ceil(clipw * scalex) > target->w)
+        clipw = floor((double)(target->w - tgx) / scalex);
+    if (tgy + ceil(cliph * scaley) > target->h)
+        cliph = floor((double)(target->h - tgy) / scaley);
     if (clipx + clipw > source->w)
         clipw = (source->w - clipx);
     if (clipy + cliph > source->h)
@@ -269,6 +269,13 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
     if (!sanitize_clipping(&tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
             source, target))
         return;
+    assert(clipx >= 0 && clipy >= 0 &&
+        clipx < source->w && clipy < source->h);
+    assert(clipw > 0 && cliph > 0);
+    assert(clipx + clipw <= source->w &&
+        clipy + cliph <= source->h);
+    assert(tgx >= 0 && tgy >= 0 &&
+        tgx < target->w && tgy < target->h);
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
     const int tghasalpha = target->hasalpha;
@@ -294,8 +301,9 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
             int alphar;
             if (likely(sourcehasalpha)) {
                 if (likely(source->pixels[sourceoffset + 3] == 0)) {
-                    while (likely(source->pixels[sourceoffset + 3] == 0 &&
-                            x < maxx)) {
+                    while (likely(x < maxx &&
+                            source->pixels[sourceoffset + 3] == 0
+                            )) {
                         x++;
                         sourceoffset += sourcestep;
                         targetoffset += targetstep;
@@ -539,6 +547,8 @@ HOTSPOT void rfssurf_BlitScaled(
         double scalex, double scaley,
         double r, double g, double b, double a
         ) {
+    if (round(scalex * clipw) < 1 || round(scaley * cliph) < 1)
+        return;
     if ((fabs(scalex - 1) < 0.0001f &&
             fabs(scaley - 1) < 0.0001f) ||
             ((int)round(scalex * clipw) == clipw &&
@@ -547,6 +557,22 @@ HOTSPOT void rfssurf_BlitScaled(
             tgx, tgy, clipx, clipy,
             clipw, cliph, r, g, b, a);
     }
+    if (!sanitize_clipping_scaled(
+            &tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
+            source, target, scalex, scaley))
+        return;
+    assert(clipx >= 0 && clipy >= 0 &&
+        clipx < source->w && clipy < source->h);
+    assert(clipw >= 0 && clipy >= 0);
+    assert(tgx >= 0 && tgy >= 0 &&
+        tgx < target->w && tgy < target->h);
+    /*printf("sanitized clip scaled gave us: "
+        "unscaled: sx/sy/sw/sh %d/%d/%d/%d tx/ty %d/%d, "
+        "rendertarget: w/h %d/%d, "
+        "scaled: swscaled/shscaled: %f,%f\n",
+        clipx, clipy, clipw, cliph, tgx, tgy,
+        target->w, target->h,
+        (double)clipw * scalex, (double)cliph * scaley);*/
     const int INT_COLOR_SCALAR = 1024;
     int intrfull = round(fmin(2 * INT_COLOR_SCALAR,
         fmax(0, r * (double)INT_COLOR_SCALAR)));
@@ -568,15 +594,14 @@ HOTSPOT void rfssurf_BlitScaled(
     if (intg > INT_COLOR_SCALAR) intg = INT_COLOR_SCALAR - intgwhite;
     int intb = intbfull;
     if (intb > INT_COLOR_SCALAR) intb = INT_COLOR_SCALAR - intbwhite;
-    if (!sanitize_clipping_scaled(
-            &tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
-            source, target, scalex, scaley))
-        return;
+
     const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
     assert(clipalpha > 0);
-    const int maxy = tgy + cliph * scaley;
+    const int maxy = tgy + round(cliph * scaley);
+    assert(maxy <= target->h);
     int y = tgy;
-    const int maxx = tgx + clipw * scalex;
+    const int maxx = tgx + round(clipw * scalex);
+    assert(maxx <= target->w);
     int x = tgx;
     const int scaledivx = scalex * INT_COLOR_SCALAR;
     const int scaledivy = scaley * INT_COLOR_SCALAR;
@@ -590,6 +615,8 @@ HOTSPOT void rfssurf_BlitScaled(
         int targetoffset = (y * target->w + tgx) * (
             target->hasalpha ? 4 : 3
         );
+        assert(targetoffset >= 0 && targetoffset <
+            target->w * target->h * (target->hasalpha ? 4 : 3));
         int sourceoffset_start = (
             ((int)imin(clipy + cliph - 1,
                 ((y - tgy) * INT_COLOR_SCALAR / scaledivy) +
