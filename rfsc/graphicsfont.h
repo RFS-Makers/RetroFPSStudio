@@ -16,7 +16,8 @@ typedef struct rfsfont rfsfont;
 rfsfont *graphicsfont_Get(const char *path, char **errmsg);
 
 int graphicsfont_GetLetterWidth(
-    rfsfont *f, const char *p, int *byteslen
+    rfsfont *f, const char *p, double scaler,
+    int *byteslen
 );
 
 int graphicsfont_CalcWidth(
@@ -40,6 +41,13 @@ char **graphicsfont_TextWrap(
     rfsfont *f, const char *text, int width,
     double pt_size, double letter_spacing
 );
+
+int graphicsfont_ExtractLetter(
+    rfsfont *f, const char *p, int *idx,
+    char *out_letter,  // must take 5 bytes or more
+    int *out_byteslen
+);
+
 
 #endif  // RFS2_GRAPHICSFONT_H_
 

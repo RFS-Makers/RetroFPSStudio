@@ -96,10 +96,11 @@ static int _graphicsfont_calcheight(lua_State *l) {
                 OBJREFMAGIC ||
             ((scriptobjref*)lua_touserdata(l, 1))->type !=
                 OBJREF_FONT ||
-            lua_type(l, 2) != LUA_TSTRING ||
-            (lua_type(l, 3) != LUA_TNUMBER &&
+            lua_type(l, 2) != LUA_TSTRING ||  // text
+            (lua_type(l, 3) != LUA_TNUMBER &&  // width
              lua_type(l, 3) != LUA_TNIL) ||
-            lua_type(l, 4) != LUA_TNUMBER) {
+            lua_type(l, 4) != LUA_TNUMBER  // pt_size
+            ) {
         wrongargs: ;
         lua_pushstring(l, "expected 4 args of types font, "
             "string, number or nil, number");
@@ -112,8 +113,8 @@ static int _graphicsfont_calcheight(lua_State *l) {
     const char *text = lua_tostring(l, 2);
     int width = -1;
     if (lua_type(l, 3) == LUA_TNUMBER) {
-        width = (lua_isinteger(l, 3) ? lua_tointeger(l, 4) :
-            round(lua_tonumber(l, 4)));
+        width = (lua_isinteger(l, 3) ? lua_tointeger(l, 3) :
+            round(lua_tonumber(l, 3)));
     }
     double pt_size = lua_tonumber(l, 4);
     double letterspacing = 0;
