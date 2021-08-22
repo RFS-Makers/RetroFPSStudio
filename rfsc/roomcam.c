@@ -1016,7 +1016,8 @@ int roomcam_FloorCeilingSliceHeight(
 int roomcam_WallSliceHeight(
         roomcam *cam, int64_t geometry_floor_z,
         int64_t geometry_height, int h, int64_t ix, int64_t iy,
-        int xoffset, int64_t *topworldz, int64_t *bottomworldz,
+        int xoffset, int clamp,
+        int64_t *topworldz, int64_t *bottomworldz,
         int32_t *topoffset, int32_t *bottomoffset
         ) {
     if (unlikely(geometry_height <= 0))
@@ -1042,10 +1043,12 @@ int roomcam_WallSliceHeight(
     int64_t screentopatwall = (
         cam->obj->z + screenheightatwall / 2
     );
-    if (unlikely(screentopatwall < geometry_floor_z ||
+    if (unlikely(clamp && (
+            screentopatwall < geometry_floor_z ||
             screentopatwall - screenheightatwall >
-            geometry_floor_z + geometry_height ||
-            screenheightatwall == 0))
+            geometry_floor_z + geometry_height)))
+        return 0;
+    if (unlikely(screenheightatwall == 0))
         return 0;
     int64_t world_to_pixel_scalar = (
         ((int64_t)h * 100000L) / screenheightatwall
@@ -1056,7 +1059,7 @@ int roomcam_WallSliceHeight(
         ((screentopatwall - _topworldz) *
             world_to_pixel_scalar) / 100000L
     );
-    if (topoff_screen < 0) {
+    if (topoff_screen < 0 && clamp) {
         topoff_screen = 0;
         assert(screentopatwall < _topworldz);
         _topworldz = (_topworldz - (
@@ -1069,7 +1072,7 @@ int roomcam_WallSliceHeight(
         (bottomoff_world * world_to_pixel_scalar) / 100000L
     );
     assert(bottomoff_world >= 0);
-    if (bottomoff_screen >= h) {
+    if (bottomoff_screen >= h && clamp) {
         bottomoff_screen = h - 1;
         bottomoff_world = screentopatwall - screenheightatwall;
     }
@@ -1098,9 +1101,10 @@ int roomcam_WallSliceHeight(
             (int)cam->obj->z, (int)geometry_floor_z, (int)_topworldz,
             (int)_bottomworldz,
             (int)(screentopatwall - _topworldz));*/
-    if (unlikely(topoff_screen >= h || bottomoff_screen < 0))
+    if (unlikely(clamp &&
+            (topoff_screen >= h || bottomoff_screen < 0)))
         return 0;  // off-screen.
-    assert(topoff_screen >= 0);
+    assert(!clamp || topoff_screen >= 0);
     *topoffset = topoff_screen;
     *bottomoffset = bottomoff_screen;
     *topworldz = _topworldz;
@@ -1364,9 +1368,11 @@ int roomcam_DrawFloorCeiling(
         int xcol, int endcol
         ) {
     // Collect some info first:
+    int overdraw_for_inside = 0;
     room *r = NULL;
     if (geom->type == DRAWGEOM_ROOM) {
         r = geom->r;
+        overdraw_for_inside = 1;
     } else if (geom->type == DRAWGEOM_BLOCK) {
         r = geom->bl->obj->parentroom;
     } else {
@@ -1380,7 +1386,7 @@ int roomcam_DrawFloorCeiling(
     renderstatistics *stats = &cam->cache->stats;
     roomrendercache *rcache = room_GetRenderCache(r->id);
 
-    // Do floor render:
+    // Render upfacing (floor for room, top for additive):
     int prev_valuesset = 0;
     int64_t prev_topwx, prev_topwy, prev_bottomwx, prev_bottomwy;
     int32_t prev_topoffset, prev_bottomoffset;
@@ -1494,7 +1500,7 @@ int roomcam_DrawFloorCeiling(
             &dynlightendbottom_b
         );
 
-        // Render floor by interpolating over above info:
+        // Render surface by interpolating over above info:
         roomtexinfo *texinfo = NULL;
         if (geom->type == DRAWGEOM_ROOM) {
             texinfo = &geom->r->floor_tex;
@@ -1532,6 +1538,8 @@ int roomcam_DrawFloorCeiling(
                 bottom1offset + ((bottom2offset - bottom1offset) *
                 scalar) / scalarrange
             ));
+            if (overdraw_for_inside)
+                topoffset = imax(0, topoffset - 2);
             if (bottomoffset >= topoffset) {
                 int64_t dyntopr = (
                     dynlightstarttop_r + ((dynlightendtop_r -
@@ -1595,7 +1603,7 @@ int roomcam_DrawFloorCeiling(
         assert(z > innerendcol);
     }
 
-    // Do ceiling render:
+    // Render downfacing (ceiling for rooms, top for additive):
     prev_valuesset = 0;
     z = xcol;
     while (likely(z <= endcol)) {
@@ -1698,7 +1706,7 @@ int roomcam_DrawFloorCeiling(
             &dynlightendbottom_b
         );
 
-        // Render ceiling by interpolating over above info:
+        // Render surface by interpolating over above info:
         roomtexinfo *texinfo = NULL;
         if (geom->type == DRAWGEOM_ROOM) {
             texinfo = &geom->r->floor_tex;
@@ -1735,6 +1743,8 @@ int roomcam_DrawFloorCeiling(
                 bottom1offset + ((bottom2offset - bottom1offset) *
                 scalar) / scalarrange
             ));
+            if (overdraw_for_inside)
+                bottomoffset = imin(h, bottomoffset + 2);
             if (bottomoffset >= topoffset) {
                 int64_t dyntopr = (
                     dynlightstarttop_r + ((dynlightendtop_r -
@@ -1965,6 +1975,33 @@ int roomcam_DrawWall(
             &dynlightend_b
         );
 
+        // For better interpolation, also get the
+        // screen top/bottom for our start and end:
+        int interpolatescreensize = 1;
+        int32_t starttop, startbottom;
+        int64_t _ignore1, _ignore2;
+        if (unlikely(!roomcam_WallSliceHeight(
+                cam, wall_floor_z, wall_height,
+                h, start_hitx, start_hity,
+                xcol, 0, &_ignore1, &_ignore2,
+                &starttop, &startbottom
+                ))) {
+            // Fully off-screen, cant interpolate.
+            interpolatescreensize = 0;
+        }
+        int32_t endtop, endbottom;
+        if (unlikely(!roomcam_WallSliceHeight(
+                cam, wall_floor_z, wall_height,
+                h, end_hitx, end_hity,
+                imin(xcol + max_render_ahead,
+                cam->cache->cachedw - 1), 0,
+                &_ignore1, &_ignore2,
+                &endtop, &endbottom
+                ))) {
+            // Fully off-screen, cant interpolate.
+            interpolatescreensize = 0;
+        }
+
         // Do actual render:
         int z = xcol;
         while (likely(z < xcol + max_render_ahead)) {
@@ -1999,12 +2036,21 @@ int roomcam_DrawWall(
             if (unlikely(!roomcam_WallSliceHeight(
                     cam, wall_floor_z, wall_height,
                     h, ix, iy,
-                    z, &topworldz, &bottomworldz,
+                    z, 1, &topworldz, &bottomworldz,
                     &top, &bottom
                     ))) {
                 // Fully off-screen.
                 z++;
                 continue;
+            }
+            // Override screen top/bottom with better interpolation:
+            if (interpolatescreensize) {
+                top = imax(0, imin(h - 1,
+                    ((endtop - starttop) * (z - xcol)) /
+                    imax(1, max_render_ahead) + starttop));
+                bottom = imax(0, imin(h - 1,
+                    ((endbottom - startbottom) * (z - xcol)) /
+                    imax(1, max_render_ahead) + startbottom));
             }
 
             // Calculate the color for this slice:
@@ -2335,6 +2381,10 @@ int roomcam_Render(
         ) {
     if (!graphics_PushRenderScissors(x, y, w, h))
         return 0;
+
+    /*graphics_DrawRectangle(  // for debug purposes
+        1, 0, 0, 1, x, y, w, h
+    );*/
 
     // Prepare render stats first:
     renderstatistics *stats = &cam->cache->stats;

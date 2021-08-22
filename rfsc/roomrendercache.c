@@ -201,10 +201,12 @@ int roomrendercache_SetDynLights(
     int i = 0;
     while (i <= r->corners) {
         int64_t sample_x = (
-            (i < r->corners) ? r->corner_x : r->center_x
+            (i < r->corners) ? r->corner_x[i] :
+            r->center_x
         );
         int64_t sample_y = (
-            (i < r->corners) ? r->corner_y : r->center_y
+            (i < r->corners) ? r->corner_y[i] :
+            r->center_y
         );
         int result = roomcolmap_IterateObjectsInRange(
             r->parentlayer->colmap, sample_x, sample_y,
