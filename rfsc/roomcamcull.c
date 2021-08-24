@@ -74,7 +74,6 @@ int roomcamcull_ComputePolyCull(
             output->corners_maxscreenxcol &&
             evernotbehindcam)  // crossing the screen in front.
         output->on_screen = 1;
-        
 
     // The above gives wrong results for some polygons where
     // any edge crosses with the outer screen (x=0, x=screew - 1).
@@ -87,14 +86,14 @@ int roomcamcull_ComputePolyCull(
         int64_t screenedgel_x2 = cam->obj->x + cam->cache->
             rotatedplanevecs_x[0] * VIEWPLANE_RAY_LENGTH_DIVIDER;
         int64_t screenedgel_y2 = cam->obj->y + cam->cache->
-            rotatedplanevecs_x[0] * VIEWPLANE_RAY_LENGTH_DIVIDER;
+            rotatedplanevecs_y[0] * VIEWPLANE_RAY_LENGTH_DIVIDER;
         int64_t screenedger_x1 = cam->obj->x;
         int64_t screenedger_y1 = cam->obj->y;
         assert(cam->cache->cachedw == canvasw);
         int64_t screenedger_x2 = cam->obj->x + cam->cache->
             rotatedplanevecs_x[canvasw - 1] * VIEWPLANE_RAY_LENGTH_DIVIDER;
         int64_t screenedger_y2 = cam->obj->y + cam->cache->
-            rotatedplanevecs_x[canvasw - 1] * VIEWPLANE_RAY_LENGTH_DIVIDER;
+            rotatedplanevecs_y[canvasw - 1] * VIEWPLANE_RAY_LENGTH_DIVIDER;
         int inext = 1;
         i = 0;
         while (i < poly_corners) {

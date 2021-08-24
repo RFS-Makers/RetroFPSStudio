@@ -603,26 +603,12 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         #else
         const int extradups = 0;
         #endif
+        const int alphapixoffset = (tghasalpha ? 3 : 0);
         int tx1totx2diff_mult_rowoffset = 0;
         int ty1toty2diff_mult_rowoffset = 0;
         while (likely(rowoffset <= maxrowoffset)) {
-            int64_t tx = ((int32_t)(
-                toptx + (tx1totx2diff_mult_rowoffset /
-                    slicepixellen))) & texcoord_modulo_mask;
-            int64_t ty = ((int32_t)(
-                topty + (ty1toty2diff_mult_rowoffset /
-                    slicepixellen))) & texcoord_modulo_mask;
-            // Here, we're using the non-sideways regular tex.
-            const int srcoffset = (
-                ((tx * srfw) / TEX_COORD_SCALER) +
-                (srfw * ((ty * srfh) / TEX_COORD_SCALER))
-            ) * srccopylen;
-            assert(srcoffset >= 0 &&
-                srcoffset < srfw * srfh * srccopylen);
-            assert(tgoffset >= 0 && tgoffset < rendertarget->w *
-                rendertarget->h * rendertargetcopylen);
-
-            if (unlikely(updatecolorcounter %
+            // Compute updated light/color levels if needed:
+            if (likely(updatecolorcounter %
                     colorupdateinterval == 0)) {
                 const int row = startrow + rowoffset;
                 const int screentoprowoffset = row - screentop;
@@ -638,45 +624,68 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 assert(red >= cr || red >= cr2);
                 assert(red <= cr || red <= cr2);
             }
-            *writepointer = math_pixcliptop(
-                srcpixels[srcoffset + 0] * red /
-                LIGHT_COLOR_SCALAR);
-            writepointer++;
-            *writepointer = math_pixcliptop(
-                srcpixels[srcoffset + 1] * green /
-                LIGHT_COLOR_SCALAR);
-            writepointer++;
-            *writepointer = math_pixcliptop(
-                srcpixels[srcoffset + 2] * blue /
-                LIGHT_COLOR_SCALAR);
-            writepointer++;
-            if (tghasalpha) *writepointer = 255;
-            updatecolorcounter++;
-            rowoffset++;
-            tx1totx2diff_mult_rowoffset += tx1totx2diff;
-            ty1toty2diff_mult_rowoffset += ty1toty2diff;
-            tgoffset += tgoffsetplus;
-            writepointer += writepointerplus;
-            #if defined(DUPLICATE_FLOOR_PIX) && \
-                    DUPLICATE_FLOOR_PIX >= 1
-            int extratarget = rowoffset + extradups - 1;
-            while (likely(rowoffset <= extratarget &&
-                    rowoffset <= maxrowoffset)) {
-                assert(tgoffset - tgoffsetplus >= 0);
-                if (tghasalpha)
-                    tgpixels[tgoffset + 3] = 255;
-                memcpy(writepointer,
-                    writepointer - writepointerplus - 3,
-                    3);
-                writepointer += 3;
-                if (tghasalpha) *writepointer = 255;
-                writepointer += writepointerplus;
+
+            // See how far we can blit with no light update:
+            const int next_to = imin(maxrowoffset,
+                rowoffset + (colorupdateinterval - 1 -
+                (updatecolorcounter % colorupdateinterval)) - 1);
+            // Blit until we need next light update:
+            while (likely(rowoffset <= next_to)) {
+                int64_t tx = ((int32_t)(
+                    toptx + (tx1totx2diff_mult_rowoffset /
+                        slicepixellen))) & texcoord_modulo_mask;
+                int64_t ty = ((int32_t)(
+                    topty + (ty1toty2diff_mult_rowoffset /
+                        slicepixellen))) & texcoord_modulo_mask;
+                // Here, we're using the non-sideways regular tex.
+                const int srcoffset = (
+                    ((tx * srfw) / TEX_COORD_SCALER) +
+                    (srfw * ((ty * srfh) / TEX_COORD_SCALER))
+                ) * srccopylen;
+                assert(srcoffset >= 0 &&
+                    srcoffset < srfw * srfh * srccopylen);
+                assert(tgoffset >= 0 && tgoffset < rendertarget->w *
+                    rendertarget->h * rendertargetcopylen);
+                *(writepointer + alphapixoffset) = 255;
+                *writepointer = math_pixcliptop(
+                    srcpixels[srcoffset + 0] * red /
+                    LIGHT_COLOR_SCALAR);
+                writepointer++;
+                *writepointer = math_pixcliptop(
+                    srcpixels[srcoffset + 1] * green /
+                    LIGHT_COLOR_SCALAR);
+                writepointer++;
+                *writepointer = math_pixcliptop(
+                    srcpixels[srcoffset + 2] * blue /
+                    LIGHT_COLOR_SCALAR);
+                writepointer++;
+                updatecolorcounter++;
                 rowoffset++;
                 tx1totx2diff_mult_rowoffset += tx1totx2diff;
                 ty1toty2diff_mult_rowoffset += ty1toty2diff;
                 tgoffset += tgoffsetplus;
+                writepointer += writepointerplus;
+                #if defined(DUPLICATE_FLOOR_PIX) && \
+                        DUPLICATE_FLOOR_PIX >= 1
+                int extratarget = rowoffset + extradups - 1;
+                while (likely(rowoffset <= extratarget &&
+                        rowoffset <= maxrowoffset)) {
+                    assert(tgoffset - tgoffsetplus >= 0);
+                    if (tghasalpha)
+                        tgpixels[tgoffset + 3] = 255;
+                    memcpy(writepointer,
+                        writepointer - writepointerplus - 3,
+                        3);
+                    writepointer += 3;
+                    if (tghasalpha) *writepointer = 255;
+                    writepointer += writepointerplus;
+                    rowoffset++;
+                    tx1totx2diff_mult_rowoffset += tx1totx2diff;
+                    ty1toty2diff_mult_rowoffset += ty1toty2diff;
+                    tgoffset += tgoffsetplus;
+                }
+                #endif
             }
-            #endif
         }
         row += rowoffset;
         assert(row == endrow + 1);
@@ -692,6 +701,7 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
     if (h <= 0) h = 1;
 
     // Calculate viewplane:
+    int force_recalculate_vertivecs = 0;
     int force_recalculate_rotated_vecs = 0;
     cam->fov = math_fixanglei(cam->fov);
     cam->obj->angle = math_fixanglei(cam->obj->angle);
@@ -794,25 +804,42 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
         int64_t plane_world_height = (
             plane_world_width * h / w
         );
+        cam->cache->planeheight = plane_world_height;
+        cam->cache->cachedfovh = fov_h;
+        force_recalculate_vertivecs = 1;
+    }
+    if (force_recalculate_vertivecs ||
+            cam->cache->cachedvangle != cam->vangle) {
+        const int64_t plane_height = cam->cache->planeheight;
+        const int64_t plane_distance = cam->cache->planedist;
+        int64_t _vertishift_x = plane_distance;
+        int64_t _vertishift_z = 0;
+        math_rotate2di(&_vertishift_x, &_vertishift_z, -cam->vangle);
+        int scalar = ((int64_t)1000LL * _vertishift_x) /
+            plane_distance;
+        const int64_t vertishift_z = (_vertishift_z * scalar) /
+            (int64_t)1000LL;
+        cam->cache->planezshift = vertishift_z;
         int i = 0;
         while (i < h) {
             cam->cache->vertivecs_z[i] = (
-                plane_world_height / 2 -
-                plane_world_height * i / imax(1, h - 1)
-            );
+                plane_height / 2 -
+                plane_height * i / imax(1, h - 1)
+            ) + vertishift_z;
             cam->cache->vertivecs_x[i] = plane_distance;
             i++;
         }
-        int32_t fov_v = (math_angle2di(
+        int32_t fov_v = abs(math_fixanglei(math_angle2di(
             cam->cache->vertivecs_x[0],
             -cam->cache->vertivecs_z[0]
-        ));
-        cam->cache->cachedfovh = fov_h;
+        ) - math_angle2di(
+            cam->cache->vertivecs_x[h - 1],
+            -cam->cache->vertivecs_z[h - 1]
+        )));
         cam->cache->cachedfovv = fov_v;
     }
     if (force_recalculate_rotated_vecs ||
-            cam->cache->cachedangle != cam->obj->angle ||
-            cam->cache->cachedvangle != cam->vangle) {
+            cam->cache->cachedangle != cam->obj->angle) {
         int64_t plane_left_x = (
             cam->cache->unrotatedplanevecs_left_x
         );
@@ -1027,9 +1054,15 @@ int roomcam_WallSliceHeight(
     );
     assert(xoffset >= 0 && xoffset < cam->cache->cachedw);
     int64_t planecoldist = cam->cache->planevecs_len[xoffset];
-    int64_t planecoldistscalar = (dist * 100000LL) / planecoldist;
-    int64_t screenheightatwall = (
+    const int64_t planecoldistscalar = (
+        (dist * 100000LL) / planecoldist
+    );
+    const int64_t screenheightatwall = (
         (cam->cache->planeh * planecoldistscalar) / 100000LL
+    );
+    const int64_t zshiftatwall = (
+        (cam->cache->planezshift * planecoldistscalar) /
+        100000LL
     );
     /*printf("dist: %" PRId64 ", planecoldist: %" PRId64 ", "
         "planecoldistscalar: %" PRId64 ", "
@@ -1042,7 +1075,7 @@ int roomcam_WallSliceHeight(
         r->height);*/
     int64_t screentopatwall = (
         cam->obj->z + screenheightatwall / 2
-    );
+    ) + zshiftatwall;
     if (unlikely(clamp && (
             screentopatwall < geometry_floor_z ||
             screentopatwall - screenheightatwall >
@@ -1053,7 +1086,9 @@ int roomcam_WallSliceHeight(
     int64_t world_to_pixel_scalar = (
         ((int64_t)h * 100000L) / screenheightatwall
     );
-    int64_t _topworldz = geometry_floor_z + geometry_height;
+    int64_t _topworldz = (
+        geometry_floor_z + geometry_height
+    );
     assert(world_to_pixel_scalar >= 0);
     int64_t topoff_screen = (
         ((screentopatwall - _topworldz) *
@@ -1325,6 +1360,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
             (x + (y + k) * targetw) * rendertargetcopylen
         ];
         const int tghasalpha = rendertarget->hasalpha;
+        const int alphapixoffset = (tghasalpha ? 3 : 0);
         while (likely(rowoffset_mult_ty1toty2diff !=
                 pastmaxrowoffset_mult)) {
             ty = ((int32_t)(
@@ -1341,6 +1377,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
             );
             assert(srcoffset >= 0 &&
                 srcoffset < srf->w * srf->h * srccopylen);
+            *(targetwriteptr + alphapixoffset) = 255;
             *targetwriteptr = math_pixcliptop(
                 srcpixels[srcoffset + 0] * cr /
                 LIGHT_COLOR_SCALAR);
@@ -1353,8 +1390,6 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 srcpixels[srcoffset + 2] * cb /
                 LIGHT_COLOR_SCALAR);
             targetwriteptr++;
-            if (tghasalpha)
-                *targetwriteptr = 255;
             targetwriteptr += writeoffsetplus;
             rowoffset_mult_ty1toty2diff += ty1toty2diff;
         }
@@ -1814,6 +1849,7 @@ int roomcam_DrawWall(
         int64_t wall_floor_z, int64_t wall_height
         ) {
     // First, extract some info:
+    const int orig_xcol = xcol;
     int wallno = -1;
     room *r = NULL;
     if (geom->type == DRAWGEOM_ROOM) {
@@ -1856,7 +1892,6 @@ int roomcam_DrawWall(
         return 1;
 
     // Do the actual drawing:
-    const int orig_xcol = xcol;
     int prev_hitset = 0;
     int64_t prev_hitx, prev_hity;
     int prev_wallno = -1;

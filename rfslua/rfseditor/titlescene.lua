@@ -205,6 +205,9 @@ function rfseditor.titlescene.on_update()
         rfseditor._democam:set_pos(
             xoffset, 0, zoffset
         )
+        local vangle = -math.sin(rfseditor._demopososcillate * math.pi *
+            2 / 1000.0) * 10
+        rfseditor._democam:set_vangle(vangle)
     end
 end
 
