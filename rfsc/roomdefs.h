@@ -41,6 +41,8 @@
 #define COLMAP_UNITS ((int64_t)(ONE_METER_IN_UNITS * (int64_t)4))
 #define COLMAP_CELLS_PER_AXIS 64
 #define ROOM_MAX_EXTENTS_LEN ((int64_t)(ONE_METER_IN_UNITS * (int64_t)8))
+#define ADDITIVE_BLOCK_MAX_EXTENTS \
+    ((int64_t)(ONE_METER_IN_UNITS * (int64_t)2))
 
 // Drawing:
 #define _RAYCAST_LENGTH_MAYBE ((int64_t)COLMAP_UNITS * 64LL)

@@ -25,4 +25,7 @@ typedef struct movable {
 
 movable *movable_Create();
 
+
+movable *movable_CreateWithId(uint64_t id);
+
 #endif  // RFS2_ROOMOBJECT_MOVABLE_H_

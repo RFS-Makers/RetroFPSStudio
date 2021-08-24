@@ -22,7 +22,11 @@
 #include "roomcolmap.h"
 #include "roomdefs.h"
 #include "roomlayer.h"
+#include "roomobject.h"
+#include "roomobject_block.h"
+#include "roomobject_movable.h"
 #include "roomserialize.h"
+
 
 static int _extract_apply_tex_props(
         lua_State *l, roomlayer *lr,
@@ -126,6 +130,7 @@ static int _extract_apply_tex_props(
     }
     return 1;
 }
+
 
 int roomserialize_lua_DeserializeRoomGeometries(
         lua_State *l, roomlayer *lr, int tblindex, char **err
@@ -326,6 +331,7 @@ int roomserialize_lua_DeserializeRoomGeometries(
             return 0;
         }
         // Verify room shape:
+        assert(r->parentlayer && r->parentlayer->colmap);
         if (!room_VerifyBasicGeometry(r)) {
             room_Destroy(r); previousroom = NULL;
             char buf[256];
@@ -451,8 +457,9 @@ int roomserialize_lua_DeserializeRoomGeometries(
                 if (opposite_portal_wall_idx < 0) {
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
-                        "room with id %" PRIu64 " has invalid "
-                        "portal target for wall %d - "
+                        "room with id %" PRIu64 " has "
+                        "invalid portal "
+                        "target for wall %d - "
                         "target room "
                         "with id %" PRId64 " "
                         "has no matching wall lined up",
@@ -510,6 +517,307 @@ int roomserialize_lua_DeserializeRoomGeometries(
     }
     return 1;
 }
+
+
+int _extract_additiveblock_corners(
+        lua_State *l, uint64_t objid, int allownil,
+        int *out_corners, int64_t *out_cx,
+        int64_t *out_cy, char **err
+        ) {
+    lua_pushstring(l, "walls");
+    lua_gettable(l, -2);
+    if (lua_type(l, -1) != LUA_TTABLE &&
+            (!allownil ||
+            lua_type(l, -1) != LUA_TNIL)) {
+        char buf[256];
+        snprintf(buf, sizeof(buf) - 1,
+            "object of type block with id %"
+            PRIu64 " has \"walls\" "
+            "not being a table", objid);
+        *err = strdup(buf);
+        return 0;
+    } else if (lua_type(l, -1) == LUA_TTABLE) {
+        // Read "walls" property
+        int corners = 0;
+        int64_t cx[ROOM_MAX_CORNERS];
+        int64_t cy[ROOM_MAX_CORNERS];
+        int k = 0;
+        while (1) {
+            lua_pushinteger(l, k + 1);
+            lua_gettable(l, -2);
+            if (lua_type(l, -1) != LUA_TTABLE &&
+                    lua_type(l, -1) != LUA_TNIL) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object of type block with id %"
+                    PRIu64 " has \"walls\"[%d] "
+                    "not being a table",
+                    objid, k + 1);
+                *err = strdup(buf);
+                return 0;
+            }
+            if (lua_type(l, -1) == LUA_TNIL) {
+                break;
+            }
+            // Ensure we don't have excess corners already:
+            if (corners >= ROOM_MAX_CORNERS) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object of type block with id %"
+                    PRIu64 " has too many corners",
+                    objid);
+                *err = strdup(buf);
+                return 0;
+            }
+            // Get corners:
+            int64_t cornerx, cornery;
+            lua_pushstring(l, "corner_x");
+            lua_gettable(l, -3);
+            if (lua_type(l, -1) != LUA_TNUMBER) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object of type block with id %"
+                    PRIu64 " has wall[%d] with "
+                    "\"corner_x\" not a number",
+                    objid, k + 1);
+                *err = strdup(buf);
+                return 0;
+            }
+            cornerx = (lua_isinteger(l, -1) ?
+                lua_tointeger(l, -1) :
+                (int64_t)lua_tonumber(l, -1));
+            lua_pop(l, 1);  // Remove "corner_x"
+            lua_pushstring(l, "corner_y");
+            lua_gettable(l, -3);
+            if (lua_type(l, -1) != LUA_TNUMBER) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object of type block with id %"
+                    PRIu64 " has wall[%d] with "
+                    "\"corner_y\" not a number",
+                    objid, k + 1);
+                *err = strdup(buf);
+                return 0;
+            }
+            cornery = (lua_isinteger(l, -1) ?
+                lua_tointeger(l, -1) :
+                (int64_t)lua_tonumber(l, -1));
+            lua_pop(l, 1);  // Remove "corner_y"
+            cx[k] = cornerx;
+            cy[k] = cornery;
+            corners++;
+            lua_pop(l, 1);  // Remove "walls"[k + 1] entry
+            k++;
+        }
+        if (corners < 3) {
+            char buf[256];
+            snprintf(buf, sizeof(buf) - 1,
+                "object of type block with id %"
+                PRIu64 " has too few corners",
+                objid);
+            *err = strdup(buf);
+            return 0;
+        }
+        *out_corners = corners;
+        memcpy(out_cx, cx, sizeof(*cx) * corners);
+        memcpy(out_cy, cy, sizeof(*cy) * corners);
+    }
+    lua_pop(l, 1);  // Remove "walls" property
+    return 1;
+}
+ 
+
+int roomserialize_lua_SetObjectProperties(
+        lua_State *l, roomlayer *lr, int tblindex,
+        char **err
+        ) {
+    if (tblindex < 0)
+        tblindex = lua_gettop(l) - 1 + tblindex;
+    int startstack = lua_gettop(l);
+    if (tblindex < 1 || tblindex > lua_gettop(l) ||
+            lua_type(l, tblindex) != LUA_TTABLE) {
+        *err = strdup("object property "
+            "list not a table");
+        lua_settop(l, startstack);
+        return 0;
+    }
+    int i = 1;
+    while (1) {
+        lua_pushinteger(l, i);
+        lua_gettable(l, tblindex);
+        if (lua_type(l, -1) != LUA_TTABLE &&
+                lua_type(l, -1) != LUA_TNIL) {
+            *err = strdup("object property entry "
+                "not a table");
+            lua_settop(l, startstack);
+            return 0;
+        }
+        if (lua_type(l, -1) == LUA_TNIL) {
+            lua_settop(l, startstack);
+            break;
+        }
+        int objisnew = 0;
+        uint64_t objid = -1;
+        lua_pushstring(l, "id");
+        lua_gettable(l, -2);
+        if (lua_type(l, -1) != LUA_TNUMBER ||
+                lua_tonumber(l, -1) < 1) {
+            *err = strdup("object id not a "
+                "number of 1 or larger");
+            lua_settop(l, startstack);
+            return 0;
+        }
+        if (lua_isinteger(l, -1))
+            objid = lua_tointeger(l, -1);
+            else objid = round(lua_tonumber(l, -1));
+        lua_pop(l, 1);
+        roomobj *obj = roomobj_ById(objid);
+        lua_pushstring(l, "type");
+        lua_gettable(l, -2);
+        if (lua_type(l, -1) != LUA_TSTRING &&
+                lua_type(l, -1) != LUA_TNIL) {
+            char buf[256];
+            snprintf(buf, sizeof(buf) - 1,
+                "object with id %" PRIu64 " has \"type\" "
+                "not being a string", objid);
+            *err = strdup(buf);
+            lua_settop(l, startstack);
+            return 0;
+        } else if (lua_type(l, -1) == LUA_TNIL && !obj) {
+            char buf[256];
+            snprintf(buf, sizeof(buf) - 1,
+                "object with id %" PRIu64 " does not exist, "
+                "but no \"type\" for creation given", objid);
+            *err = strdup(buf);
+            lua_settop(l, startstack);
+            return 0;
+        } else if (lua_type(l, -1) == LUA_TSTRING) {
+            const char *typestr = lua_tostring(l, -1);
+            if (!typestr) {
+                *err = strdup("out of memory");
+                lua_settop(l, startstack);
+                return 0;
+            }
+            int type = -1;
+            if (strcmp(typestr, "movable") == 0) {
+                type = ROOMOBJ_MOVABLE;
+            } else if (strcmp(typestr, "camera") == 0) {
+                type = ROOMOBJ_CAMERA;
+            } else if (strcmp(typestr, "block") == 0) {
+                type = ROOMOBJ_BLOCK;
+            }
+            lua_pop(l, 1);  // Remove "type" string
+            if (type < 0) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object with id %" PRIu64 " has "
+                    "unrecognized \"type\"", objid);
+                *err = strdup(buf);
+                lua_settop(l, startstack);
+                return 0;
+            } else if (obj && obj->objtype != type) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object with id %" PRIu64 " "
+                    "already exists, but not "
+                    "with the specified \"type\" - "
+                    "conversions are not allowed", objid);
+                *err = strdup(buf);
+                lua_settop(l, startstack);
+                return 0;
+            }
+            if (!obj && type == ROOMOBJ_MOVABLE) {
+                objisnew = 1;
+                movable *mov =
+                    movable_CreateWithId(objid);
+                if (mov) obj = mov->obj;
+            } else if (!obj && type == ROOMOBJ_BLOCK) {
+                objisnew = 1;
+                int corners = 0;
+                int64_t cx[ROOM_MAX_CORNERS];
+                int64_t cy[ROOM_MAX_CORNERS];
+                if (!_extract_additiveblock_corners(
+                        l, objid, 0, &corners, cx, cy,
+                        err)) {
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                if (!room_VerifyBasicGeometryByPolygon(
+                        corners, cx, cy, 1,
+                        ADDITIVE_BLOCK_MAX_EXTENTS)) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object of type block "
+                        "with id %" PRIu64 " "
+                        "has \"walls\" with invalid geometry "
+                        "cannot spawn this object", objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                block *bl =
+                    block_CreateById(objid,
+                    corners, cx, cy);
+                if (bl) obj = bl->obj;
+            } else {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object with id %" PRIu64 " has "
+                    "\"type\" not supported "
+                    "for creation via deserialize",
+                    objid);
+                *err = strdup(buf);
+                lua_settop(l, startstack);
+                return 0;
+            }
+            if (!obj) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object with id %" PRIu64 " "
+                    "unexpectedly failed "
+                    "to spawn, out of memory or internal "
+                    "error", objid);
+                *err = strdup(buf);
+                lua_settop(l, startstack);
+                return 0;
+            }
+            if (!obj->parentlayer)
+                roomobj_SetLayer(obj, lr);
+            // XXX: we already removed "type" from stack above.
+        } else {
+            lua_pop(l, 1);  // Remove "type" property
+        }
+        if (!objisnew && obj->objtype == ROOMOBJ_BLOCK) {
+            // See if wall geometry is being updated:
+            int corners = 0;
+            int64_t cx[ROOM_MAX_CORNERS];
+            int64_t cy[ROOM_MAX_CORNERS];
+            if (!_extract_additiveblock_corners(
+                    l, objid, 1, &corners, cx, cy,
+                    err)) {
+                lua_settop(l, startstack);
+                return 0;
+            }
+            if (!room_VerifyBasicGeometryByPolygon(
+                    corners, cx, cy, 1,
+                    ADDITIVE_BLOCK_MAX_EXTENTS)) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object of type block "
+                    "with id %" PRIu64 " "
+                    "has \"walls\" with invalid geometry "
+                    "that cannot be applied", objid);
+                *err = strdup(buf);
+                lua_settop(l, startstack);
+                return 0;
+            }
+        }
+        lua_pop(l, 1);  // Remove object[i + 1]
+        i++;
+    }
+    return 1;
+}
+
 
 int roomserialize_lua_SetRoomProperties(
         lua_State *l, roomlayer *lr, int tblindex, char **err

@@ -26,12 +26,21 @@ static void _movable_DestroyCallback(roomobj *movobj) {
 
 
 movable *movable_Create() {
+    return movable_CreateWithId(
+        roomobj_GetNewId()
+    );
+}
+
+
+movable *movable_CreateWithId(uint64_t id) {
+    if (id <= 0)
+        return NULL;
     movable *mov = malloc(sizeof(*mov));
     if (!mov)
         return NULL;
     memset(mov, 0, sizeof(*mov));
     roomobj *obj = roomobj_Create(
-        roomobj_GetNewId(), ROOMOBJ_MOVABLE,
+        id, ROOMOBJ_MOVABLE,
         mov, &_movable_DestroyCallback
     );
     if (!obj) {
@@ -41,4 +50,3 @@ movable *movable_Create() {
     mov->obj = obj;
     return mov;
 }
-

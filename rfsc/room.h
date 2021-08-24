@@ -76,5 +76,12 @@ int room_ContainsPoint(
     room *room, int64_t x, int64_t y
 );
 int room_VerifyBasicGeometry(room *r);
+void room_ComputeExtentsByPolygon(
+    int corners, int64_t *cx, int64_t *cy,
+    int64_t *min_x, int64_t *min_y,
+    int64_t *max_x, int64_t *max_y);
+int room_VerifyBasicGeometryByPolygon(
+    int corners, int64_t *cx, int64_t *cy,
+    int requireconvex, int64_t max_extents);
 
 #endif  // RFS2_ROOM_H_

@@ -22,4 +22,9 @@ int roomserialize_lua_SetRoomProperties(
     lua_State *l, roomlayer *lr, int tblindex, char **err
 );
 
+int roomserialize_lua_SetObjectProperties(
+    lua_State *l, roomlayer *lr, int tblindex,
+    char **err
+);
+
 #endif  // RFS2_ROOMSERIALIZE_H_

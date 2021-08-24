@@ -31,6 +31,7 @@ room *room_ById(roomlayer *lr, uint64_t id) {
     return (room *)(void*)hashptrval;
 }
 
+
 uint64_t room_GetNewId(roomlayer *lr) {
     uint64_t i = lr->possibly_free_room_id;
     if (i < 1)
@@ -48,23 +49,26 @@ uint64_t room_GetNewId(roomlayer *lr) {
     return 0;
 }
 
-void room_ComputeExtents(room *r, int64_t *min_x, int64_t *min_y,
+
+void room_ComputeExtentsByPolygon(
+            int corners, int64_t *cx, int64_t *cy,
+            int64_t *min_x, int64_t *min_y,
             int64_t *max_x, int64_t *max_y) {
-    int64_t _min_x = r->corner_x[0];
-    int64_t _max_x = r->corner_x[0];
-    int64_t _min_y = r->corner_y[0];
-    int64_t _max_y = r->corner_y[0];
+    int64_t _min_x = cx[0];
+    int64_t _max_x = cx[0];
+    int64_t _min_y = cy[0];
+    int64_t _max_y = cy[0];
 
     int i = 1;
-    while (i < r->corners) {
-        if (r->corner_x[i] < _min_x)
-            _min_x = r->corner_x[i];
-        if (r->corner_x[i] > _max_x)
-            _max_x = r->corner_x[i];
-        if (r->corner_y[i] < _min_y)
-            _min_y = r->corner_y[i];
-        if (r->corner_y[i] > _max_y)
-            _max_y = r->corner_y[i];
+    while (i < corners) {
+        if (cx[i] < _min_x)
+            _min_x = cx[i];
+        if (cx[i] > _max_x)
+            _max_x = cx[i];
+        if (cy[i] < _min_y)
+            _min_y = cy[i];
+        if (cy[i] > _max_y)
+            _max_y = cy[i];
         i++;
     }
     *min_x = _min_x;
@@ -73,19 +77,30 @@ void room_ComputeExtents(room *r, int64_t *min_x, int64_t *min_y,
     *max_y = _max_y;
 }
 
-int room_VerifyBasicGeometry(room *r) {
-    if (r->corners < 3)
+
+void room_ComputeExtents(room *r, int64_t *min_x, int64_t *min_y,
+            int64_t *max_x, int64_t *max_y) {
+    room_ComputeExtentsByPolygon(
+        r->corners, r->corner_x, r->corner_y,
+        min_x, min_y, max_x, max_y);
+}
+
+
+int room_VerifyBasicGeometryByPolygon(
+        int corners, int64_t *cx, int64_t *cy,
+        int requireconvex, int64_t max_extents) {
+    if (corners < 3 || corners > ROOM_MAX_CORNERS)
         return 0;
 
     // Make sure no corners share a spot:
-    int iprev = r->corners - 1;
+    int iprev = corners - 1;
     int i = 0;
-    while (i < r->corners) {
+    while (i < corners) {
         int k = 0;
-        while (k < r->corners) {
+        while (k < corners) {
             if (k != i &&
-                    r->corner_x[i] == r->corner_x[k] &&
-                    r->corner_y[i] == r->corner_y[k]) {
+                    cx[i] == cx[k] &&
+                    cy[i] == cy[k]) {
                 return 0;
             }
             k++;
@@ -93,15 +108,115 @@ int room_VerifyBasicGeometry(room *r) {
         i++;
     }
 
-    // Ensure it's not too large, and inside colmap range:
+    // Ensure it is convex if requested:
+    if (requireconvex) {
+        int iprev = corners - 1;
+        int inext = 1;
+        int i = 0;
+        while (i < corners) {
+            int64_t walldir_x, walldir_y;
+            walldir_x = (cx[inext] - cx[i]);
+            walldir_y = (cy[inext] - cy[i]);
+            if (walldir_x == 0 && walldir_y == 0)
+                return 0;
+            int64_t prevwalldir_x, prevwalldir_y;
+            prevwalldir_x = (
+                cx[i] - cx[iprev]
+            );
+            prevwalldir_y = (
+                cy[i] - cy[iprev]
+            );
+            if (prevwalldir_x == 0 && prevwalldir_y == 0)
+                return 0;
+            int32_t angle_i = math_angle2di(
+                walldir_x, walldir_y
+            );
+            int32_t angle_iprev = math_angle2di(
+                prevwalldir_x, prevwalldir_y
+            );
+            int32_t anglediff = math_fixanglei(
+                angle_i - angle_iprev
+            );
+            if (anglediff < 0)
+                return 0;
+            inext++;
+            if (inext >= corners)
+                inext = 0;
+            iprev++;
+            if (iprev >= corners)
+                iprev = 0;
+            i++;
+        }
+    }
+
+    // Ensure it's not too large:
     int64_t min_x, min_y, max_x, max_y;
-    room_ComputeExtents(r, &min_x, &min_y, &max_x, &max_y);
+    room_ComputeExtentsByPolygon(
+        corners, cx, cy,
+        &min_x, &min_y, &max_x, &max_y);
     assert(max_x >= min_y && max_y >= min_y);
-    if (max_x - min_x > ROOM_MAX_EXTENTS_LEN ||
-            max_y - min_y > ROOM_MAX_EXTENTS_LEN) {
+    if (max_x - min_x > max_extents ||
+            max_y - min_y > max_extents) {
         return 0;
     }
+
+    // Check it's counter-clockwise:
+    if (!math_checkpolyccw2di(corners, cx, cy)) {
+        return 0;
+    }
+
+    // Check walls don't intersect with each other:
+    int inext = 1;
+    i = 0;
+    while (i < corners) {
+        int knext = 1;
+        int k = 0;
+        while (k < i) {
+            if (i - 1 == k || (k == 0 && i == corners - 1)) {
+                // Neighboring walls, ignore.
+                // (They'll collide with their corner spots.)
+                knext++;
+                if (knext >= corners) knext = 0;
+                k++;
+                continue;
+            }
+            // Collision check:
+            int64_t wix, wiy;
+            if (math_lineintersect2di(
+                    cx[i], cy[i],
+                    cx[inext], cy[inext],
+                    cx[k], cy[k],
+                    cx[knext], cy[knext],
+                    &wix, &wiy
+                    )) {
+                return 0;
+            }
+            knext++;
+            if (knext >= corners) knext = 0;
+            k++;
+        }
+        inext++;
+        if (inext >= corners) inext = 0;
+        i++;
+    }
+    return 1;
+}
+
+
+int room_VerifyBasicGeometry(room *r) {
+    if (!room_VerifyBasicGeometryByPolygon(
+            r->corners, r->corner_x, r->corner_y,
+            0, ROOM_MAX_EXTENTS_LEN
+            ))
+        return 0;
+
+    // Ensure it doesn't exceed its colmap:
     if (r->parentlayer) {
+        int64_t min_x, min_y, max_x, max_y;
+        room_ComputeExtentsByPolygon(
+            r->corners, r->corner_x, r->corner_y,
+            &min_x, &min_y, &max_x, &max_y);
+        assert(max_x >= min_y && max_y >= min_y);
         if (min_x < roomcolmap_MinX(r->parentlayer->colmap) ||
                 max_x > roomcolmap_MaxX(r->parentlayer->colmap) ||
                 min_y < roomcolmap_MinY(r->parentlayer->colmap) ||
@@ -110,48 +225,9 @@ int room_VerifyBasicGeometry(room *r) {
         }
     }
 
-    // Check it's counter-clockwise:
-    if (!math_checkpolyccw2di(r->corners,
-            r->corner_x, r->corner_y)) {
-        return 0;
-    }
-
-    // Check walls don't intersect with each other:
-    int inext = 1;
-    i = 0;
-    while (i < r->corners) {
-        int knext = 1;
-        int k = 0;
-        while (k < i) {
-            if (i - 1 == k || (k == 0 && i == r->corners - 1)) {
-                // Neighboring walls, ignore.
-                // (They'll collide with their corner spots.)
-                knext++;
-                if (knext >= r->corners) knext = 0;
-                k++;
-                continue;
-            }
-            // Collision check:
-            int64_t wix, wiy;
-            if (math_lineintersect2di(
-                    r->corner_x[i], r->corner_y[i],
-                    r->corner_x[inext], r->corner_y[inext],
-                    r->corner_x[k], r->corner_y[k],
-                    r->corner_x[knext], r->corner_y[knext],
-                    &wix, &wiy
-                    )) {
-                return 0;
-            }
-            knext++;
-            if (knext >= r->corners) knext = 0;
-            k++;
-        }
-        inext++;
-        if (inext >= r->corners) inext = 0;
-        i++;
-    }
     return 1;
 }
+
 
 int room_RecomputePosExtent(room *r) {
     assert(r->corners > 0);

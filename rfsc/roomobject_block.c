@@ -25,13 +25,29 @@ static void _block_DestroyCallback(roomobj *obj) {
 }
 
 
-block *block_Create(int corners) {
+block *block_Create(int corners,
+        int64_t *corner_x, int64_t *corner_y) {
+    uint64_t id = roomobj_GetNewId();
+    return block_CreateById(
+        id, corners, corner_x, corner_y);
+}
+
+
+block *block_CreateById(uint64_t id, int corners,
+        int64_t *corner_x, int64_t *corner_y) {
+    if (id <= 0) return NULL;
+    if (corners < 3 || corners > ROOM_MAX_CORNERS)
+        return NULL;
+    if (!room_VerifyBasicGeometryByPolygon(
+            corners, corner_x, corner_y, 1,
+            ADDITIVE_BLOCK_MAX_EXTENTS))
+        return NULL;
     block *bl = malloc(sizeof(*bl));
     if (!bl)
         return NULL;
     memset(bl, 0, sizeof(*bl));
     roomobj *obj = roomobj_Create(
-        roomobj_GetNewId(), ROOMOBJ_BLOCK,
+        id, ROOMOBJ_BLOCK,
         bl, &_block_DestroyCallback
     );
     if (!obj) {
@@ -39,6 +55,10 @@ block *block_Create(int corners) {
         return NULL;
     }
     bl->obj = obj;
+    bl->corners = corners;
+    memcpy(bl->corner_x, corner_x,
+        sizeof(*corner_x) * bl->corners);
+    memcpy(bl->corner_y, corner_y,
+        sizeof(*corner_y) * bl->corners);
     return bl;
 }
-
