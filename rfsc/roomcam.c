@@ -301,6 +301,7 @@ int roomcam_DynlightFactorFloorCeilOrPoint(
     );
 }
 
+
 int roomcam_DynlightFactorWall(
         int64_t light_x, int64_t light_y, int64_t light_range,
         int64_t light_dist,
@@ -323,6 +324,7 @@ int roomcam_DynlightFactorWall(
         light_dist, light_range
     );
 }
+
 
 int roomcam_DynamicLightAtXY(
         roomrendercache *rcache, room *r,
@@ -453,6 +455,7 @@ void roomcam_FloorCeilingCubeMapping(
         ((py2 - py1) * TEX_COORD_SCALER) / repeat_units_y
     );
 }
+
 
 HOTSPOT int roomcam_DrawFloorCeilingSlice(
         rfssurf *rendertarget, roomcam *cam, room *r,
@@ -1304,7 +1307,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 ))
             return 0;
     } else {
-        int64_t tx, ty1, ty2, ty;
+        int64_t tx, ty1, ty2;
         assert(bottomworldz <= topworldz);
         roomcam_WallCubeMapping(
             r, wallno, hit_x, hit_y, aboveportal,
@@ -1361,12 +1364,31 @@ HOTSPOT static int roomcam_DrawWallSlice(
         ];
         const int tghasalpha = rendertarget->hasalpha;
         const int alphapixoffset = (tghasalpha ? 3 : 0);
+        int32_t ty1_positive = ty1;
+        int32_t ty2_positive = ty2;
+        if (ty1_positive < 0) {
+            int32_t coordstoadd = (-ty1_positive) /
+                TEX_COORD_SCALER + 1;
+            ty1_positive += coordstoadd * TEX_COORD_SCALER;
+            ty2_positive += coordstoadd * TEX_COORD_SCALER;
+        }
+        if (ty2_positive < 0) {
+            int32_t coordstoadd = (-ty2_positive) /
+                TEX_COORD_SCALER + 1;
+            ty1_positive += coordstoadd * TEX_COORD_SCALER;
+            ty2_positive += coordstoadd * TEX_COORD_SCALER;
+        }
+        int steps = (screenbottom - k);
+        const uint32_t ty1_shift = ty1_positive << 5;
+        const uint32_t ty2_shift = ty2_positive << 5;
+        const int32_t tystep_shift = (
+            (int32_t)ty2_shift - (int32_t)ty1_shift) / steps;
+        uint32_t ty_nomod_shift = ty1_shift;
+        int ty;
         while (likely(rowoffset_mult_ty1toty2diff !=
                 pastmaxrowoffset_mult)) {
-            ty = ((int32_t)(
-                ty1 + (rowoffset_mult_ty1toty2diff
-                    / slicepixellen)
-            )) & texcoord_modulo_mask;
+            ty_nomod_shift += tystep_shift;
+            ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
             // Remember, we're using the sideways tex.
             const int sourcex = (
                 (srfw * (TEX_COORD_SCALER - 1 - ty))
