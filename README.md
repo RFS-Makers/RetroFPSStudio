@@ -1,9 +1,13 @@
 
-Retro FPS Studio (RFS)
-======================
+Retro FPS Studio
+================
+
+![logo of RFS](./rfslua/res/ui/$logo.png)
 
 Welcome to **Retro FPS Studio**, the game making tool for
-raycasting retro fun!
+raycasting retro fun! It produces true 2.5D, oldschool goodness:
+
+![screenshot of RFS](./misc/scr_promo_1.png)
 
 *Note: this public, partial copy of RFS2 is sadly
 **NOT free software** and has restrictive terms,

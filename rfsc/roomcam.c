@@ -1346,7 +1346,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int32_t ty1toty2diff = (ty2 - ty1);
         const int writeoffsetplus = (
             targetw * rendertargetcopylen
-        ) - 3;
+        ) - (rendertarget->hasalpha ? 3 : 2);
         const int srfw = srf->w;
         int rowoffset_mult_ty1toty2diff = 0;
         const int maxrowoffset = (screenbottom - k);
@@ -1363,7 +1363,6 @@ HOTSPOT static int roomcam_DrawWallSlice(
             (x + (y + k) * targetw) * rendertargetcopylen
         ];
         const int tghasalpha = rendertarget->hasalpha;
-        const int alphapixoffset = (tghasalpha ? 3 : 0);
         int32_t ty1_positive = ty1;
         int32_t ty2_positive = ty2;
         if (ty1_positive < 0) {
@@ -1385,35 +1384,78 @@ HOTSPOT static int roomcam_DrawWallSlice(
             (int32_t)ty2_shift - (int32_t)ty1_shift) / steps;
         uint32_t ty_nomod_shift = ty1_shift;
         int ty;
-        while (likely(rowoffset_mult_ty1toty2diff !=
-                pastmaxrowoffset_mult)) {
-            ty_nomod_shift += tystep_shift;
-            ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
-            // Remember, we're using the sideways tex.
-            const int sourcex = (
-                (srfw * (TEX_COORD_SCALER - 1 - ty))
-                / TEX_COORD_SCALER
-            ) * srccopylen;
-            const int srcoffset = (
-                sourcex + sourcey_multiplied_w_copylen
-            );
-            assert(srcoffset >= 0 &&
-                srcoffset < srf->w * srf->h * srccopylen);
-            *(targetwriteptr + alphapixoffset) = 255;
-            *targetwriteptr = math_pixcliptop(
-                srcpixels[srcoffset + 0] * cr /
-                LIGHT_COLOR_SCALAR);
-            targetwriteptr++;
-            *targetwriteptr = math_pixcliptop(
-                srcpixels[srcoffset + 1] * cg /
-                LIGHT_COLOR_SCALAR);
-            targetwriteptr++;
-            *targetwriteptr = math_pixcliptop(
-                srcpixels[srcoffset + 2] * cb /
-                LIGHT_COLOR_SCALAR);
-            targetwriteptr++;
-            targetwriteptr += writeoffsetplus;
-            rowoffset_mult_ty1toty2diff += ty1toty2diff;
+        if (tghasalpha) {
+            // Blit branch where render target has alpha channel
+            while (likely(rowoffset_mult_ty1toty2diff !=
+                    pastmaxrowoffset_mult)) {
+                ty_nomod_shift += tystep_shift;
+                ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                // Remember, we're using the sideways tex.
+                const int sourcex = (
+                    (srfw * (TEX_COORD_SCALER - 1 - ty))
+                    / TEX_COORD_SCALER
+                ) * srccopylen;
+                const int srcoffset = (
+                    sourcex + sourcey_multiplied_w_copylen
+                );
+                uint8_t *readptr = (
+                    (uint8_t *)&srcpixels[srcoffset]
+                );
+                assert(srcoffset >= 0 &&
+                    srcoffset < srf->w * srf->h * srccopylen);
+                *targetwriteptr = math_pixcliptop(
+                    (*readptr) * cr /
+                    LIGHT_COLOR_SCALAR);
+                targetwriteptr++;
+                readptr++;
+                *targetwriteptr = math_pixcliptop(
+                    (*readptr) * cg /
+                    LIGHT_COLOR_SCALAR);
+                targetwriteptr++;
+                readptr++;
+                *targetwriteptr = math_pixcliptop(
+                    (*readptr) * cb /
+                    LIGHT_COLOR_SCALAR);
+                targetwriteptr++;
+                *targetwriteptr = 255;
+                targetwriteptr += writeoffsetplus;
+                rowoffset_mult_ty1toty2diff += ty1toty2diff;
+            }
+        } else {
+            // Branch with render target having no alpha channel
+            while (likely(rowoffset_mult_ty1toty2diff !=
+                    pastmaxrowoffset_mult)) {
+                ty_nomod_shift += tystep_shift;
+                ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                // Remember, we're using the sideways tex.
+                const int sourcex = (
+                    (srfw * (TEX_COORD_SCALER - 1 - ty))
+                    / TEX_COORD_SCALER
+                ) * srccopylen;
+                const int srcoffset = (
+                    sourcex + sourcey_multiplied_w_copylen
+                );
+                uint8_t *readptr = (
+                    (uint8_t *)&srcpixels[srcoffset]
+                );
+                assert(srcoffset >= 0 &&
+                    srcoffset < srf->w * srf->h * srccopylen);
+                *targetwriteptr = math_pixcliptop(
+                    (*readptr) * cr /
+                    LIGHT_COLOR_SCALAR);
+                targetwriteptr++;
+                readptr++;
+                *targetwriteptr = math_pixcliptop(
+                    (*readptr) * cg /
+                    LIGHT_COLOR_SCALAR);
+                targetwriteptr++;
+                readptr++;
+                *targetwriteptr = math_pixcliptop(
+                    (*readptr) * cb /
+                    LIGHT_COLOR_SCALAR);
+                targetwriteptr += writeoffsetplus;
+                rowoffset_mult_ty1toty2diff += ty1toty2diff;
+            }
         }
     }
     return 1;

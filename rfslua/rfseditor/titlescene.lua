@@ -148,7 +148,9 @@ end
 function _devversion_warning()
     rfs.ui.dlg.show(
         "This is an EARLY ACCESS version. It doesn't " ..
-        "reflect the final product.",
+        "reflect the final product.\n\n" ..
+        "It's FREE to use. (While that " ..
+        "may change, for now there are no immediate plans.)",
         {{text="Got it", func=function()
             if rfseditor.license.got_problem() then
                 _titlescreen_license_show_missing()

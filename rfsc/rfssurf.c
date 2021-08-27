@@ -295,23 +295,30 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
         int sourceoffset = (
             (y - tgy + clipy) * source->w + clipx
         ) * sourcestep;
-        x = tgx;
-        while (x < maxx) {
+        uint8_t *readptr = &source->pixels[sourceoffset];
+        uint8_t *writeptr = &target->pixels[targetoffset];
+        uint8_t *writeptrend = (
+            writeptr + (maxx - tgx) * targetstep
+        );
+        const int readptrextraadvance = sourcestep - 3;
+        while (writeptr != writeptrend) {
             // XXX: assumes little endian. format is BGR/ABGR
             int alphar;
+            uint8_t salpha = 255;
             if (likely(sourcehasalpha)) {
-                if (likely(source->pixels[sourceoffset + 3] == 0)) {
-                    while (likely(x < maxx &&
-                            source->pixels[sourceoffset + 3] == 0
+                salpha = *(readptr + 3);
+                if (likely(salpha == 0)) {
+                    while (likely(writeptr != writeptrend &&
+                            *(readptr + 3) == 0
+                            // ^ salpha is NOT updated.
                             )) {
-                        x++;
-                        sourceoffset += sourcestep;
-                        targetoffset += targetstep;
+                        readptr += sourcestep;
+                        writeptr += targetstep;
                         continue;
                     }
                     continue;
                 }
-                alphar = (((int)source->pixels[sourceoffset + 3]
+                alphar = (((int)salpha
                     * INT_COLOR_SCALAR) / 255);
                 assert(alphar <= INT_COLOR_SCALAR);
             } else {
@@ -319,72 +326,70 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
             }
             int reverse_alphar = 0;
             if (likely(alphar >= INT_COLOR_SCALAR)) {
-                while (likely(source->pixels[sourceoffset + 3] == 255 &&
-                        x < maxx)) {
-                    if (tghasalpha)
-                        target->pixels[targetoffset + 3] = 255;
+                while (likely(salpha == 255 &&
+                        writeptr != writeptrend)) {
                     memcpy(
-                        &target->pixels[targetoffset],
-                        &source->pixels[sourceoffset], 3
+                        writeptr, readptr, 3
                     );
-                    x++;
-                    targetoffset += targetstep;
-                    sourceoffset += sourcestep;
+                    writeptr += 3;
+                    if (tghasalpha) {
+                        *writeptr = 255;
+                        writeptr++;
+                    }
+                    readptr += sourcestep;
+                    if (sourcehasalpha)
+                        salpha = *(readptr + 3);
                     continue;
                 }
                 continue;
             } else {
                 reverse_alphar = (INT_COLOR_SCALAR - alphar);
                 assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
+                // Blend in rgb now:
+                *writeptr = math_pixcliptop(
+                    ((int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR) +
+                    ((int)(*readptr) *
+                        alphar / INT_COLOR_SCALAR)
+                );
+                writeptr++;
+                readptr++;
+                *writeptr = math_pixcliptop(
+                    ((int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR) +
+                    ((int)(*readptr) *
+                        alphar / INT_COLOR_SCALAR)
+                );
+                writeptr++;
+                readptr++;
+                *writeptr = math_pixcliptop(
+                    ((int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR) +
+                    ((int)(*readptr) *
+                        alphar / INT_COLOR_SCALAR)
+                );
+                writeptr++;
+                readptr++;
                 if (tghasalpha) {
                     // ^ possibly faster to branch for rgb-only surfaces,
                     // since math_pixcliptop also branches anyway.
-                    int a = target->pixels[targetoffset + 3] *
+                    int a = (*writeptr) *
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a);
-                    target->pixels[targetoffset + 3] = math_pixcliptop(
+                    *writeptr = math_pixcliptop(
                         a / INT_COLOR_SCALAR
                     );
+                    writeptr++;
                 }
-                // Blend in rgb now:
-                target->pixels[targetoffset + 0] = math_pixcliptop(
-                    ((int)target->pixels[targetoffset + 0] *
-                        reverse_alphar / INT_COLOR_SCALAR) +
-                    ((int)source->pixels[sourceoffset + 0] *
-                        alphar / INT_COLOR_SCALAR)
-                );
-                target->pixels[targetoffset + 1] = math_pixcliptop(
-                    ((int)target->pixels[targetoffset + 1] *
-                        reverse_alphar / INT_COLOR_SCALAR) +
-                    ((int)source->pixels[sourceoffset + 1] *
-                        alphar / INT_COLOR_SCALAR)
-                );
-                target->pixels[targetoffset + 2] = math_pixcliptop(
-                    ((int)target->pixels[targetoffset + 2] *
-                        reverse_alphar / INT_COLOR_SCALAR) +
-                    ((int)source->pixels[sourceoffset + 2] *
-                        alphar / INT_COLOR_SCALAR)
-                );
             }
-            if (likely(target->hasalpha)) {
-                int a = target->pixels[targetoffset + 3] *
-                    INT_COLOR_SCALAR;
-                a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
-                    INT_COLOR_SCALAR;
-                a = (INT_COLOR_SCALAR * 255 - a);
-                target->pixels[targetoffset + 3] = math_pixclip(
-                    a / INT_COLOR_SCALAR
-                );
-            }
-            x++;
-            targetoffset += targetstep;
-            sourceoffset += sourcestep;
+            readptr += readptrextraadvance;
         }
         y++;
     }
 }
+
 
 rfssurf *rfssurf_Create(int w, int h, int alpha) {
     rfssurf *r = malloc(sizeof(*r));
@@ -470,72 +475,83 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
         int sourceoffset = (
             (y - tgy + clipy) * source->w + clipx
         ) * sourcestep;
-        x = tgx;
+        uint8_t *writeptr = &target->pixels[targetoffset];
+        uint8_t *writeptrend = (
+            writeptr + (maxx - tgx) * targetstep
+        );
+        uint8_t *readptr = &source->pixels[sourceoffset];
+        const int readptrextrastep = sourcestep - 3;
         assert(inta >= 0 && intr >= 0 && intg >= 0 && intb >= 0);
         assert(intrwhite >= 0 && intgwhite >= 0 && intbwhite >= 0);
-        while (x < maxx) {
+        while (writeptr != writeptrend) {
             // XXX: assumes little endian. format is BGR/ABGR
             int alphar;
             if (likely(source->hasalpha)) {
-                if (likely(source->pixels[sourceoffset + 3] == 0)) {
-                    while (likely(source->pixels[
-                            sourceoffset + 3] == 0 &&
-                            x < maxx)) {
-                        x++;
-                        sourceoffset += sourcestep;
-                        targetoffset += targetstep;
+                uint8_t salpha = *(readptr + 3);
+                if (likely(salpha == 0)) {
+                    while (likely(writeptr != writeptrend &&
+                            *(readptr + 3) == 0
+                            // ^ salpha is NOT updated
+                            )) {
+                        readptr += sourcestep;
+                        writeptr += targetstep;
                         continue;
                     }
                     continue;
                 }
                 alphar = (inta *
-                    ((int)source->pixels[sourceoffset + 3]
+                    ((int)salpha
                         * INT_COLOR_SCALAR / 255)) / INT_COLOR_SCALAR;
                 assert(alphar <= INT_COLOR_SCALAR);
             } else {
                 alphar = inta;
             }
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
-            target->pixels[targetoffset + 0] = math_pixcliptop((
-                (int)target->pixels[targetoffset + 0] *
+            *writeptr = math_pixcliptop((
+                (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
-                ((int)source->pixels[sourceoffset + 0] *
+                ((int)(*readptr) *
                     intr / INT_COLOR_SCALAR +
                     255 *
                     intrwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
             ));
-            target->pixels[targetoffset + 1] = math_pixcliptop((
-                (int)target->pixels[targetoffset + 1] *
+            writeptr++;
+            readptr++;
+            *writeptr = math_pixcliptop((
+                (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
-                ((int)source->pixels[sourceoffset + 1] *
+                ((int)(*readptr) *
                     intg / INT_COLOR_SCALAR +
                     255 *
                     intgwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
             ));
-            target->pixels[targetoffset + 2] = math_pixcliptop((
-                (int)target->pixels[targetoffset + 2] *
+            writeptr++;
+            readptr++;
+            *writeptr = math_pixcliptop((
+                (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
-                ((int)source->pixels[sourceoffset + 2] *
+                ((int)(*readptr) *
                     intb / INT_COLOR_SCALAR +
                     255 *
                     intbwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
             ));
+            writeptr++;
+            readptr++;
             if (likely(target->hasalpha)) {
-                int a = target->pixels[targetoffset + 3] *
+                int a = (*writeptr) *
                     INT_COLOR_SCALAR;
                 a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                     INT_COLOR_SCALAR;
                 a = (INT_COLOR_SCALAR * 255 - a);
-                target->pixels[targetoffset + 3] = math_pixcliptop(
+                *writeptr = math_pixcliptop(
                     a / INT_COLOR_SCALAR
                 );
+                writeptr++;
             }
-            x++;
-            targetoffset += targetstep;
-            sourceoffset += sourcestep;
+            readptr += readptrextrastep;
         }
         y++;
     }
@@ -643,7 +659,8 @@ HOTSPOT void rfssurf_BlitScaled(
                 scaledivx)) << 16)
         );
         const int64_t sourcexstep_shift = (
-            (int64_t)(sourcexend_shift - sourcexstart_shift) / (int64_t)imax(1,
+            (int64_t)(sourcexend_shift - sourcexstart_shift) /
+            (int64_t)imax(1,
             (maxx - tgx) - 1  // Correct would be - 0,
                 // but due to rounding issues it looks better to
                 // shoot to the right side slightly "early" on some
@@ -670,7 +687,8 @@ HOTSPOT void rfssurf_BlitScaled(
                     continue;
                 } else if (likely(!coloredoralphaed &&
                         alphabyte == 255)) {
-                    memcpy(writeptr, readptr, 4);
+                    memcpy(writeptr, readptr, 3);
+                    if (targethasalpha) *(writeptr + 3) = 255;
                     writeptr += targetstep;
                     continue;
                 }
@@ -682,6 +700,8 @@ HOTSPOT void rfssurf_BlitScaled(
                 alphar = inta;
                 if (likely(!coloredoralphaed)) {
                     memcpy(writeptr, readptr, 3);
+                    if (targethasalpha)
+                        *(writeptr + 3) = 255;
                     writeptr += targetstep;
                     continue;
                 }
@@ -777,34 +797,33 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
     char *p = (char *)srf->sdlsrf->pixels;
     const int width = srf->w;
     const int height = srf->h;
-    const int stepsize = 4;  // SDL's XBGR also is 4 bytes
     const int sourcestepsize = (srf->hasalpha ? 4 : 3);
+    const int srfhasalpha = srf->hasalpha;
+    const uint8_t *srfpixels = srf->pixels;
+    const int sdlsrfpitch = srf->sdlsrf->pitch;
     int sourceoffset = 0;
     int y = 0;
     while (y < height) {
         int x = 0;
         char *pnow = p;
-        char *maxp = p + (stepsize * width);
-        if (likely(srf->hasalpha)) {
+        char *maxp = p + (4 * width);
+        if (likely(srfhasalpha && withalpha)) {
             // Fast path (copies entire row in one):
-            memcpy(
-                pnow, srf->pixels + sourceoffset,
-                4 * width
-            );
-            sourceoffset += sourcestepsize * width;
+            memcpy(pnow, srfpixels,
+                4 * width);
+            srfpixels += sourcestepsize * width;
             continue;
         }
-        while (pnow < maxp) {
+        while (likely(pnow != maxp)) {
             // Slow path:
-            memcpy(
-                pnow, srf->pixels + sourceoffset, 3
-            );
+            memcpy(pnow, srfpixels, 3);
             // XXX: SDL2's XBGR still has this unused alpha byte:
+            pnow += 3;
             pnow[3] = 255;
-            pnow += stepsize;
-            sourceoffset += sourcestepsize;
+            pnow++;
+            srfpixels += sourcestepsize;
         }
-        p += srf->sdlsrf->pitch;
+        p += sdlsrfpitch;
         y++;
     }
     SDL_UnlockSurface(srf->sdlsrf);
@@ -814,6 +833,36 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
 SDL_Texture *rfssurf_AsTex(
         SDL_Renderer *r, rfssurf *srf, int withalpha
         ) {
+    if (withalpha == srf->hasalpha) {
+        SDL_Texture *t = SDL_CreateTexture(
+            r, (withalpha ? SDL_PIXELFORMAT_RGBA8888 :
+            SDL_PIXELFORMAT_RGB24), SDL_TEXTUREACCESS_STREAMING,
+            srf->w, srf->h
+        );
+        if (!t) {
+            return NULL;
+        }
+        int pitch = 0;
+        uint8_t *tpixels = NULL;
+        if (SDL_LockTexture(t, NULL,
+                (void **)&tpixels, &pitch) < 0) {
+            SDL_DestroyTexture(t);
+            return NULL;
+        }
+        uint8_t *readptr = srf->pixels;
+        int readstep = (withalpha ? 4 : 3);
+        uint8_t *readptrend = &srf->pixels[
+            srf->w * srf->h * readstep
+        ];
+        const int rowlen = (srf->w * readstep);
+        while (readptr != readptrend) {
+            memcpy(tpixels, readptr, rowlen);
+            tpixels += pitch;
+            readptr += rowlen;
+        }
+        SDL_UnlockTexture(t);
+        return t;
+    }
     SDL_Surface *sdlsrf = rfssurf_AsSrf(srf, withalpha);
     SDL_Texture *t = SDL_CreateTextureFromSurface(
         r, sdlsrf
