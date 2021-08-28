@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 
+typedef struct rfs2tex rfs2tex;
 typedef struct room room;
 typedef struct roomobj roomobj;
 typedef struct roomlayer roomlayer;
@@ -23,6 +24,12 @@ typedef enum roomobjtype {
     ROOMOBJ_TOTAL
 } roomobjtype;
 
+
+typedef struct objtexref {
+    rfs2tex *tex;
+    char *diskpath;
+    int refcount;
+} objtexref;
 
 typedef struct roomobj {
     uint64_t id;
@@ -43,6 +50,13 @@ typedef struct roomobj {
 
 
 uint64_t roomobj_GetNewId();
+
+objtexref *roomobj_MakeTexRef(
+    const char *dispath
+);
+
+void roomobj_UnmakeTexRef(
+    objtexref *ref);
 
 roomobj *roomobj_ById(uint64_t id);
 

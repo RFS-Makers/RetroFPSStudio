@@ -379,12 +379,12 @@ room *room_Create(roomlayer *lr, uint64_t id) {
         int k = 0;
         while (k < r->corners) {
             roomlayer_UnmakeTexRef(
-                r->wall[i].wall_tex.tex
+                lr, r->wall[i].wall_tex.tex
             );
             k++;
         }
-        roomlayer_UnmakeTexRef(r->ceiling_tex.tex);
-        roomlayer_UnmakeTexRef(r->floor_tex.tex);
+        roomlayer_UnmakeTexRef(lr, r->ceiling_tex.tex);
+        roomlayer_UnmakeTexRef(lr, r->floor_tex.tex);
         free(r);
         return NULL;
     }
@@ -396,23 +396,28 @@ room *room_Create(roomlayer *lr, uint64_t id) {
     return r;
 }
 
+
 void room_Destroy(room *r) {
     if (!r)
         return;
     if (r->parentlayer && r->parentlayer->colmap)
         roomcolmap_UnregisterRoom(r->parentlayer->colmap, r);
+    roomlayer *lr = r->parentlayer;
     int i = 0;
     while (i < r->corners) {
         if (r->wall[i].wall_tex.tex) {
-            r->wall[i].wall_tex.tex->refcount--;
+            roomlayer_UnmakeTexRef(
+                lr, r->wall[i].wall_tex.tex);
         }
         if (r->wall[i].has_aboveportal_tex &&
                 r->wall[i].aboveportal_tex.tex) {
-            r->wall[i].aboveportal_tex.tex->refcount--;
+            roomlayer_UnmakeTexRef(
+                lr, r->wall[i].aboveportal_tex.tex);
         }
         if (r->wall[i].has_portaldoor &&
                 r->wall[i].portaldoor_tex.tex) {
-            r->wall[i].portaldoor_tex.tex->refcount--;
+            roomlayer_UnmakeTexRef(
+                lr, r->wall[i].portaldoor_tex.tex);
         }
         if (r->wall[i].has_portal) {
             room *pr = r->wall[i].portal_targetroom;
@@ -421,13 +426,15 @@ void room_Destroy(room *r) {
             if (pr->wall[i2].has_portaldoor) {
                 pr->wall[i2].has_portaldoor = 0;
                 if (pr->wall[i2].portaldoor_tex.tex)
-                    pr->wall[i2].portaldoor_tex.tex->refcount--;
+                    roomlayer_UnmakeTexRef(
+                        lr, pr->wall[i2].portaldoor_tex.tex);
                 pr->wall[i2].portaldoor_tex.tex = NULL;
             }
             if (pr->wall[i2].has_aboveportal_tex) {
                 pr->wall[i2].has_aboveportal_tex = 0;
                 if (pr->wall[i2].aboveportal_tex.tex)
-                    pr->wall[i2].aboveportal_tex.tex->refcount--;
+                    roomlayer_UnmakeTexRef(
+                        lr, pr->wall[i2].aboveportal_tex.tex);
                 pr->wall[i2].aboveportal_tex.tex = NULL;
             }
             pr->wall[i2].has_portal = 0;
@@ -435,17 +442,20 @@ void room_Destroy(room *r) {
         }
         int k = 0;
         while (k < r->wall[i].decals_count) {
-            if (r->wall[i].decal[k].tex.tex) {
-                r->wall[i].decal[k].tex.tex->refcount--;
+            if (r->wall[i].decal[k].tex) {
+                roomlayer_UnmakeTexRef(
+                    lr, r->wall[i].decal[k].tex);
             }
             k++;
         }
         i++;
     }
     if (r->floor_tex.tex)
-        r->floor_tex.tex->refcount--;
+        roomlayer_UnmakeTexRef(
+            lr, r->floor_tex.tex);
     if (r->ceiling_tex.tex)
-        r->ceiling_tex.tex->refcount--;
+        roomlayer_UnmakeTexRef(
+            lr, r->ceiling_tex.tex);
     if (r->parentlayer) {
         hash_BytesMapUnset(
             r->parentlayer->room_by_id_map,

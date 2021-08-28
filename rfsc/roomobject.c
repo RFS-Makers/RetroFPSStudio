@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "filesys.h"
 #include "hash.h"
 #include "room.h"
 #include "roomcolmap.h"
@@ -23,6 +24,9 @@ roomobj **roomobj_list = NULL;
 int roomobj_list_count = 0;
 static hashmap *roomobj_by_id_map = NULL;
 static uint64_t possibly_free_roomobj_id = 1;
+static hashmap *obj_texref_by_path_map = NULL;
+static objtexref **obj_texrefs = NULL;
+static int obj_texrefs_count = 0;
 
 
 int roomobj_RequireHashmap() {
@@ -30,6 +34,67 @@ int roomobj_RequireHashmap() {
         return 1;
     roomobj_by_id_map = hash_NewBytesMap(128);
     return (roomobj_by_id_map != NULL);
+}
+
+
+objtexref *roomobj_MakeTexRef(
+        const char *diskpath
+        ) {
+    char *p = (diskpath ? filesys_Normalize(diskpath) : NULL);
+    if (!p)
+        return NULL;
+    if (!obj_texref_by_path_map) {
+        obj_texref_by_path_map = hash_NewStringMap(128);
+        if (!obj_texref_by_path_map) {
+            free(p);
+            return NULL;
+        }
+    }
+    uintptr_t hashptrval = 0;
+    if (!hash_StringMapGet(
+            obj_texref_by_path_map, p,
+            (uint64_t *)&hashptrval)) {
+        roomtexref **newrefs = realloc(
+            obj_texrefs, sizeof(*obj_texrefs) *
+                (obj_texrefs_count + 1));
+        if (!newrefs) {
+            free(p);
+            return NULL;
+        }
+        obj_texrefs = newrefs;
+        objtexref *newref = malloc(sizeof(*newref));
+        if (!newref) {
+            free(p);
+            return NULL;
+        }
+        obj_texrefs[obj_texrefs_count] = newref;
+        memset(newref, 0, sizeof(*newref));
+        newref->diskpath = p;
+        p = NULL;
+        newref->refcount = 1;
+        if (!hash_StringMapSet(
+                obj_texref_by_path_map, newref->diskpath,
+                (uint64_t)(uintptr_t)newref)) {
+            free(newref->diskpath);
+            free(newref);
+            return NULL;
+        }
+        obj_texrefs_count++;
+        return newref;
+    }
+    free(p);
+    objtexref *ref = (objtexref *)hashptrval;
+    ref->refcount++;
+    return ref;
+}
+
+
+void roomobj_UnmakeTexRef(
+        objtexref *ref) {
+    if (!ref)
+        return;
+    ref->refcount--;
+    assert(ref->refcount >= 0);
 }
 
 uint64_t roomobj_GetNewId() {

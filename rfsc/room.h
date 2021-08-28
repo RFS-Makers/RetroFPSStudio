@@ -31,8 +31,9 @@ typedef struct roomtexinfo {
 
 
 typedef struct roomdecal {
-    roomtexinfo tex;
-    // Decal position shift & scale are in tex!
+    roomtexref *tex;
+    int32_t tex_shiftx, tex_shifty;
+    int32_t tex_scaleintx, tex_scaleinty;  // range: TEX_FULLSCALE_INT=1x
 } roomdecal;
 
 typedef struct roomwall {
@@ -83,5 +84,7 @@ void room_ComputeExtentsByPolygon(
 int room_VerifyBasicGeometryByPolygon(
     int corners, int64_t *cx, int64_t *cy,
     int requireconvex, int64_t max_extents);
+void room_DerefRoomTexRef(
+    roomlayer *lr, roomtexref *ref);
 
 #endif  // RFS2_ROOM_H_

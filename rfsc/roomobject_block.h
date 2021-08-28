@@ -10,9 +10,15 @@
 
 #include <stdint.h>
 
-#include "room.h"
 
+typedef struct objtexref objtexref;
 typedef struct roomobj roomobj;
+
+typedef struct blocktexinfo {
+    objtexref *tex;
+    int32_t tex_scaleintx, tex_scaleinty;
+    uint8_t stretchtosurface;  // ignored for top/bottom
+} blocktexinfo;
 
 typedef struct block {
     roomobj *obj;
@@ -21,8 +27,8 @@ typedef struct block {
     int corners;
     int64_t corner_x[ROOM_MAX_CORNERS];
     int64_t corner_y[ROOM_MAX_CORNERS];
-    roomtexinfo wall_tex;
-    roomtexinfo bottomtop_tex;
+    blocktexinfo wall_tex;
+    blocktexinfo topbottom_tex;
 } block;
 
 

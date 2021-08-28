@@ -35,6 +35,8 @@ static int _extract_apply_tex_props(
     lua_pushstring(l, "texpath");
     lua_gettable(l, -2);
     if (lua_type(l, -1) == LUA_TSTRING) {
+        if (rtex->tex)
+            roomlayer_UnmakeTexRef(lr, rtex->tex);
         rtex->tex = (
             roomlayer_MakeTexRef(lr, lua_tostring(l, -1))
         );
@@ -207,12 +209,13 @@ int roomserialize_lua_DeserializeRoomGeometries(
         int i2 = 0;
         while (i2 < r->corners) {
             if (r->wall[i2].wall_tex.tex)
-                roomlayer_UnmakeTexRef(r->wall[i2].wall_tex.tex);
+                roomlayer_UnmakeTexRef(
+                    lr, r->wall[i2].wall_tex.tex);
             i2++;
         }
-        roomlayer_UnmakeTexRef(r->floor_tex.tex);
+        roomlayer_UnmakeTexRef(lr, r->floor_tex.tex);
         r->floor_tex.tex = NULL;
-        roomlayer_UnmakeTexRef(r->ceiling_tex.tex);
+        roomlayer_UnmakeTexRef(lr, r->ceiling_tex.tex);
         r->ceiling_tex.tex = NULL;
         r->corners = 0;
 
@@ -787,6 +790,90 @@ int roomserialize_lua_SetObjectProperties(
         } else {
             lua_pop(l, 1);  // Remove "type" property
         }
+        if (obj->objtype == ROOMOBJ_MOVABLE) {
+            // Check "sprite" property
+            lua_pushstring(l, "sprite");
+            lua_gettable(l, -2);
+            if (lua_type(l, -1) != LUA_TTABLE &&
+                    lua_type(l, -1) != LUA_TNIL) {
+                char buf[256];
+                snprintf(buf, sizeof(buf) - 1,
+                    "object with id %" PRIu64 " has \"sprite\" "
+                    "not being a table", objid);
+                *err = strdup(buf);
+                lua_settop(l, startstack);
+                return 0;
+            } else if (lua_type(l, -1) == LUA_TTABLE) {
+                lua_pushstring(l, "texpath");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TSTRING) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"sprite\" "
+                        "with \"texpath\" not a string",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                movable *mov = (movable *)obj->objdata;
+                mov->sprite_ref = roomobj_MakeTexRef(
+                    lua_tostring(l, -1));
+                if (!mov->sprite_ref) {
+                    *err = strdup("roomobj_MakeTexRef() "
+                        "failed, out of memory?");
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                lua_pop(l, 1);
+                lua_pushstring(l, "texscalex");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TNUMBER &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"sprite\" "
+                        "with \"texscalex\" not a number",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                mov->sprite_scaleintx = round(
+                    lua_tonumber(l, -1) * TEX_FULLSCALE_INT
+                );
+                if (mov->sprite_scaleintx <= 0)
+                    mov->sprite_scaleintx = 1;
+                lua_pop(l, 1);
+                lua_pushstring(l, "texscaley");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TNUMBER &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"sprite\" "
+                        "with \"texscaley\" not a number",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                }
+                mov->sprite_scaleinty = round(
+                    lua_tonumber(l, -1) * TEX_FULLSCALE_INT
+                );
+                if (mov->sprite_scaleinty <= 0)
+                    mov->sprite_scaleinty = 1;
+                lua_pop(l, 1);
+            } else {
+                movable *mov = (movable *)obj->objdata;
+                roomobj_UnmakeTexRef(mov->sprite_ref);
+                mov->sprite_ref = NULL;
+            }
+            lua_pop(l, 1);  // Remove "sprite" property
+        }
         if (!objisnew && obj->objtype == ROOMOBJ_BLOCK) {
             // See if wall geometry is being updated:
             int corners = 0;
@@ -811,6 +898,175 @@ int roomserialize_lua_SetObjectProperties(
                 lua_settop(l, startstack);
                 return 0;
             }
+        }
+        if (obj->objtype == ROOMOBJ_BLOCK) {
+            block *bl = (block *)obj->objdata;
+            // Check texture settings in "topbottom".
+            lua_pushstring(l, "topbottom");
+            lua_gettable(l, -3);
+            if (lua_type(l, -1) == LUA_TTABLE) {
+                lua_pushstring(l, "texpath");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TSTRING &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"topbottom\" "
+                        "with \"texpath\" not a string",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                } else if (lua_type(l, -1) == LUA_TSTRING) {
+                    bl->topbottom_tex.tex = roomobj_MakeTexRef(
+                        lua_tostring(l, -1));
+                    if (!bl->wall_tex.tex) {
+                        *err = strdup("roomobj_MakeTexRef() "
+                            "failed, out of memory?");
+                        lua_settop(l, startstack);
+                        return 0;
+                    }
+                }
+                lua_pop(l, 1);
+                lua_pushstring(l, "texscalex");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TNUMBER &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"walls\" "
+                        "with \"texscalex\" not a number",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                } else if (lua_type(l, -1) != LUA_TNUMBER) {
+                    bl->topbottom_tex.tex_scaleintx = round(
+                        lua_tonumber(l, -1) * TEX_FULLSCALE_INT
+                    );
+                    if (bl->topbottom_tex.tex_scaleintx <= 0)
+                        bl->topbottom_tex.tex_scaleintx = 1;
+                }
+                lua_pop(l, 1);
+                lua_pushstring(l, "texscaley");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TNUMBER &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"sprite\" "
+                        "with \"texscaley\" not a number",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                } else if (lua_type(l, -1) != LUA_TNUMBER) {
+                    bl->topbottom_tex.tex_scaleinty = round(
+                        lua_tonumber(l, -1) * TEX_FULLSCALE_INT
+                    );
+                    if (bl->topbottom_tex.tex_scaleinty <= 0)
+                        bl->topbottom_tex.tex_scaleinty = 1;
+                }
+                lua_pop(l, 1);
+            }
+            lua_pop(l, 1);  // Remove "topbottom" table
+        }
+        if (obj->objtype == ROOMOBJ_BLOCK) {
+            block *bl = (block *)obj->objdata;
+            // Check texture settings in "walls".
+            lua_pushstring(l, "walls");
+            lua_gettable(l, -3);
+            if (lua_type(l, -1) == LUA_TTABLE) {
+                lua_pushstring(l, "texpath");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TSTRING &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"walls\" "
+                        "with \"texpath\" not a string",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                } else if (lua_type(l, -1) == LUA_TSTRING) {
+                    bl->wall_tex.tex = roomobj_MakeTexRef(
+                        lua_tostring(l, -1));
+                    if (!bl->wall_tex.tex) {
+                        *err = strdup("roomobj_MakeTexRef() "
+                            "failed, out of memory?");
+                        lua_settop(l, startstack);
+                        return 0;
+                    }
+                }
+                lua_pop(l, 1);
+                lua_pushstring(l, "texscalex");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TNUMBER &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"walls\" "
+                        "with \"texscalex\" not a number",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                } else if (lua_type(l, -1) != LUA_TNUMBER) {
+                    bl->wall_tex.tex_scaleintx = round(
+                        lua_tonumber(l, -1) * TEX_FULLSCALE_INT
+                    );
+                    if (bl->wall_tex.tex_scaleintx <= 0)
+                        bl->wall_tex.tex_scaleintx = 1;
+                }
+                lua_pop(l, 1);
+                lua_pushstring(l, "texscaley");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TNUMBER &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"sprite\" "
+                        "with \"texscaley\" not a number",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                } else if (lua_type(l, -1) != LUA_TNUMBER) {
+                    bl->wall_tex.tex_scaleinty = round(
+                        lua_tonumber(l, -1) * TEX_FULLSCALE_INT
+                    );
+                    if (bl->wall_tex.tex_scaleinty <= 0)
+                        bl->wall_tex.tex_scaleinty = 1;
+                }
+                lua_pop(l, 1);
+                lua_pushstring(l, "texstretch");
+                lua_gettable(l, -3);
+                if (lua_type(l, -1) != LUA_TBOOLEAN &&
+                        lua_type(l, -1) != LUA_TNIL) {
+                    char buf[256];
+                    snprintf(buf, sizeof(buf) - 1,
+                        "object with id %" PRIu64 " has "
+                        "\"walls\" "
+                        "with \"texstretch\" not a boolean",
+                        objid);
+                    *err = strdup(buf);
+                    lua_settop(l, startstack);
+                    return 0;
+                } else if (lua_type(l, -1) != LUA_TBOOLEAN) {
+                    bl->wall_tex.stretchtosurface = (
+                        lua_toboolean(l, -1)
+                    );
+                }
+                lua_pop(l, 1);
+            }
+            lua_pop(l, 1);  // Remove "walls" table
         }
         lua_pop(l, 1);  // Remove object[i + 1]
         i++;

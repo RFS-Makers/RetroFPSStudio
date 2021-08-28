@@ -20,6 +20,8 @@ static void _block_DestroyCallback(roomobj *obj) {
     block *bl = ((block *)obj->objdata);
     if (!bl)
         return;
+    roomobj_UnmakeTexRef(bl->wall_tex.tex);
+    roomobj_UnmakeTexRef(bl->topbottom_tex.tex);
     free(bl);
     obj->objdata = NULL;
 }
@@ -60,5 +62,9 @@ block *block_CreateById(uint64_t id, int corners,
         sizeof(*corner_x) * bl->corners);
     memcpy(bl->corner_y, corner_y,
         sizeof(*corner_y) * bl->corners);
+    bl->wall_tex.tex_scaleintx = TEX_FULLSCALE_INT;
+    bl->wall_tex.tex_scaleinty = TEX_FULLSCALE_INT;
+    bl->topbottom_tex.tex_scaleintx = TEX_FULLSCALE_INT;
+    bl->topbottom_tex.tex_scaleinty = TEX_FULLSCALE_INT;
     return bl;
 }

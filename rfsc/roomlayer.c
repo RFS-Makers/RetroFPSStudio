@@ -88,7 +88,9 @@ roomtexref *roomlayer_MakeTexRef(
     return ref;
 }
 
-void roomlayer_UnmakeTexRef(roomtexref *ref) {
+void roomlayer_UnmakeTexRef(
+        roomlayer *lr, roomtexref *ref
+        ) {
     if (!ref)
         return;
     ref->refcount--;

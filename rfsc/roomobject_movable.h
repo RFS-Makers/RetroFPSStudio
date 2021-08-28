@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 
+typedef struct objtexref objtexref;
 typedef struct roomobj roomobj;
 
 typedef struct movable {
@@ -17,6 +18,8 @@ typedef struct movable {
 
     uint8_t is_solid;
     int32_t col_radius, height;
+    objtexref *sprite_ref;
+    int32_t sprite_scaleintx, sprite_scaleinty;
 
     uint8_t does_emit;
     int32_t emit_r, emit_g, emit_b, emit_range;

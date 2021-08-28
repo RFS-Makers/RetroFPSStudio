@@ -40,7 +40,8 @@ roomtexref *roomlayer_MakeTexRef(
     roomlayer *lr, const char *dispath
 );
 
-void roomlayer_UnmakeTexRef(roomtexref *ref);
+void roomlayer_UnmakeTexRef(
+    roomlayer *lr, roomtexref *ref);
 
 rfs2tex *roomlayer_GetTexOfRef(roomtexref *ref);
 

@@ -20,6 +20,7 @@ static void _movable_DestroyCallback(roomobj *movobj) {
     movable *mov = ((movable *)movobj->objdata);
     if (!mov)
         return;
+    roomobj_UnmakeTexRef(mov->sprite_ref);
     free(mov);
     movobj->objdata = NULL;
 }
@@ -48,5 +49,7 @@ movable *movable_CreateWithId(uint64_t id) {
         return NULL;
     }
     mov->obj = obj;
+    mov->sprite_scaleintx = TEX_FULLSCALE_INT;
+    mov->sprite_scaleinty = TEX_FULLSCALE_INT;
     return mov;
 }
