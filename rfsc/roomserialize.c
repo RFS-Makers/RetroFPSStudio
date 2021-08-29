@@ -42,6 +42,10 @@ static int _extract_apply_tex_props(
         );
         if (!rtex->tex)
             return 0;
+    } else if (lua_type(l, -1) == LUA_TNIL) {
+        if (rtex->tex)
+            roomlayer_UnmakeTexRef(lr, rtex->tex);
+        rtex->tex = NULL;
     }
     lua_pop(l, 1);
     lua_pushstring(l, "texscalex");
@@ -806,7 +810,8 @@ int roomserialize_lua_SetObjectProperties(
             } else if (lua_type(l, -1) == LUA_TTABLE) {
                 lua_pushstring(l, "texpath");
                 lua_gettable(l, -3);
-                if (lua_type(l, -1) != LUA_TSTRING) {
+                if (lua_type(l, -1) != LUA_TSTRING &&
+                        lua_type(l, -1) != LUA_TNIL) {
                     char buf[256];
                     snprintf(buf, sizeof(buf) - 1,
                         "object with id %" PRIu64 " has "
@@ -818,13 +823,18 @@ int roomserialize_lua_SetObjectProperties(
                     return 0;
                 }
                 movable *mov = (movable *)obj->objdata;
-                mov->sprite_ref = roomobj_MakeTexRef(
-                    lua_tostring(l, -1));
-                if (!mov->sprite_ref) {
-                    *err = strdup("roomobj_MakeTexRef() "
-                        "failed, out of memory?");
-                    lua_settop(l, startstack);
-                    return 0;
+                if (mov->sprite_ref)
+                    roomobj_UnmakeTexRef(mov->sprite_ref);
+                mov->sprite_ref = NULL;
+                if (lua_type(l, -1) != LUA_TSTRING) {
+                    mov->sprite_ref = roomobj_MakeTexRef(
+                        lua_tostring(l, -1));
+                    if (!mov->sprite_ref) {
+                        *err = strdup("roomobj_MakeTexRef() "
+                            "failed, out of memory?");
+                        lua_settop(l, startstack);
+                        return 0;
+                    }
                 }
                 lua_pop(l, 1);
                 lua_pushstring(l, "texscalex");
@@ -918,14 +928,20 @@ int roomserialize_lua_SetObjectProperties(
                     *err = strdup(buf);
                     lua_settop(l, startstack);
                     return 0;
-                } else if (lua_type(l, -1) == LUA_TSTRING) {
-                    bl->topbottom_tex.tex = roomobj_MakeTexRef(
-                        lua_tostring(l, -1));
-                    if (!bl->wall_tex.tex) {
-                        *err = strdup("roomobj_MakeTexRef() "
-                            "failed, out of memory?");
-                        lua_settop(l, startstack);
-                        return 0;
+                } else {
+                    if (bl->topbottom_tex.tex)
+                        roomobj_UnmakeTexRef(
+                            bl->topbottom_tex.tex);
+                    bl->topbottom_tex.tex = NULL;
+                    if (lua_type(l, -1) == LUA_TSTRING) {
+                        bl->topbottom_tex.tex = roomobj_MakeTexRef(
+                            lua_tostring(l, -1));
+                        if (!bl->wall_tex.tex) {
+                            *err = strdup("roomobj_MakeTexRef() "
+                                "failed, out of memory?");
+                            lua_settop(l, startstack);
+                            return 0;
+                        }
                     }
                 }
                 lua_pop(l, 1);
@@ -993,14 +1009,20 @@ int roomserialize_lua_SetObjectProperties(
                     *err = strdup(buf);
                     lua_settop(l, startstack);
                     return 0;
-                } else if (lua_type(l, -1) == LUA_TSTRING) {
-                    bl->wall_tex.tex = roomobj_MakeTexRef(
-                        lua_tostring(l, -1));
-                    if (!bl->wall_tex.tex) {
-                        *err = strdup("roomobj_MakeTexRef() "
-                            "failed, out of memory?");
-                        lua_settop(l, startstack);
-                        return 0;
+                } else {
+                    if (bl->wall_tex.tex)
+                        roomobj_UnmakeTexRef(
+                            bl->wall_tex.tex);
+                    bl->wall_tex.tex = NULL;
+                    if (lua_type(l, -1) == LUA_TSTRING) {
+                        bl->wall_tex.tex = roomobj_MakeTexRef(
+                            lua_tostring(l, -1));
+                        if (!bl->wall_tex.tex) {
+                            *err = strdup("roomobj_MakeTexRef() "
+                                "failed, out of memory?");
+                            lua_settop(l, startstack);
+                            return 0;
+                        }
                     }
                 }
                 lua_pop(l, 1);

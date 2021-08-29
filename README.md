@@ -5,7 +5,11 @@ Retro FPS Studio
 ![logo of RFS](./rfslua/res/ui/$logo.png)
 
 Welcome to **Retro FPS Studio**, the game making tool for
-raycasting retro fun! It produces true 2.5D, oldschool goodness:
+raycasting retro fun! It produces true 2.5D, oldschool goodness
+alike to the original [DOOM](
+https://www.mobygames.com/game/dos/doom/screenshots) or [Hexen
+](https://www.mobygames.com/game/dos/hexen-beyond-heretic/screenshots)
+DOS games:
 
 ![screenshot of RFS](./misc/scr_promo_1.png)
 
