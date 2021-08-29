@@ -13,13 +13,18 @@
 typedef struct objtexref objtexref;
 typedef struct roomobj roomobj;
 
+typedef struct spritetexinfo {
+    objtexref *tex;
+    int32_t sprite_scaleintx, sprite_scaleinty;
+} spritetexinfo;
+
 typedef struct movable {
     roomobj *obj;
 
     uint8_t is_solid;
-    int32_t col_radius, height;
-    objtexref *sprite_ref;
-    int32_t sprite_scaleintx, sprite_scaleinty;
+    int32_t colscalar_hori,  // these use TEX_FULLSCALE_INT = 1.0
+            colscalar_verti;
+    spritetexinfo sprite_tex;
 
     uint8_t does_emit;
     int32_t emit_r, emit_g, emit_b, emit_range;

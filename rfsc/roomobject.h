@@ -55,6 +55,8 @@ objtexref *roomobj_MakeTexRef(
     const char *dispath
 );
 
+rfs2tex *roomobj_GetTexOfRef(objtexref *ref);
+
 void roomobj_UnmakeTexRef(
     objtexref *ref);
 

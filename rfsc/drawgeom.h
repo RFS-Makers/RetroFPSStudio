@@ -29,4 +29,26 @@ typedef struct drawgeom {
     };
 } drawgeom;
 
+typedef enum geomtextype {
+    GEOMTEX_UNKNOWN = 0,
+    GEOMTEX_ROOM = 1,
+    GEOMTEX_BLOCK = 2,
+    GEOMTEX_SPRITE = 3,
+    GEOMTEX_TOTAL
+} geomtextype;
+
+typedef struct roomtexinfo roomtexinfo;
+typedef struct blocktexinfo blocktexinfo;
+typedef struct spritetexinfo spritetexinfo;
+
+typedef struct geomtex {
+    int type;
+    union {
+        roomtexinfo *roomtex;
+        blocktexinfo *blocktex; 
+        spritetexinfo *spritetex;
+    };
+} geomtex;
+
+
 #endif  // RFS2_DRAWGEOM_H_

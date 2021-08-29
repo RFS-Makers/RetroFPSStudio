@@ -1178,33 +1178,76 @@ int roomcam_WallSliceHeight(
     return 1;
 }
 
-void roomcam_WallCubeMapping(
-        room *r, int wallid, int64_t wx, int64_t wy,
-        int aboveportal, roomtexinfo *texinfo,
-        int64_t wtop, int64_t wsliceheight,
-        int64_t *tx1, int64_t *ty1, int64_t *ty2
+
+void roomcam_WallCubeMappingX(
+        drawgeom *geom, int wallno,
+        int64_t wx, int64_t wy,
+        int64_t wx2, int64_t wy2,
+        geomtex *texinfo,
+        int64_t *tx1, int64_t *tx2
         ) {
+    assert(geom->type == DRAWGEOM_ROOM ||
+        geom->type == DRAWGEOM_BLOCK);
+    int64_t wallstart_x, wallstart_y;
+    int64_t wallend_x, wallend_y;
+    int64_t wallnormal_x, wallnormal_y;
+    if (geom->type == DRAWGEOM_ROOM) {
+        int wallnext = wallno + 1;
+        if (wallnext >= geom->r->corners)
+            wallnext = 0;
+        wallstart_x = geom->r->corner_x[wallno];
+        wallstart_y = geom->r->corner_y[wallno];
+        wallend_x = geom->r->corner_x[wallnext];
+        wallend_y = geom->r->corner_y[wallnext];
+        wallnormal_x = geom->r->wall[wallno].normal_x;
+        wallnormal_y = geom->r->wall[wallno].normal_y;
+    } else {
+        int wallnext = wallno + 1;
+        if (wallnext >= geom->bl->corners)
+            wallnext = 0;
+        wallstart_x = geom->bl->corner_x[wallno];
+        wallstart_y = geom->bl->corner_y[wallno];
+        wallend_x = geom->bl->corner_x[wallnext];
+        wallend_y = geom->bl->corner_y[wallnext];
+        wallnormal_x = geom->bl->normal_x[wallno];
+        wallnormal_y = geom->bl->normal_y[wallno];
+    }
+    assert(texinfo->type == GEOMTEX_ROOM ||
+        texinfo->type == GEOMTEX_BLOCK);
+    int64_t tex_scalex = (
+        texinfo->type == GEOMTEX_ROOM ?
+        texinfo->roomtex->tex_scaleintx :
+        texinfo->blocktex->tex_scaleintx
+    );
+    int64_t tex_scaley = (
+        texinfo->type == GEOMTEX_ROOM ?
+        texinfo->roomtex->tex_scaleinty :
+        texinfo->blocktex->tex_scaleinty
+    );
+    int64_t tex_shiftx = (
+        texinfo->type == GEOMTEX_ROOM ?
+        ((int64_t)texinfo->roomtex->tex_shiftx +
+         (int64_t)texinfo->roomtex->tex_gamestate_scrollx):
+        0
+    );
+    int64_t tex_shifty = (
+        texinfo->type == GEOMTEX_ROOM ?
+        ((int64_t)texinfo->roomtex->tex_shifty +
+         (int64_t)texinfo->roomtex->tex_gamestate_scrolly):
+        0
+    );
     int64_t repeat_units_x = (TEX_REPEAT_UNITS * (
-        ((int64_t)texinfo->tex_scaleintx) /
-        TEX_FULLSCALE_INT
+        ((int64_t)tex_scalex) / TEX_FULLSCALE_INT
     ));
     if (repeat_units_x < 1) repeat_units_x = 1;
-    int64_t repeat_units_y = (TEX_REPEAT_UNITS * (
-        ((int64_t)texinfo->tex_scaleinty) /
-        TEX_FULLSCALE_INT
-    ));
-    if (repeat_units_y < 1) repeat_units_y = 1;
-    int nextwallid = wallid + 1;
-    if (nextwallid >= r->corners)
-        nextwallid = 0;
-    if (llabs(r->corner_x[wallid] - r->corner_x[nextwallid]) >
-            llabs(r->corner_y[wallid] - r->corner_y[nextwallid])) {
-        if (r->wall[wallid].normal_y < 0)
+    if (llabs(wallstart_x - wallend_x) >
+            llabs(wallstart_y - wallend_y)) {
+        if (wallnormal_y < 0) {
             wx = -wx;
+            wx2 = -wx2;
+        }
         int64_t reference_x = (
-            (wx + (int64_t)texinfo->
-                tex_gamestate_scrollx + (int64_t)texinfo->
-                tex_shiftx)
+            (wx + tex_shiftx)
         );
         if (reference_x > 0) {
             *tx1 = (reference_x % repeat_units_x) *
@@ -1214,13 +1257,18 @@ void roomcam_WallCubeMapping(
                 (((-reference_x) - 1) % repeat_units_x)) *
                 TEX_COORD_SCALER/ repeat_units_x;
         }
+        int64_t progress_x = (
+            wx2 - wx
+        );
+        *tx2 = *tx1 + (progress_x *
+            TEX_COORD_SCALER) / repeat_units_x;
     } else {
-        if (r->wall[wallid].normal_x > 0)
+        if (wallnormal_x > 0) {
             wy = -wy;
+            wy2 = -wy2;
+        }
         int64_t reference_x = (
-            (wy + (int64_t)texinfo->
-                tex_gamestate_scrollx + (int64_t)texinfo->
-                tex_shiftx)
+            (wy + tex_shifty)
         );
         if (reference_x > 0) {
             *tx1 = (reference_x % repeat_units_x) *
@@ -1230,39 +1278,86 @@ void roomcam_WallCubeMapping(
                 (((-reference_x) - 1) % repeat_units_x)) *
                 TEX_COORD_SCALER / repeat_units_x;
         }
+        int64_t progress_x = (
+            wy2 - wy
+        );
+        *tx2 = *tx1 + (progress_x *
+            TEX_COORD_SCALER) / repeat_units_x;
     }
-    int64_t relevant_wall_segment_top = (r->floor_z + r->height);
-    if (!aboveportal && r->wall[wallid].has_portal) {
+}
+
+
+HOTSPOT void roomcam_WallCubeMappingY(
+        drawgeom *geom, int wallid,
+        int aboveportal, geomtex *texinfo,
+        int64_t wtop, int64_t wsliceheight,
+        int64_t *ty1, int64_t *ty2
+        ) {
+    assert(geom->type == DRAWGEOM_ROOM ||
+        geom->type == DRAWGEOM_BLOCK);
+    assert(texinfo->type == GEOMTEX_ROOM ||
+        texinfo->type == GEOMTEX_BLOCK);
+    int64_t tex_scaley = (
+        texinfo->type == GEOMTEX_ROOM ?
+        texinfo->roomtex->tex_scaleinty :
+        texinfo->blocktex->tex_scaleinty
+    );
+    int64_t tex_shifty = (
+        texinfo->type == GEOMTEX_ROOM ?
+        ((int64_t)texinfo->roomtex->tex_shifty +
+         (int64_t)texinfo->roomtex->tex_gamestate_scrolly):
+        0
+    );
+    int tex_stickyside = (
+        texinfo->type == DRAWGEOM_ROOM ?
+        texinfo->roomtex->tex_stickyside : -1);
+    int64_t repeat_units_y = (TEX_REPEAT_UNITS * (
+        ((int64_t)tex_scaley) / TEX_FULLSCALE_INT
+    ));
+    if (repeat_units_y < 1) repeat_units_y = 1;
+    int64_t relevant_wall_segment_top = -1;
+    if (geom->type == DRAWGEOM_ROOM) {
+        relevant_wall_segment_top = (geom->r->floor_z +
+            geom->r->height);
+        if (!aboveportal && geom->r->wall[wallid].has_portal) {
+            relevant_wall_segment_top = (
+                geom->r->wall[wallid].portal_targetroom->floor_z
+            );
+            if (relevant_wall_segment_top < geom->r->floor_z)
+                relevant_wall_segment_top = geom->r->floor_z;
+        }
+    } else {
+        assert(geom->type == DRAWGEOM_BLOCK);
         relevant_wall_segment_top = (
-            r->wall[wallid].portal_targetroom->floor_z
+            geom->bl->bottom_z + geom->bl->height
         );
-        if (relevant_wall_segment_top < r->floor_z)
-            relevant_wall_segment_top = r->floor_z;
     }
-    int64_t relevant_wall_segment_bottom = (r->floor_z);
-    if (aboveportal && r->wall[wallid].has_portal) {
+    int64_t relevant_wall_segment_bottom = -1;
+    if (geom->type == DRAWGEOM_ROOM) {
+        relevant_wall_segment_bottom = (geom->r->floor_z);
+        if (aboveportal && geom->r->wall[wallid].has_portal) {
+            relevant_wall_segment_bottom = (
+                geom->r->wall[wallid].portal_targetroom->floor_z +
+                    geom->r->wall[wallid].portal_targetroom->height
+            );
+            if (relevant_wall_segment_bottom > geom->r->floor_z +
+                    geom->r->height)
+                relevant_wall_segment_bottom = geom->r->floor_z +
+                    geom->r->height;
+        }
+    } else {
+        assert(geom->type == DRAWGEOM_BLOCK);
         relevant_wall_segment_bottom = (
-            r->wall[wallid].portal_targetroom->floor_z +
-                r->wall[wallid].portal_targetroom->height
+            geom->bl->bottom_z
         );
-        if (relevant_wall_segment_bottom > r->floor_z +
-                r->height)
-            relevant_wall_segment_bottom = r->floor_z +
-                r->height;
     }
     int64_t _wtop = wtop;
-    if (r->wall[wallid].wall_tex.
-            tex_stickyside == ROOM_DIR_UP) {
+    if (tex_stickyside == ROOM_DIR_UP) {
         _wtop = relevant_wall_segment_top - _wtop;
-    } else if (r->wall[wallid].wall_tex.
-            tex_stickyside == ROOM_DIR_DOWN) {
+    } else if (tex_stickyside == ROOM_DIR_DOWN) {
         _wtop = relevant_wall_segment_bottom - _wtop;
     }
-    int64_t reference_z = (
-        (_wtop + (int64_t)texinfo->
-            tex_gamestate_scrolly + (int64_t)texinfo->
-            tex_shifty)
-    );
+    int64_t reference_z = (_wtop + tex_shifty);
     if (reference_z > 0) {
         *ty1 = (reference_z % repeat_units_y) *
             TEX_COORD_SCALER / repeat_units_y;
@@ -1280,6 +1375,7 @@ void roomcam_WallCubeMapping(
         (reference_zheight * TEX_COORD_SCALER) / repeat_units_y
     );
 }
+
 
 int32_t roomcam_XYZToViewplaneY(
         roomcam *cam, int w, int h, int64_t px, int64_t py, int64_t pz,
@@ -1312,17 +1408,21 @@ int roomcam_XYToViewplaneX(
 
 HOTSPOT static int roomcam_DrawWallSlice(
         rfssurf *rendertarget,
-        room *r, int wallno, int aboveportal,
-        roomtexinfo *texinfo,
-        int64_t hit_x, int64_t hit_y,
+        geomtex *texinfo, int64_t tx, int64_t ty1,
+        int64_t ty2,
         int screentop, int screenbottom,
         int64_t topworldz, int64_t bottomworldz,
         int x, int y, int h, int cr, int cg, int cb
         ) {
+    assert(texinfo->type == GEOMTEX_ROOM ||
+        texinfo->type == GEOMTEX_BLOCK);
     if (cr < 0) cr = 0;
     if (cg < 0) cg = 0;
     if (cb < 0) cb = 0;
-    rfs2tex *t = roomlayer_GetTexOfRef(texinfo->tex);
+    rfs2tex *t = (texinfo->type == GEOMTEX_ROOM ?
+        roomlayer_GetTexOfRef(texinfo->roomtex->tex) :
+        roomobj_GetTexOfRef(texinfo->blocktex->tex)
+    );
     rfssurf *srf = (
         t ? graphics_GetTexSideways(t) : NULL
     );
@@ -1335,14 +1435,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 ))
             return 0;
     } else {
-        int64_t tx, ty1, ty2;
         assert(bottomworldz <= topworldz);
-        roomcam_WallCubeMapping(
-            r, wallno, hit_x, hit_y, aboveportal,
-            texinfo, topworldz,
-            topworldz - bottomworldz,
-            &tx, &ty1, &ty2
-        );
         assert(ty2 <= ty1);
         const int targetw = rendertarget->w;
         uint8_t *tgpixels = rendertarget->pixels;
@@ -1930,12 +2023,16 @@ int roomcam_DrawFloorCeiling(
 
 
 int roomcam_DrawWall(
-        roomcam *cam, drawgeom *geom,
+        roomcam *cam, drawgeom *geom, int aboveportal,
         int canvasx, int canvasy,
         int xcol, int endcol,
-        int originwall, roomtexinfo *texinfo,
+        int originwall, geomtex *texinfo,
         int64_t wall_floor_z, int64_t wall_height
         ) {
+    assert(texinfo->type == GEOMTEX_ROOM ||
+        texinfo->type == GEOMTEX_BLOCK);
+    assert(!aboveportal || geom->type == DRAWGEOM_ROOM);
+
     // First, extract some info:
     const int orig_xcol = xcol;
     int wallno = -1;
@@ -1983,14 +2080,16 @@ int roomcam_DrawWall(
     int prev_hitset = 0;
     int64_t prev_hitx, prev_hity;
     int prev_wallno = -1;
+    int64_t prev_hitdepth;
     while (xcol <= endcol) {
         // Calculate perspective data to interpolate between:
         int start_wallno = -1;
-        int64_t start_hitx, start_hity;
+        int64_t start_hitx, start_hity, start_hitdepth;
         if (prev_hitset) {
             prev_hitset = 0;
             start_wallno = prev_wallno;
             start_hitx = prev_hitx; start_hity = prev_hity;
+            start_hitdepth = prev_hitdepth;
         } else {
             int _temp_xcol = xcol;
             while (1) {
@@ -2015,6 +2114,14 @@ int roomcam_DrawWall(
                         break;
                     }
                 }
+                int64_t localx = start_hitx - cam->obj->x;
+                int64_t localy = start_hity - cam->obj->y;
+                int64_t camcenterdist = math_veclen2di(
+                    localx, localy
+                );
+                start_hitdepth = camcenterdist; /* - (
+                    cam->cache->planevecs_len[_temp_xcol]
+                ) + cam->cache->planedist;*/
                 assert(start_wallno >= 0);
                 break;
             }
@@ -2035,7 +2142,7 @@ int roomcam_DrawWall(
             max_safe_next_segment + 1, endcol - xcol + 1));
         int _temp_max_render_ahead = max_render_ahead;
         int end_wallno = -1;
-        int64_t end_hitx, end_hity;
+        int64_t end_hitx, end_hity, end_hitdepth;
         while (1) {
             int intersect = math_polyintersect2di_ex(
                 cam->obj->x, cam->obj->y,
@@ -2067,6 +2174,16 @@ int roomcam_DrawWall(
                 prev_hitset = 1;
                 prev_wallno = start_wallno;  // intended. more reliable.
                 prev_hitx = end_hitx; prev_hity = end_hity;
+                int64_t localx = end_hitx - cam->obj->x;
+                int64_t localy = end_hity - cam->obj->y;
+                int64_t camcenterdist = math_veclen2di(
+                    localx, localy
+                );
+                end_hitdepth = camcenterdist; /* - (
+                    cam->cache->planevecs_len[
+                        imin(w - 1, xcol + _temp_max_render_ahead - 1)
+                    ]) + cam->cache->planedist;*/
+                prev_hitdepth = end_hitdepth;
                 assert(end_wallno >= 0);
                 break;
             }
@@ -2076,6 +2193,20 @@ int roomcam_DrawWall(
             prev_hitset = 0;
             continue;
         }
+
+        // Calculate horizontal tex coordinates:
+        int64_t tx1, tx2;
+        roomcam_WallCubeMappingX(
+            geom, start_wallno, start_hitx, start_hity,
+            end_hitx, end_hity, texinfo, &tx1, &tx2
+        );
+        int64_t tdefaulty1, tdefaulty2;
+        roomcam_WallCubeMappingY(
+            geom, start_wallno,
+            aboveportal, texinfo,
+            wall_floor_z + wall_height, wall_height,
+            &tdefaulty1, &tdefaulty2
+        );
 
         // Calculate dynamic light colors to interpolate between:
         const int lightsamplevaluerange = 1000;
@@ -2129,14 +2260,38 @@ int roomcam_DrawWall(
         int z = xcol;
         while (likely(z < xcol + max_render_ahead)) {
             assert(z <= endcol);
+            int64_t idepth = (
+                start_hitdepth + ((end_hitdepth - start_hitdepth) *
+                (z - xcol)) / imax(1, max_render_ahead)
+            );
+            const int64_t perspmapscalar = 10000;
+            const int64_t progress = (perspmapscalar *
+                (int64_t)(z - xcol)) /
+                (int64_t)imax(1, max_render_ahead);
+            const int64_t invprogress = perspmapscalar - progress;
+            int64_t tx = (
+                (tx1 * perspmapscalar / idepth) *
+                invprogress / perspmapscalar +
+                (tx2 * perspmapscalar / idepth) *
+                progress / perspmapscalar
+            ) * idepth / perspmapscalar;
+            if (tx >= 0)
+                tx = tx % TEX_COORD_SCALER;
+            else
+                tx = (TEX_COORD_SCALER - 1 - ((-tx) %
+                    TEX_COORD_SCALER));
             int64_t ix = (
-                start_hitx + ((end_hitx - start_hitx) *
-                (z - xcol)) / imax(1, max_render_ahead)
-            );
+                (start_hitx * perspmapscalar / idepth) *
+                invprogress / perspmapscalar +
+                (end_hitx * perspmapscalar / idepth) *
+                progress / perspmapscalar
+            ) * idepth / perspmapscalar;
             int64_t iy = (
-                start_hity + ((end_hity - start_hity) *
-                (z - xcol)) / imax(1, max_render_ahead)
-            );
+                (start_hity * perspmapscalar / idepth) *
+                invprogress / perspmapscalar +
+                (end_hity * perspmapscalar / idepth) *
+                progress / perspmapscalar
+            ) * idepth / perspmapscalar;
             int64_t dynr = (
                 dynlightstart_r + ((dynlightend_r -
                 dynlightstart_r) * (z - xcol)) /
@@ -2176,6 +2331,19 @@ int roomcam_DrawWall(
                     imax(1, max_render_ahead) + startbottom));
             }
 
+            int64_t ty1, ty2;
+            if (likely(wall_floor_z + wall_height == wall_height)) {
+                ty1 = tdefaulty1;
+                ty2 = tdefaulty2;
+            } else {
+                roomcam_WallCubeMappingY(
+                    geom, start_wallno,
+                    aboveportal, texinfo,
+                    topworldz, topworldz - bottomworldz,
+                    &ty1, &ty2
+                );
+            }
+
             // Calculate the color for this slice:
             int cr = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
                 r->sector_light_r + dynr * 2));
@@ -2188,8 +2356,7 @@ int roomcam_DrawWall(
             assert(top >= 0 && bottom >= top && bottom <= h - 1);
             assert(start_wallno != originwall);
             if (unlikely(!roomcam_DrawWallSlice(
-                    rendertarget, r, start_wallno, 1,
-                    texinfo, ix, iy,
+                    rendertarget, texinfo, tx, ty1, ty2,
                     top, bottom, topworldz, bottomworldz,
                     canvasx + z, canvasy, h,
                     cr, cg, cb
@@ -2438,18 +2605,24 @@ int roomcam_RenderRoom(
                 geom.type = DRAWGEOM_ROOM;
                 geom.r = r;
                 if (draw_above) {  // Above portal drawing!
+                    geomtex tex = {0};
+                    tex.type = GEOMTEX_ROOM;
+                    tex.roomtex = abovetexinfo;
                     roomcam_DrawWall(
-                        cam, &geom, x, y, col, endcol,
-                        ignorewall, abovetexinfo,
+                        cam, &geom, 1, x, y, col, endcol,
+                        ignorewall, &tex,
                         target->floor_z + target->height,
                         (r->height + r->floor_z) -
                         (target->floor_z + target->height)
                     );
                 }
                 if (draw_below) {  // Below portal drawing!
+                    geomtex tex = {0};
+                    tex.type = GEOMTEX_ROOM;
+                    tex.roomtex = belowtexinfo;
                     roomcam_DrawWall(
-                        cam, &geom, x, y, col, endcol,
-                        ignorewall, belowtexinfo,
+                        cam, &geom, 0, x, y, col, endcol,
+                        ignorewall, &tex,
                         r->floor_z,
                         (target->floor_z - r->floor_z)
                     );
@@ -2463,9 +2636,12 @@ int roomcam_RenderRoom(
             drawgeom geom = {0};
             geom.type = DRAWGEOM_ROOM;
             geom.r = r;
+            geomtex tex = {0};
+            tex.type = GEOMTEX_ROOM;
+            tex.roomtex = texinfo;
             roomcam_DrawWall(
-                cam, &geom, x, y, col, endcol,
-                ignorewall, texinfo,
+                cam, &geom, 0, x, y, col, endcol,
+                ignorewall, &tex,
                 r->floor_z, r->height
             );
 

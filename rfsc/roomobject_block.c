@@ -6,6 +6,7 @@
 
 #include "compileconfig.h"
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,5 +67,21 @@ block *block_CreateById(uint64_t id, int corners,
     bl->wall_tex.tex_scaleinty = TEX_FULLSCALE_INT;
     bl->topbottom_tex.tex_scaleintx = TEX_FULLSCALE_INT;
     bl->topbottom_tex.tex_scaleinty = TEX_FULLSCALE_INT;
+    block_RecomputeNormals(bl);
     return bl;
+}
+
+void block_RecomputeNormals(block *bl) {
+    assert(bl != NULL && bl->corners >= 3);
+    int inext = 1;
+    int i = 0;
+    while (i < bl->corners) {
+        int64_t tx = (bl->corner_x[inext] - bl->corner_x[i]);
+        int64_t ty = (bl->corner_y[inext] - bl->corner_y[i]);
+        bl->normal_x[i] = ty;
+        bl->normal_y[i] = -tx;
+        i++;
+        inext++;
+        if (inext >= bl->corners) inext = 0;
+    }
 }

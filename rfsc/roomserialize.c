@@ -823,13 +823,13 @@ int roomserialize_lua_SetObjectProperties(
                     return 0;
                 }
                 movable *mov = (movable *)obj->objdata;
-                if (mov->sprite_ref)
-                    roomobj_UnmakeTexRef(mov->sprite_ref);
-                mov->sprite_ref = NULL;
+                if (mov->sprite_tex.tex)
+                    roomobj_UnmakeTexRef(mov->sprite_tex.tex);
+                mov->sprite_tex.tex = NULL;
                 if (lua_type(l, -1) != LUA_TSTRING) {
-                    mov->sprite_ref = roomobj_MakeTexRef(
+                    mov->sprite_tex.tex = roomobj_MakeTexRef(
                         lua_tostring(l, -1));
-                    if (!mov->sprite_ref) {
+                    if (!mov->sprite_tex.tex) {
                         *err = strdup("roomobj_MakeTexRef() "
                             "failed, out of memory?");
                         lua_settop(l, startstack);
@@ -851,11 +851,11 @@ int roomserialize_lua_SetObjectProperties(
                     lua_settop(l, startstack);
                     return 0;
                 }
-                mov->sprite_scaleintx = round(
+                mov->sprite_tex.sprite_scaleintx = round(
                     lua_tonumber(l, -1) * TEX_FULLSCALE_INT
                 );
-                if (mov->sprite_scaleintx <= 0)
-                    mov->sprite_scaleintx = 1;
+                if (mov->sprite_tex.sprite_scaleintx <= 0)
+                    mov->sprite_tex.sprite_scaleintx = 1;
                 lua_pop(l, 1);
                 lua_pushstring(l, "texscaley");
                 lua_gettable(l, -3);
@@ -871,16 +871,16 @@ int roomserialize_lua_SetObjectProperties(
                     lua_settop(l, startstack);
                     return 0;
                 }
-                mov->sprite_scaleinty = round(
+                mov->sprite_tex.sprite_scaleinty = round(
                     lua_tonumber(l, -1) * TEX_FULLSCALE_INT
                 );
-                if (mov->sprite_scaleinty <= 0)
-                    mov->sprite_scaleinty = 1;
+                if (mov->sprite_tex.sprite_scaleinty <= 0)
+                    mov->sprite_tex.sprite_scaleinty = 1;
                 lua_pop(l, 1);
             } else {
                 movable *mov = (movable *)obj->objdata;
-                roomobj_UnmakeTexRef(mov->sprite_ref);
-                mov->sprite_ref = NULL;
+                roomobj_UnmakeTexRef(mov->sprite_tex.tex);
+                mov->sprite_tex.tex = NULL;
             }
             lua_pop(l, 1);  // Remove "sprite" property
         }
@@ -908,6 +908,11 @@ int roomserialize_lua_SetObjectProperties(
                 lua_settop(l, startstack);
                 return 0;
             }
+            block *bl = (block *)obj->objdata;
+            bl->corners = corners;
+            memcpy(bl->corner_x, cx, sizeof(*bl->corner_x) * corners);
+            memcpy(bl->corner_y, cy, sizeof(*bl->corner_y) * corners);
+            block_RecomputeNormals(bl);
         }
         if (obj->objtype == ROOMOBJ_BLOCK) {
             block *bl = (block *)obj->objdata;

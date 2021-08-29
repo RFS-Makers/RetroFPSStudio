@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "filesys.h"
+#include "graphics.h"
 #include "hash.h"
 #include "room.h"
 #include "roomcolmap.h"
@@ -27,6 +28,21 @@ static uint64_t possibly_free_roomobj_id = 1;
 static hashmap *obj_texref_by_path_map = NULL;
 static objtexref **obj_texrefs = NULL;
 static int obj_texrefs_count = 0;
+static rfs2tex *missingtex = NULL;
+
+
+rfs2tex *roomobj_GetTexOfRef(objtexref *ref) {
+    if (!ref) return NULL;
+    if (ref->tex)
+        return ref->tex;
+    ref->tex = graphics_LoadTex(ref->diskpath);
+    if (!ref->tex) {
+        if (!missingtex)
+            missingtex = graphics_LoadTex("rfslua/res/missingtex");
+        return missingtex;
+    }
+    return ref->tex;
+}
 
 
 int roomobj_RequireHashmap() {
@@ -54,7 +70,7 @@ objtexref *roomobj_MakeTexRef(
     if (!hash_StringMapGet(
             obj_texref_by_path_map, p,
             (uint64_t *)&hashptrval)) {
-        roomtexref **newrefs = realloc(
+        objtexref **newrefs = realloc(
             obj_texrefs, sizeof(*obj_texrefs) *
                 (obj_texrefs_count + 1));
         if (!newrefs) {

@@ -27,6 +27,8 @@ typedef struct block {
     int corners;
     int64_t corner_x[ROOM_MAX_CORNERS];
     int64_t corner_y[ROOM_MAX_CORNERS];
+    int64_t normal_x[ROOM_MAX_CORNERS];
+    int64_t normal_y[ROOM_MAX_CORNERS];
     blocktexinfo wall_tex;
     blocktexinfo topbottom_tex;
 } block;
@@ -36,5 +38,6 @@ block *block_Create(
     int corners, int64_t *corner_x, int64_t *corner_y);
 block *block_CreateById(uint64_t id, int corners,
     int64_t *corner_x, int64_t *corner_y);
+void block_RecomputeNormals(block *bl);
 
 #endif  // RFS2_ROOMOBJECT_BLOCK_H_
