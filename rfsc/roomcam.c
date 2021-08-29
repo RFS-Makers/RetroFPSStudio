@@ -30,11 +30,23 @@
 #include "rfssurf.h"
 
 
+int32_t texcoord_modulo_mask = 0;
+
+static __attribute__((constructor)) void _init_modulomask() {
+    assert(TEX_COORD_SCALER > 0 &&
+            !math_isnpot(TEX_COORD_SCALER));
+    texcoord_modulo_mask = math_one_bits_from_right(
+        math_count_bits_until_zeros(TEX_COORD_SCALER) - 1
+    );
+}
+
+
 renderstatistics *roomcam_GetStats(roomcam *c) {
     if (c && c->cache)
         return &c->cache->stats;
     return NULL;
 }
+
 
 int _roomcam_ViewplaneXYToXYOnPlane_NoRecalc(
         roomcam *cam,
@@ -70,6 +82,7 @@ int _roomcam_ViewplaneXYToXYOnPlane_NoRecalc(
     *py = isectvec_y;
     return 1;
 }
+
 
 int32_t _roomcam_XYZToViewplaneY_NoRecalc(
         roomcam *cam,
@@ -160,6 +173,7 @@ int32_t _roomcam_XYToViewplaneX_NoRecalc(
     return res;
 }
 
+
 int GetFloorCeilingSafeInterpolationColumns(
         roomcam *cam, room *r, roomrendercache *rcache,
         int xcol, int wallno_if_known, int *result
@@ -208,6 +222,7 @@ int GetFloorCeilingSafeInterpolationColumns(
     return 1;
 }
 
+
 static void _roomcam_FreeCache(roomcamcache *cache) {
     if (!cache)
         return;
@@ -218,6 +233,7 @@ static void _roomcam_FreeCache(roomcamcache *cache) {
     free(cache->vertivecs_z);
     free(cache);
 }
+
 
 static void _roomcam_DestroyCallback(roomobj *camobj) {
     roomcam *cam = ((roomcam *)camobj->objdata);
@@ -286,6 +302,7 @@ int roomcam_DynlightFalloff(
     assert(result >= 0 && result <= 1000);
     return result;
 }
+
 
 int roomcam_DynlightFactorFloorCeilOrPoint(
         int64_t light_z, int64_t light_range,
@@ -519,13 +536,6 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
     );
     assert(screentop >= 0 && screentop <= h);
     assert(screenbottom >= 0 && screenbottom <= h);
-    assert(TEX_COORD_SCALER > 0 &&
-        !math_isnpot(TEX_COORD_SCALER));
-    const int32_t texcoord_modulo_mask = (
-        math_one_bits_from_right(
-            math_count_bits_until_zeros(TEX_COORD_SCALER) - 1
-        )
-    );
     int row = screentop;
     int64_t past_world_x = top_world_x;
     int64_t past_world_y = top_world_y;
@@ -564,8 +574,6 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             srf->hasalpha ? 4 : 3
         );
         const int startrow = row;
-        const int64_t tx1totx2diff = (bottomtx - toptx);
-        const int64_t ty1toty2diff = (bottomty - topty);
         const int cr1to2diff = (cr2 - cr);
         const int cg1to2diff = (cg2 - cg);
         const int cb1to2diff = (cb2 - cb);
@@ -725,6 +733,7 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
     }
     return 1;
 }
+
 
 int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
     // Override mathematically unsafe values:
@@ -911,6 +920,7 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
     return 1;
 }
 
+
 int roomcam_FloorCeilingSliceHeight(
         roomcam *cam, drawgeom *geom,
         int h, int xoffset,
@@ -1023,24 +1033,23 @@ int roomcam_FloorCeilingSliceHeight(
             close_screen_offset = 0;
         }
     } else {
-        close_screen_offset = imin(h, imax(-1,
-            _roomcam_XYZToViewplaneY_NoRecalc(
-                cam, close_world_x, close_world_y,
-                geometry_z * DRAW_CORNER_COORD_UPSCALE,
-                DRAW_CORNER_COORD_UPSCALE
-            )));
+        close_screen_offset = _roomcam_XYZToViewplaneY_NoRecalc(
+            cam, close_world_x, close_world_y,
+            geometry_z * DRAW_CORNER_COORD_UPSCALE,
+            DRAW_CORNER_COORD_UPSCALE
+            );
         close_world_x /= DRAW_CORNER_COORD_UPSCALE;
         close_world_y /= DRAW_CORNER_COORD_UPSCALE;
     }
     // Compute "farther" geometry point on screen:
     int64_t far_world_x = awaytocam_ix;
     int64_t far_world_y = awaytocam_iy;
-    int32_t far_screen_offset = imin(h, imax(-1,
+    int32_t far_screen_offset = (
         _roomcam_XYZToViewplaneY_NoRecalc(
             cam, far_world_x, far_world_y,
             geometry_z * DRAW_CORNER_COORD_UPSCALE,
             DRAW_CORNER_COORD_UPSCALE
-        )));
+        ));
     far_world_x /= DRAW_CORNER_COORD_UPSCALE;
     far_world_y /= DRAW_CORNER_COORD_UPSCALE;
     if ((isfacingup && (far_screen_offset >
@@ -1070,6 +1079,7 @@ int roomcam_FloorCeilingSliceHeight(
     }
     return 1;
 }
+
 
 int roomcam_WallSliceHeight(
         roomcam *cam, int64_t geometry_floor_z,
@@ -1416,9 +1426,9 @@ HOTSPOT static int roomcam_DrawWallSlice(
         ) {
     assert(texinfo->type == GEOMTEX_ROOM ||
         texinfo->type == GEOMTEX_BLOCK);
-    if (cr < 0) cr = 0;
-    if (cg < 0) cg = 0;
-    if (cb < 0) cb = 0;
+    assert(cr >= 0);
+    assert(cg >= 0);
+    assert(cb >= 0);
     rfs2tex *t = (texinfo->type == GEOMTEX_ROOM ?
         roomlayer_GetTexOfRef(texinfo->roomtex->tex) :
         roomobj_GetTexOfRef(texinfo->blocktex->tex)
@@ -1435,6 +1445,39 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 ))
             return 0;
     } else {
+        assert(bottomworldz <= topworldz);
+        if (unlikely(screentop < 0)) {
+            int64_t z_scalar = (
+                (topworldz - bottomworldz) * 1024 /
+                (screenbottom - screentop));
+            assert(z_scalar >= 0);
+            int64_t ty_scalar = (
+                (ty2 - ty1) * 1024 /
+                (screenbottom - screentop));
+            topworldz -= (-screentop * z_scalar) / 1024;
+            if (topworldz < bottomworldz)
+                return 1;
+            ty1 += (-screentop * ty_scalar) / 1024;
+            screentop = 0;
+            if (screentop > screenbottom)
+                return 1;
+        }
+        if (unlikely(screenbottom > h)) {
+            int64_t z_scalar = (
+                (topworldz - bottomworldz) * 1024 /
+                (screenbottom - screentop));
+            int64_t ty_scalar = (
+                (ty2 - ty1) * 1024 /
+                (screenbottom - screentop));
+            assert(z_scalar >= 0);
+            bottomworldz += ((screenbottom - h) * z_scalar) / 1024;
+            if (topworldz < bottomworldz)
+                return 1;
+            ty2 -= ((screenbottom - h) * ty_scalar) / 1024;
+            screenbottom = h;
+            if (screentop > screenbottom)
+                return 1;
+        }
         assert(bottomworldz <= topworldz);
         assert(ty2 <= ty1);
         const int targetw = rendertarget->w;
@@ -1463,13 +1506,6 @@ HOTSPOT static int roomcam_DrawWallSlice(
             targetw * rendertargetcopylen
         ) - (rendertarget->hasalpha ? 3 : 2);
         const int srfw = srf->w;
-        assert(TEX_COORD_SCALER > 0 &&
-            !math_isnpot(TEX_COORD_SCALER));
-        const int32_t texcoord_modulo_mask = (
-            math_one_bits_from_right(
-                math_count_bits_until_zeros(TEX_COORD_SCALER) - 1
-            )
-        );
         uint8_t *targetwriteptr = &tgpixels[
             (x + (y + screentop) * targetw) * rendertargetcopylen
         ];
@@ -1573,6 +1609,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
     }
     return 1;
 }
+
 
 int roomcam_DrawFloorCeiling(
         roomcam *cam, drawgeom *geom,
@@ -2080,16 +2117,14 @@ int roomcam_DrawWall(
     int prev_hitset = 0;
     int64_t prev_hitx, prev_hity;
     int prev_wallno = -1;
-    int64_t prev_hitdepth;
     while (xcol <= endcol) {
         // Calculate perspective data to interpolate between:
         int start_wallno = -1;
-        int64_t start_hitx, start_hity, start_hitdepth;
+        int64_t start_hitx, start_hity;
         if (prev_hitset) {
             prev_hitset = 0;
             start_wallno = prev_wallno;
             start_hitx = prev_hitx; start_hity = prev_hity;
-            start_hitdepth = prev_hitdepth;
         } else {
             int _temp_xcol = xcol;
             while (1) {
@@ -2119,9 +2154,6 @@ int roomcam_DrawWall(
                 int64_t camcenterdist = math_veclen2di(
                     localx, localy
                 );
-                start_hitdepth = camcenterdist; /* - (
-                    cam->cache->planevecs_len[_temp_xcol]
-                ) + cam->cache->planedist;*/
                 assert(start_wallno >= 0);
                 break;
             }
@@ -2142,7 +2174,7 @@ int roomcam_DrawWall(
             max_safe_next_segment + 1, endcol - xcol + 1));
         int _temp_max_render_ahead = max_render_ahead;
         int end_wallno = -1;
-        int64_t end_hitx, end_hity, end_hitdepth;
+        int64_t end_hitx, end_hity;
         while (1) {
             int intersect = math_polyintersect2di_ex(
                 cam->obj->x, cam->obj->y,
@@ -2179,11 +2211,6 @@ int roomcam_DrawWall(
                 int64_t camcenterdist = math_veclen2di(
                     localx, localy
                 );
-                end_hitdepth = camcenterdist; /* - (
-                    cam->cache->planevecs_len[
-                        imin(w - 1, xcol + _temp_max_render_ahead - 1)
-                    ]) + cam->cache->planedist;*/
-                prev_hitdepth = end_hitdepth;
                 assert(end_wallno >= 0);
                 break;
             }
@@ -2260,38 +2287,22 @@ int roomcam_DrawWall(
         int z = xcol;
         while (likely(z < xcol + max_render_ahead)) {
             assert(z <= endcol);
-            int64_t idepth = (
-                start_hitdepth + ((end_hitdepth - start_hitdepth) *
-                (z - xcol)) / imax(1, max_render_ahead)
-            );
             const int64_t perspmapscalar = 10000;
             const int64_t progress = (perspmapscalar *
                 (int64_t)(z - xcol)) /
                 (int64_t)imax(1, max_render_ahead);
             const int64_t invprogress = perspmapscalar - progress;
             int64_t tx = (
-                (tx1 * perspmapscalar / idepth) *
-                invprogress / perspmapscalar +
-                (tx2 * perspmapscalar / idepth) *
-                progress / perspmapscalar
-            ) * idepth / perspmapscalar;
-            if (tx >= 0)
-                tx = tx % TEX_COORD_SCALER;
-            else
-                tx = (TEX_COORD_SCALER - 1 - ((-tx) %
-                    TEX_COORD_SCALER));
+                tx1 + (((tx2 - tx1) *
+                (z - xcol)) / imax(1, max_render_ahead)));
+            assert(texcoord_modulo_mask != 0);
+            tx = tx & texcoord_modulo_mask;
             int64_t ix = (
-                (start_hitx * perspmapscalar / idepth) *
-                invprogress / perspmapscalar +
-                (end_hitx * perspmapscalar / idepth) *
-                progress / perspmapscalar
-            ) * idepth / perspmapscalar;
+                start_hitx + ((end_hitx - start_hitx) *
+                (z - xcol)) / imax(1, max_render_ahead));
             int64_t iy = (
-                (start_hity * perspmapscalar / idepth) *
-                invprogress / perspmapscalar +
-                (end_hity * perspmapscalar / idepth) *
-                progress / perspmapscalar
-            ) * idepth / perspmapscalar;
+                start_hity + ((end_hity - start_hity) *
+                (z - xcol)) / imax(1, max_render_ahead));
             int64_t dynr = (
                 dynlightstart_r + ((dynlightend_r -
                 dynlightstart_r) * (z - xcol)) /
@@ -2314,7 +2325,7 @@ int roomcam_DrawWall(
             if (unlikely(!roomcam_WallSliceHeight(
                     cam, wall_floor_z, wall_height,
                     h, ix, iy,
-                    z, 1, &topworldz, &bottomworldz,
+                    z, 0, &topworldz, &bottomworldz,
                     &top, &bottom
                     ))) {
                 // Fully off-screen.
@@ -2323,12 +2334,10 @@ int roomcam_DrawWall(
             }
             // Override screen top/bottom with better interpolation:
             if (interpolatescreensize) {
-                top = imax(0, imin(h - 1,
-                    ((endtop - starttop) * (z - xcol)) /
-                    imax(1, max_render_ahead) + starttop));
-                bottom = imax(0, imin(h - 1,
-                    ((endbottom - startbottom) * (z - xcol)) /
-                    imax(1, max_render_ahead) + startbottom));
+                top = (((endtop - starttop) * (z - xcol)) /
+                    imax(1, max_render_ahead) + starttop);
+                bottom = (((endbottom - startbottom) * (z - xcol)) /
+                    imax(1, max_render_ahead) + startbottom);
             }
 
             int64_t ty1, ty2;
@@ -2353,7 +2362,7 @@ int roomcam_DrawWall(
                 r->sector_light_b + dynb * 2));
 
             // Draw slice:
-            assert(top >= 0 && bottom >= top && bottom <= h - 1);
+            assert(bottom >= top);
             assert(start_wallno != originwall);
             if (unlikely(!roomcam_DrawWallSlice(
                     rendertarget, texinfo, tx, ty1, ty2,
@@ -2674,6 +2683,7 @@ int roomcam_RenderRoom(
     }
     return col - xoffset;
 }
+
 
 int roomcam_Render(
         roomcam *cam, int x, int y, int w, int h
