@@ -33,11 +33,13 @@
 int32_t texcoord_modulo_mask = 0;
 
 static __attribute__((constructor)) void _init_modulomask() {
-    assert(TEX_COORD_SCALER > 0 &&
-            !math_isnpot(TEX_COORD_SCALER));
+    assert(TEX_COORD_SCALER > 2 &&
+           !math_isnpot(TEX_COORD_SCALER));
     texcoord_modulo_mask = math_one_bits_from_right(
         math_count_bits_until_zeros(TEX_COORD_SCALER) - 1
     );
+    assert(LIGHT_COLOR_SCALAR > 2 &&
+           !math_isnpot(LIGHT_COLOR_SCALAR));
 }
 
 
@@ -711,13 +713,11 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 int extratarget = rowoffset + extradups - 1;
                 while (likely(rowoffset <= extratarget &&
                         rowoffset <= maxrowoffset)) {
+                    *(writepointer + alphapixoffset) = 255;
                     memcpy(writepointer,
                         writepointer - writepointerplus - 3,
                         3);
                     writepointer += 3;
-                    if (tghasalpha) {
-                        *writepointer = 255;
-                    }
                     writepointer += writepointerplus;
                     rowoffset++;
                     tx_nomod_shift += txstep_shift;

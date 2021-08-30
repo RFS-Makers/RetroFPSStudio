@@ -183,6 +183,12 @@ rfssurf *graphics_GetTexSideways(rfs2tex *tex) {
         return NULL;
     if (tex->_internal_srfsideways)
         return tex->_internal_srfsideways;
+    #ifdef DEBUG_TEXTURES
+    fprintf(stderr,
+        "rfsc/graphics.c: debug: graphics_GetTexSideways() "
+        "-> turning texture id=%" PRId64 "\n",
+        (int64_t)tex->id);
+    #endif
     assert(tex->srf != NULL || tex->isrendertarget ||
         tex->iswritecopy);
     rfssurf *src = (

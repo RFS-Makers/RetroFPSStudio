@@ -15,17 +15,13 @@
 
 
 static HOTSPOT inline int math_pixcliptop(int v) {
-    if (unlikely(v & ~((int32_t)0xFF)))
-        return 255;
-    return v;
+    return (unlikely(v & ~((int32_t)0xFF)) ? 255 : v);
 }
 
 static HOTSPOT inline int math_pixclip(int v) {
     if (unlikely(v < 0))
         return 0;
-    if (unlikely(v & ~((int32_t)0xFF)))
-        return 255;
-    return v;
+    return (unlikely(v & ~((int32_t)0xFF)) ? 255 : v);
 }
 
 static inline int math_count_bits_until_zeros(uint32_t v) {
