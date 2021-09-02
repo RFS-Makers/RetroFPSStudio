@@ -17,8 +17,48 @@
 #include "widechar.h"
 
 
+int main_IsEditorExecutable() {
+    return 1;
+}
+
 int main(int argc, char **argv) {
+    #if defined(DEBUG_VFS) && !defined(NDEBUG)
+    printf("rfsc/main.c: debug: calling vfs_Init()\n");
+    #endif
+    vfs_Init(argv[0]);
+
     #if defined(HAVE_SDL)
+    if (main_IsEditorExecutable()) {
+        SDL_SetHintWithPriority(
+            "SDL_APP_NAME", "Retro FPS Studio",
+            SDL_HINT_OVERRIDE
+        );
+        SDL_SetHintWithPriority(  // older SDL2 versions
+            "SDL_HINT_AUDIO_DEVICE_APP_NAME",
+            "Retro FPS Studio",
+            SDL_HINT_OVERRIDE
+        );
+        SDL_SetHintWithPriority(
+            "SDL_SCREENSAVER_INHIBIT_ACTIVITY_NAME",
+            "Using Retro FPS Studio",
+            SDL_HINT_OVERRIDE
+        );
+    } else {
+        SDL_SetHintWithPriority(
+            "SDL_APP_NAME", "RFS Game",
+            SDL_HINT_OVERRIDE
+        );
+        SDL_SetHintWithPriority(  // older SDL2 versions
+            "SDL_HINT_AUDIO_DEVICE_APP_NAME",
+            "Retro FPS Studio",
+            SDL_HINT_OVERRIDE
+        );
+        SDL_SetHintWithPriority(
+            "SDL_SCREENSAVER_INHIBIT_ACTIVITY_NAME",
+            "Playing an RFS game",
+            SDL_HINT_OVERRIDE
+        );
+    }
     SDL_SetHintWithPriority(
         "SDL_MOUSE_FOCUS_CLICKTHROUGH", "1",
         SDL_HINT_OVERRIDE
@@ -56,7 +96,6 @@ int main(int argc, char **argv) {
     #if defined(DEBUG_VFS) && !defined(NDEBUG)
     printf("rfsc/main.c: debug: calling vfs_Init()\n");
     #endif
-    vfs_Init(argv[0]);
 
     return scriptcore_Run(argc, argv);
 }

@@ -6,6 +6,8 @@
 /RFS2
 /RFS2.exe
 *.o
+/callgrind.out.*
+/perf.data
 /coreapi.rfspak_unencrypted
 /coreapi.rfspak
 *~

@@ -400,12 +400,12 @@ int roomcam_DynamicLightAtXY(
         assert(linfo->r >= 0 && linfo->r <= LIGHT_COLOR_SCALAR);
         assert(linfo->g >= 0 && linfo->g <= LIGHT_COLOR_SCALAR);
         assert(linfo->b >= 0 && linfo->b <= LIGHT_COLOR_SCALAR);
-        mix_r += (strength_scalar * linfo->r /
-            LIGHT_COLOR_SCALAR);
-        mix_g += (strength_scalar * linfo->g /
-            LIGHT_COLOR_SCALAR);
-        mix_b += (strength_scalar * linfo->b /
-            LIGHT_COLOR_SCALAR);
+        mix_r += round((double)strength_scalar * linfo->r /
+            (double)LIGHT_COLOR_SCALAR);
+        mix_g += round((double)strength_scalar * linfo->g /
+            (double)LIGHT_COLOR_SCALAR);
+        mix_b += round((double)strength_scalar * linfo->b /
+            (double)LIGHT_COLOR_SCALAR);
         i++;
     }
     result_r = imax(0,
@@ -1489,8 +1489,9 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int srccopylen = (
             srf->hasalpha ? 4 : 3
         );
-        int sourcey = srf->h - (
-            srf->h * (tx % TEX_COORD_SCALER) / TEX_COORD_SCALER
+        assert(tx >= 0 && tx < TEX_COORD_SCALER);
+        int sourcey = srf->h - 1 - (
+            (srf->h * tx) / TEX_COORD_SCALER
         );
         if (sourcey < 0) sourcey = 0;
         if (sourcey >= srf->h) sourcey = srf->h - 1;
@@ -1514,8 +1515,14 @@ HOTSPOT static int roomcam_DrawWallSlice(
             rendertargetcopylen * targetw
         );
         const int tghasalpha = rendertarget->hasalpha;
+        // Prepare positive-only, reversed texture coordinates:
         int32_t ty1_positive = ty1;
         int32_t ty2_positive = ty2;
+        {
+            // Reverse, since our texture look-up needs it reversed:
+            ty1_positive *= -1;
+            ty2_positive *= -1;
+        }
         if (ty1_positive < 0) {
             int32_t coordstoadd = (-ty1_positive) /
                 TEX_COORD_SCALER + 1;
@@ -1528,12 +1535,23 @@ HOTSPOT static int roomcam_DrawWallSlice(
             ty1_positive += coordstoadd * TEX_COORD_SCALER;
             ty2_positive += coordstoadd * TEX_COORD_SCALER;
         }
+        // See how much texture coordinates step, shifted up for
+        // higher step precision:
         int steps = (screenbottom - screentop);
         const uint32_t ty1_shift = ty1_positive << 5;
         const uint32_t ty2_shift = ty2_positive << 5;
         const int32_t tystep_shift = (
             (int32_t)ty2_shift - (int32_t)ty1_shift) / steps;
         uint32_t ty_nomod_shift = ty1_shift;
+        #if defined(FIXED_ROOMTEX_SIZE) && \
+                        FIXED_ROOMTEX_SIZE > 2
+        // Divisor to get from TEX_COORD_SCALER to tex size:
+        assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE);
+        assert(!math_isnpot(FIXED_ROOMTEX_SIZE));
+        const int coorddiv = (TEX_COORD_SCALER / FIXED_ROOMTEX_SIZE);
+        assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE);
+        const int srfw_times_copylen = srfw * srccopylen;
+        #endif
         int ty;
         if (tghasalpha) {
             // Blit branch where render target has alpha channel
@@ -1542,10 +1560,17 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 ty_nomod_shift += tystep_shift;
                 ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                 // Remember, we're using the sideways tex.
+                #if defined(FIXED_ROOMTEX_SIZE) && \
+                        FIXED_ROOMTEX_SIZE > 2
+                const int sourcex = (
+                    (ty / coorddiv) * srccopylen
+                );
+                #else
                 const int sourcex = (
                     (srfw * (TEX_COORD_SCALER - 1 - ty))
                     / TEX_COORD_SCALER
                 ) * srccopylen;
+                #endif
                 const int srcoffset = (
                     sourcex + sourcey_multiplied_w_copylen
                 );
@@ -1578,10 +1603,17 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 ty_nomod_shift += tystep_shift;
                 ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                 // Remember, we're using the sideways tex.
+                #if defined(FIXED_ROOMTEX_SIZE) && \
+                        FIXED_ROOMTEX_SIZE > 2
+                const int sourcex = (
+                    (ty / coorddiv) * srccopylen
+                );
+                #else
                 const int sourcex = (
                     (srfw * (TEX_COORD_SCALER - 1 - ty))
                     / TEX_COORD_SCALER
                 ) * srccopylen;
+                #endif
                 const int srcoffset = (
                     sourcex + sourcey_multiplied_w_copylen
                 );
@@ -2297,6 +2329,7 @@ int roomcam_DrawWall(
                 (z - xcol)) / imax(1, max_render_ahead)));
             assert(texcoord_modulo_mask != 0);
             tx = tx & texcoord_modulo_mask;
+            assert(tx >= 0 && tx < TEX_COORD_SCALER);
             int64_t ix = (
                 start_hitx + ((end_hitx - start_hitx) *
                 (z - xcol)) / imax(1, max_render_ahead));
@@ -2378,7 +2411,7 @@ int roomcam_DrawWall(
             int extra_z = z + DUPLICATE_WALL_PIX;
             while (likely(z < extra_z &&
                     z < xcol + max_render_ahead)) {
-                int row = top + canvasy;
+                int row = imax(0, top) + canvasy;
                 const int maxrow = (
                     (bottom + canvasy) < (canvasy + h) ?
                     (bottom + canvasy) :
@@ -2388,24 +2421,33 @@ int roomcam_DrawWall(
                 const int xbyteoffsetnew = copylen * (canvasx + z);
                 const int xbyteoffsetold = copylen * (canvasx + (z - 1));
                 int ybyteoffset = (
-                    copylen * rendertarget->w * (top + canvasy)
+                    copylen * rendertarget->w * (imax(0, top) + canvasy)
+                );
+                const int ybyteposttarget = (
+                    copylen * rendertarget->w * (imin(rendertarget->h - 1,
+                        bottom + 1 + canvasy))
                 );
                 const int ybyteshift = copylen * rendertarget->w;
-                const int ybyteposttarget = (
-                    copylen * rendertarget->w * (bottom + 1 + canvasy)
-                );
-                while (row <= maxrow) {
-                    if (rendertarget->hasalpha)
-                        rendertarget->pixels[
-                            xbyteoffsetnew + ybyteoffset + 3
-                        ] = 255;
-                    memcpy(&rendertarget->pixels[
-                        xbyteoffsetnew + ybyteoffset
-                    ], &rendertarget->pixels[
-                        xbyteoffsetold + ybyteoffset
-                    ], 3);
-                    row++;
-                    ybyteoffset += ybyteshift;
+                if (rendertarget->hasalpha) {
+                    while (ybyteoffset != ybyteposttarget) {  // with alpha path
+                        memcpy(&rendertarget->pixels[
+                            xbyteoffsetnew + ybyteoffset
+                        ], &rendertarget->pixels[
+                            xbyteoffsetold + ybyteoffset
+                        ], 4);
+                        row++;
+                        ybyteoffset += ybyteshift;
+                    }
+                } else {
+                    while (ybyteoffset != ybyteposttarget) {  // without alpha path
+                        memcpy(&rendertarget->pixels[
+                            xbyteoffsetnew + ybyteoffset
+                        ], &rendertarget->pixels[
+                            xbyteoffsetold + ybyteoffset
+                        ], 3);
+                        row++;
+                        ybyteoffset += ybyteshift;
+                    }
                 }
                 stats->base_geometry_slices_rendered++;
                 z++;

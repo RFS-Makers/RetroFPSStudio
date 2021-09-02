@@ -13,6 +13,7 @@
 #include "filesys.h"
 #include "graphics.h"
 #include "hash.h"
+#include "math2d.h"
 #include "outputwindow.h"
 #include "rfssurf.h"
 #include "settings.h"
@@ -177,6 +178,80 @@ rfs2tex *graphics_CreateTarget(int w, int h) {
     }
     return tex;
 }
+
+
+rfs2tex *graphics_GetWriteCopy(rfs2tex *tex) {
+    return graphics_GetWriteCopyDifferentSize(
+        tex, tex->w, tex->h);
+}
+
+
+rfs2tex *graphics_GetWriteCopyDifferentSize(
+        rfs2tex *orig_tex, int w, int h
+        ) {
+    if (orig_tex->isrendertarget || w < 0 || h < 0)
+        return NULL;
+    rfs2tex *t = malloc(sizeof(*t));
+    if (!t)
+        return NULL;
+    memset(t, 0, sizeof(*t));
+    t->srfalpha = rfssurf_Create(w, h, 1);
+    t->srf = rfssurf_Create(w, h, 1);
+    if (!t->srfalpha || !t->srf) {
+        rfssurf_Free(t->srfalpha);
+        rfssurf_Free(t->srf);
+        free(t);
+        return NULL;
+    }
+    t->iswritecopy = 1;
+    if (orig_tex->diskpath) {
+        t->diskpath = strdup(orig_tex->diskpath);
+        if (!t->diskpath) {
+            rfssurf_Free(t->srfalpha);
+            rfssurf_Free(t->srf);
+            free(t);
+            return NULL;
+        }
+    }
+    {
+        rfs2tex **texturelist_entry_new = realloc(
+            texturelist_entry,
+            sizeof(*texturelist_entry) * (texturelist_count + 1)
+        );
+        if (!texturelist_entry_new) {
+            free(t->diskpath);
+            rfssurf_Free(t->srf);
+            rfssurf_Free(t->srfalpha);
+            free(t);
+            return NULL;
+        }
+        texturelist_entry_new[texturelist_count] = t;
+        texturelist_entry = texturelist_entry_new;
+        texturelist_count++;
+    }
+    _last_tex_id++;
+    t->id = _last_tex_id;
+    if (!hash_BytesMapSet(
+            texture_by_id_cache,
+            (char *)&t->id, sizeof(t->id),
+            (uint64_t)(uintptr_t)t)) {
+        _texture_RemoveGlobalTexture(t);
+        return NULL;
+    }
+    t->w = w;
+    t->h = h;
+    rfssurf_BlitSimple(t->srf, orig_tex->srf,
+        0, 0, 0, 0, imin(w, orig_tex->w),
+        imin(h, orig_tex->h)
+    );
+    rfssurf_BlitSimple(t->srfalpha, orig_tex->srfalpha,
+        0, 0, 0, 0, imin(w, orig_tex->w),
+        imin(h, orig_tex->h)
+    );
+
+    return t;
+}
+
 
 rfssurf *graphics_GetTexSideways(rfs2tex *tex) {
     if (!tex)

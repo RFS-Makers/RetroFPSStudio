@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "graphics.h"
 #include "hash.h"
 #include "math2d.h"
 #include "room.h"
@@ -42,6 +43,14 @@ static int _extract_apply_tex_props(
         );
         if (!rtex->tex)
             return 0;
+        #if defined(FIXED_ROOMTEX_SIZE) && \
+            FIXED_ROOMTEX_SIZE > 2
+        rfs2tex *t = roomlayer_GetTexOfRef(
+            rtex->tex);
+        if (t && (t->w != FIXED_ROOMTEX_SIZE ||
+                t->h != FIXED_ROOMTEX_SIZE))
+            return 0;
+        #endif
     } else if (lua_type(l, -1) == LUA_TNIL) {
         if (rtex->tex)
             roomlayer_UnmakeTexRef(lr, rtex->tex);
@@ -835,6 +844,18 @@ int roomserialize_lua_SetObjectProperties(
                         lua_settop(l, startstack);
                         return 0;
                     }
+                    #if defined(FIXED_ROOMTEX_SIZE) && \
+                        FIXED_ROOMTEX_SIZE > 2
+                    rfs2tex *t = roomobj_GetTexOfRef(
+                        mov->sprite_tex.tex);
+                    if (t && (t->w != FIXED_ROOMTEX_SIZE ||
+                            t->h != FIXED_ROOMTEX_SIZE)) {
+                        *err = strdup("sprite tex has "
+                            "wrong size");
+                        lua_settop(l, startstack);
+                        return 0;
+                    }
+                    #endif
                 }
                 lua_pop(l, 1);
                 lua_pushstring(l, "texscalex");

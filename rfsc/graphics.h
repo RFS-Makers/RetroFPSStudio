@@ -24,6 +24,12 @@ typedef struct rfs2tex {
 
 char *graphics_FixTexturePath(const char *path);
 
+rfs2tex *graphics_GetWriteCopy(rfs2tex *tex);
+
+rfs2tex *graphics_GetWriteCopyDifferentSize(
+    rfs2tex *tex, int w, int h
+);
+
 rfssurf *graphics_GetTexSideways(rfs2tex *tex);
 
 rfs2tex *graphics_GetTexById(int32_t id);
