@@ -4,7 +4,9 @@
 -- See LICENSE.md for details
 
 if rfs == nil then rfs = {} end
-if rfs.archive == nil then rfs.archive = {} end
+if rfs.archive == nil then
+    rfs.archive = {classtable={}}
+end
 
 rfs.archive.open = function(path)
     if type(path) ~= "string" then
@@ -12,7 +14,7 @@ rfs.archive.open = function(path)
     end
     local self = _archive_open(path)
     debug.setmetatable(self, {
-        __index = rfs.archive.open,
+        __index = rfs.archive.classtable,
         __gc = function(gcself)
             local f = function(_gcself)
                 _archive_close(_gcself)
@@ -23,11 +25,11 @@ rfs.archive.open = function(path)
     return self
 end
 
-rfs.archive.entry_count = function(self)
+rfs.archive.classtable.entry_count = function(self)
     return _archive_getentrycount(self)
 end
 
-rfs.archive.entries = function(self)
+rfs.archive.classtable.entries = function(self)
     local c = _archive_getentrycount(self)
     local result = {}
     local i = 1

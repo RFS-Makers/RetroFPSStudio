@@ -20,6 +20,16 @@
 #include "rfssurf.h"
 
 
+#ifndef NDEBUG
+static int _assert_pix256(int v) {
+    assert(v >= 0 && v < 256);
+    return v;
+}
+#else
+#define _assert_pix256(x) x
+#endif
+
+
 static int sanitize_clipping(int *intgx, int *intgy,
         int *inclipx, int *inclipy, int *inclipw, int *incliph,
         rfssurf *source, rfssurf *target) {
@@ -65,6 +75,7 @@ static int sanitize_clipping(int *intgx, int *intgy,
     *incliph = cliph;
     return 1;
 }
+
 
 static int sanitize_clipping_scaled(int *intgx, int *intgy,
         int *inclipx, int *inclipy, int *inclipw, int *incliph,
@@ -132,6 +143,7 @@ rfssurf *rfssurf_Duplicate(rfssurf *surf) {
     return newsrf;
 }
 
+
 rfssurf *rfssurf_DuplicateNoAlpha(rfssurf *surf) {
     rfssurf *newsrf = rfssurf_Create(
         surf->w, surf->h, 0
@@ -157,6 +169,7 @@ rfssurf *rfssurf_DuplicateNoAlpha(rfssurf *surf) {
     }
     return newsrf;
 }
+
 
 HOTSPOT void rfssurf_Rect(rfssurf *target,
         int x, int y, int w, int h,
@@ -230,17 +243,17 @@ HOTSPOT void rfssurf_Rect(rfssurf *target,
             assert(ir >= 0 && ig >= 0 && ib >= 0);
             cx = x;
             while (cx < maxx) {
-                target->pixels[targetoffset + 0] = math_pixcliptop(
+                target->pixels[targetoffset + 0] = _assert_pix256(
                     ((int)target->pixels[targetoffset + 0] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     (ir * alphar / INT_COLOR_SCALAR)
                 );
-                target->pixels[targetoffset + 1] = math_pixcliptop(
+                target->pixels[targetoffset + 1] = _assert_pix256(
                     ((int)target->pixels[targetoffset + 1] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     (ig * alphar / INT_COLOR_SCALAR)
                 );
-                target->pixels[targetoffset + 2] = math_pixcliptop(
+                target->pixels[targetoffset + 2] = _assert_pix256(
                     ((int)target->pixels[targetoffset + 2] *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     (ib * alphar / INT_COLOR_SCALAR)
@@ -251,8 +264,8 @@ HOTSPOT void rfssurf_Rect(rfssurf *target,
                     a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a);
-                    target->pixels[targetoffset + 3] = math_pixcliptop(
-                        a / INT_COLOR_SCALAR
+                    target->pixels[targetoffset + 3] = (
+                        _assert_pix256(a / INT_COLOR_SCALAR)
                     );
                 }
                 cx++;
@@ -262,6 +275,7 @@ HOTSPOT void rfssurf_Rect(rfssurf *target,
         }
     }
 }
+
 
 HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph
@@ -346,7 +360,7 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
                 reverse_alphar = (INT_COLOR_SCALAR - alphar);
                 assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
                 // Blend in rgb now:
-                *writeptr = math_pixcliptop(
+                *writeptr = _assert_pix256(
                     ((int)(*writeptr) *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     ((int)(*readptr) *
@@ -354,7 +368,7 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
                 );
                 writeptr++;
                 readptr++;
-                *writeptr = math_pixcliptop(
+                *writeptr = _assert_pix256(
                     ((int)(*writeptr) *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     ((int)(*readptr) *
@@ -362,7 +376,7 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
                 );
                 writeptr++;
                 readptr++;
-                *writeptr = math_pixcliptop(
+                *writeptr = _assert_pix256(
                     ((int)(*writeptr) *
                         reverse_alphar / INT_COLOR_SCALAR) +
                     ((int)(*readptr) *
@@ -378,7 +392,7 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
                     a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a);
-                    *writeptr = math_pixcliptop(
+                    *writeptr = _assert_pix256(
                         a / INT_COLOR_SCALAR
                     );
                     writeptr++;
@@ -507,7 +521,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                 alphar = inta;
             }
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
-            *writeptr = math_pixcliptop((
+            *writeptr = _assert_pix256(
                 (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)(*readptr) *
@@ -515,10 +529,10 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                     255 *
                     intrwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
-            ));
+            );
             writeptr++;
             readptr++;
-            *writeptr = math_pixcliptop((
+            *writeptr = _assert_pix256(
                 (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)(*readptr) *
@@ -526,10 +540,10 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                     255 *
                     intgwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
-            ));
+            );
             writeptr++;
             readptr++;
-            *writeptr = math_pixcliptop((
+            *writeptr = _assert_pix256(
                 (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)(*readptr) *
@@ -537,7 +551,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                     255 *
                     intbwhite / INT_COLOR_SCALAR) * alphar /
                     INT_COLOR_SCALAR
-            ));
+            );
             writeptr++;
             readptr++;
             if (likely(target->hasalpha)) {
@@ -546,7 +560,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
                 a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                     INT_COLOR_SCALAR;
                 a = (INT_COLOR_SCALAR * 255 - a);
-                *writeptr = math_pixcliptop(
+                *writeptr = _assert_pix256(
                     a / INT_COLOR_SCALAR
                 );
                 writeptr++;
@@ -707,7 +721,7 @@ HOTSPOT void rfssurf_BlitScaled(
                 }
             }
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
-            *writeptr = math_pixcliptop((
+            *writeptr = _assert_pix256((
                 (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)(*readptr) *
@@ -718,7 +732,7 @@ HOTSPOT void rfssurf_BlitScaled(
             ));
             writeptr++;
             readptr++;
-            *writeptr = math_pixcliptop((
+            *writeptr = _assert_pix256((
                 (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)(*readptr) *
@@ -729,7 +743,7 @@ HOTSPOT void rfssurf_BlitScaled(
             ));
             writeptr++;
             readptr++;
-            *writeptr = math_pixcliptop((
+            *writeptr = _assert_pix256((
                 (int)(*writeptr) *
                     reverse_alphar / INT_COLOR_SCALAR +
                 ((int)(*readptr) *
@@ -746,7 +760,7 @@ HOTSPOT void rfssurf_BlitScaled(
                 a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
                     INT_COLOR_SCALAR;
                 a = (INT_COLOR_SCALAR * 255 - a);
-                *writeptr = math_pixcliptop(
+                *writeptr = _assert_pix256(
                     a / INT_COLOR_SCALAR
                 );
                 writeptr++;
@@ -756,6 +770,7 @@ HOTSPOT void rfssurf_BlitScaled(
     }
 }
 
+
 void rfssurf_Clear(rfssurf *surf) {
     if (surf->w <= 0 || surf->h <= 0)
         return;
@@ -764,6 +779,7 @@ void rfssurf_Clear(rfssurf *surf) {
         surf->w * surf->h * (surf->hasalpha ? 4 : 3)
     );
 }
+
 
 #if defined(HAVE_SDL)
 HOTSPOT SDL_Surface *rfssurf_AsSrf(
@@ -829,6 +845,7 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
     SDL_UnlockSurface(srf->sdlsrf);
     return srf->sdlsrf;
 }
+
 
 SDL_Texture *rfssurf_AsTex(
         SDL_Renderer *r, rfssurf *srf, int withalpha

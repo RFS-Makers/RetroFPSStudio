@@ -54,6 +54,7 @@ int _h3daudio_listsoundcards(lua_State *l) {
     return 1;
 }
 
+
 int _h3daudio_getdevicename(lua_State *l) {
     if (lua_gettop(l) < 1 ||
             lua_type(l, 1) != LUA_TUSERDATA) {
@@ -78,6 +79,7 @@ int _h3daudio_getdevicename(lua_State *l) {
     lua_pushstring(l, h3daudio_GetDeviceName(dev));
     return 1;
 }
+
 
 int _h3daudio_opendevice(lua_State *l) {
     int backend = H3DAUDIO_BACKEND_SDL2;
@@ -127,34 +129,71 @@ int _h3daudio_opendevice(lua_State *l) {
     _opendevicescount++;
 
     scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
+    if (!ref) {
+        _opendevicescount--;
+        h3daudio_DestroyDevice(_opendevices[_opendevicescount]);
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
     memset(ref, 0, sizeof(*ref));
     ref->magic = OBJREFMAGIC;
     ref->type = OBJREF_AUDIODEVICE;
     ref->value = h3daudio_GetDeviceId(dev);
-    luaL_newmetatable(l, "audiodevice");
-    lua_setmetatable(l, -2);
-    lua_pushstring(l, "audiodevice_set_metatableref");
-    lua_gettable(l, LUA_REGISTRYINDEX);
-    if (lua_type(l, -1) != LUA_TFUNCTION) {
-        lua_pop(l, 1);
-    } else {
-        lua_pushvalue(l, -2);
-        lua_call(l, 1, 0);
-    }
     return 1;
 }
 
+
+int _h3daudio_destroydevice(lua_State *l) {
+    if (lua_gettop(l) < 1 ||
+            lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+            OBJREF_AUDIODEVICE) {
+        lua_pushstring(l, "expected arg of type audiodevice");
+        return lua_error(l);
+    }
+    h3daudiodevice *dev = h3daudio_GetDeviceById(
+        (int)((scriptobjref*)lua_touserdata(l, 1))->value
+    );
+    if (!dev) {
+        lua_pushstring(l, "couldn't access device - was it closed?");
+        return lua_error(l);
+    }
+    int i = 0;
+    while (i < _opendevicescount) {
+        if (_opendevices[i] == dev) {
+            if (i + 1 < _opendevicescount)
+                memcpy(&_opendevices[i],
+                    &_opendevices[i + 1],
+                    sizeof(*_opendevices) *
+                    (_opendevicescount - i - 1));
+            _opendevicescount--;
+            continue;
+        }
+        i++;
+    }
+    ((scriptobjref*)lua_touserdata(l, 1))->value = -1;
+    h3daudio_DestroyDevice(dev);
+    return 0;
+}
+
+
 int _h3daudio_playsound(lua_State *l) {
-    if (lua_gettop(l) < 5 ||
-            lua_type(l, 1) != LUA_TSTRING ||
-            lua_type(l, 5) != LUA_TUSERDATA) {
+    if (lua_gettop(l) < 2 ||
+            lua_type(l, 2) != LUA_TSTRING ||
+            lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+            OBJREF_AUDIODEVICE) {
         lua_pushstring(
-            l, "expected 5 arguments of types "
-            "string, number, number, boolean, audiodevice"
+            l, "expected 2-5 arguments of types "
+            "audiodevice, string, number, number, boolean"
         );
         return lua_error(l);
     }
-    const char *soundpath = lua_tostring(l, 1);
+    const char *soundpath = lua_tostring(l, 2);
     int existsresult = 0;
     if (!vfs_Exists(soundpath, &existsresult, 0)) {
         lua_pushstring(l, "vfs_Exists() failed - out of memory?");
@@ -167,19 +206,20 @@ int _h3daudio_playsound(lua_State *l) {
         lua_pushstring(l, buf);
         return lua_error(l);
     }
-    double volume = lua_tonumber(l, 2);
-    double panning = lua_tonumber(l, 3);
-    int loop = lua_tonumber(l, 4);
-    if (((scriptobjref*)lua_touserdata(l, 5))->magic !=
-            OBJREFMAGIC ||
-            ((scriptobjref*)lua_touserdata(l, 5))->type !=
-            OBJREF_AUDIODEVICE) {
-        lua_pushstring(l, "expected arg #1 to be "
-                       "audiodevice");
-        return lua_error(l);
-    }
+    double volume = (
+        (lua_gettop(l) >= 3 && lua_type(l, 3) == LUA_TNUMBER) ?
+        lua_tonumber(l, 3) : 1.0
+    );
+    double panning = (
+        (lua_gettop(l) >= 4 && lua_type(l, 4) == LUA_TNUMBER) ?
+        lua_tonumber(l, 4) : 1.0
+    );
+    int loop = (
+        (lua_gettop(l) >= 5 && lua_type(l, 5) == LUA_TBOOLEAN) ?
+        lua_toboolean(l, 5) : 0
+    );
     h3daudiodevice *dev = h3daudio_GetDeviceById(
-        (int)((scriptobjref*)lua_touserdata(l, 5))->value
+        (int)((scriptobjref*)lua_touserdata(l, 1))->value
     );
     if (!dev) {
         lua_pushstring(l, "couldn't access device - was it closed?");
@@ -203,18 +243,9 @@ int _h3daudio_playsound(lua_State *l) {
     ref->type = OBJREF_PLAYINGSOUND;
     ref->value = soundid;
     ref->value2 = h3daudio_GetDeviceId(dev);
-    luaL_newmetatable(l, "sound");
-    lua_setmetatable(l, -2);
-    lua_pushstring(l, "sound_set_metatableref");
-    lua_gettable(l, LUA_REGISTRYINDEX);
-    if (lua_type(l, -1) != LUA_TFUNCTION) {
-        lua_pop(l, 1);
-    } else {
-        lua_pushvalue(l, -2);
-        lua_call(l, 1, 0);
-    }
     return 1;
 }
+
 
 int _h3daudio_stopsound(lua_State *l) {
     if (lua_gettop(l) < 1 ||
@@ -243,6 +274,7 @@ int _h3daudio_stopsound(lua_State *l) {
     h3daudio_StopSound(dev, soundid);
     return 0;
 }
+
 
 int _h3daudio_soundsetvolume(lua_State *l) {
     if (lua_gettop(l) < 2 ||
@@ -277,6 +309,7 @@ int _h3daudio_soundsetvolume(lua_State *l) {
     return 0;
 }
 
+
 int _h3daudio_soundsetpanning(lua_State *l) {
     if (lua_gettop(l) < 2 ||
             lua_type(l, 1) != LUA_TUSERDATA ||
@@ -310,6 +343,7 @@ int _h3daudio_soundsetpanning(lua_State *l) {
     return 0;
 }
 
+
 int _h3daudio_soundisplaying(lua_State *l) {
     if (lua_gettop(l) < 1 ||
             lua_type(l, 1) != LUA_TUSERDATA) {
@@ -338,6 +372,7 @@ int _h3daudio_soundisplaying(lua_State *l) {
     return 1;
 }
 
+
 int _h3daudio_soundhaderror(lua_State *l) {
     if (lua_gettop(l) < 1 ||
             lua_type(l, 1) != LUA_TUSERDATA) {
@@ -365,6 +400,7 @@ int _h3daudio_soundhaderror(lua_State *l) {
     lua_pushboolean(l, h3daudio_SoundHadPlaybackError(dev, soundid));
     return 1;
 }
+
 
 int _h3daudio_soundgetvolume(lua_State *l) {
     if (lua_gettop(l) < 1 ||
@@ -397,6 +433,7 @@ int _h3daudio_soundgetvolume(lua_State *l) {
     return 1;
 }
 
+
 int _h3daudio_soundgetpanning(lua_State *l) {
     if (lua_gettop(l) < 1 ||
             lua_type(l, 1) != LUA_TUSERDATA) {
@@ -428,9 +465,12 @@ int _h3daudio_soundgetpanning(lua_State *l) {
     return 1;
 }
 
+
 void scriptcoreaudio_AddFunctions(lua_State *l) {
     lua_pushcfunction(l, _h3daudio_opendevice);
     lua_setglobal(l, "_h3daudio_opendevice");
+    lua_pushcfunction(l, _h3daudio_destroydevice);
+    lua_setglobal(l, "_h3daudio_destroydevice");
     lua_pushcfunction(l, _h3daudio_listsoundcards);
     lua_setglobal(l, "_h3daudio_listsoundcards");
     lua_pushcfunction(l, _h3daudio_getdevicename);

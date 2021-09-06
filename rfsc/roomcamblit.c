@@ -279,9 +279,12 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int writepointerplus = (
             targetw * rendertargetcopylen - 3
         );
-        int red = 0;
-        int green = 0;
-        int blue = 0;
+        int rednonwhite = 0;
+        int greennonwhite = 0;
+        int bluenonwhite = 0;
+        int redwhite = 0;
+        int greenwhite = 0;
+        int bluewhite = 0;
         int updatecolorcounter = 0;
         const int srfw = srf->w;
         const int srfh = srf->h;
@@ -321,7 +324,6 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const uint32_t ty2_shift = ty2_positive << 5;
         const int32_t tystep_shift = (
             (int32_t)ty2_shift - (int32_t)ty1_shift) / steps;
-        uint32_t ty_nomod_shift = ty1_shift;
         int32_t tx1_positive = toptx;
         int32_t tx2_positive = bottomtx;
         if (tx1_positive < 0) {
@@ -341,101 +343,215 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int32_t txstep_shift = (
             (int32_t)tx2_shift - (int32_t)tx1_shift) / steps;
         uint32_t tx_nomod_shift = tx1_shift;
-        #if defined(FIXED_ROOMTEX_SIZE) && \
-                        FIXED_ROOMTEX_SIZE > 2
-        // Divisor to get from TEX_COORD_SCALER to tex size:
-        assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE);
-        assert(!math_isnpot(FIXED_ROOMTEX_SIZE));
-        const int coorddiv = (TEX_COORD_SCALER / FIXED_ROOMTEX_SIZE);
-        assert(coorddiv == 1 || coorddiv == 2 ||
-               !math_isnpot(coorddiv));
-        assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE);
+        uint32_t ty_nomod_shift = ty1_shift;
+        #if !defined(FIXED_ROOMTEX_SIZE) || \
+                FIXED_ROOMTEX_SIZE <= 2 || \
+                !defined(FIXED_ROOMTEX_SIZE_2) || \
+                FIXED_ROOMTEX_SIZE_2 <= 2
+        #error "need fixed tex sizes"
         #endif
+        if (srf->w == FIXED_ROOMTEX_SIZE) {
+            // Divisor to get from TEX_COORD_SCALER to tex size:
+            assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE);
+            assert(!math_isnpot(FIXED_ROOMTEX_SIZE));
+            const int coorddiv = (TEX_COORD_SCALER / FIXED_ROOMTEX_SIZE);
+            assert(coorddiv == 1 || coorddiv == 2 ||
+                   !math_isnpot(coorddiv));
+            assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE);
 
-        while (likely(rowoffset <= maxrowoffset)) {
-            // Compute updated light/color levels if needed:
-            if (likely(updatecolorcounter %
-                    colorupdateinterval == 0)) {
-                const int row = startrow + rowoffset;
-                const int screentoprowoffset = row - screentop;
-                red = cr + (cr1to2diff * screentoprowoffset) /
-                    fullslicelen;
-                green = cg + (cg1to2diff * screentoprowoffset) /
-                    fullslicelen;
-                blue = cb + (cb1to2diff * screentoprowoffset) /
-                    fullslicelen;
-                red = imax(0, imin(LIGHT_COLOR_SCALAR * 2, red));
-                green = imax(0, imin(LIGHT_COLOR_SCALAR * 2, green));
-                blue = imax(0, imin(LIGHT_COLOR_SCALAR * 2, blue));
-                assert(red >= cr || red >= cr2);
-                assert(red <= cr || red <= cr2);
-            }
-
-            // See how far we can blit with no light update:
-            const int next_to = imin(maxrowoffset,
-                rowoffset + (colorupdateinterval - 1 -
-                (updatecolorcounter % colorupdateinterval)) - 1);
-            // Blit until we need next light update:
-            while (likely(rowoffset <= next_to)) {
-                tx_nomod_shift += txstep_shift;
-                int64_t tx = (tx_nomod_shift >> 5) & texcoord_modulo_mask;
-                ty_nomod_shift += tystep_shift;
-                int64_t ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
-                // Here, we're using the non-sideways regular tex.
-                #if defined(FIXED_ROOMTEX_SIZE) && \
-                        FIXED_ROOMTEX_SIZE > 2
-                const int srcoffset = (
-                    (tx / coorddiv) * srccopylen
-                ) + (
-                    (ty / coorddiv) * srccopylen * FIXED_ROOMTEX_SIZE
-                );
-                #else
-                const int srcoffset = (
-                    ((tx * srfw) / TEX_COORD_SCALER) +
-                    (srfw * ((ty * srfh) / TEX_COORD_SCALER))
-                ) * srccopylen;
-                #endif
-                const uint8_t *readptr = &srcpixels[srcoffset];
-                assert(srcoffset >= 0 &&
-                    srcoffset < srfw * srfh * srccopylen);
-                *(writepointer + alphapixoffset) = 255;
-                *writepointer = gammat[_assert_pix256(
-                    math_pixcliptop(
-                    (*readptr) * red /
-                    LIGHT_COLOR_SCALAR))];
-                writepointer++;
-                readptr++;
-                *writepointer = gammat[_assert_pix256(
-                    math_pixcliptop(
-                    (*readptr) * green /
-                    LIGHT_COLOR_SCALAR))];
-                writepointer++;
-                readptr++;
-                *writepointer = gammat[_assert_pix256(
-                    math_pixcliptop(
-                    (*readptr) * blue /
-                    LIGHT_COLOR_SCALAR))];
-                readptr++;
-                writepointer++;
-                updatecolorcounter++;
-                rowoffset++;
-                writepointer += writepointerplus;
-                #if defined(DUPLICATE_FLOOR_PIX) && \
-                        DUPLICATE_FLOOR_PIX >= 1
-                int extratarget = rowoffset + extradups - 1;
-                while (likely(rowoffset <= extratarget &&
-                        rowoffset <= maxrowoffset)) {
-                    *(writepointer + alphapixoffset) = 255;
-                    memcpy(writepointer,
-                        writepointer - writepointerplus - 3,
-                        3);
-                    writepointer += 3;
-                    writepointer += writepointerplus;
-                    rowoffset++;
-                    tx_nomod_shift += txstep_shift;
-                    ty_nomod_shift += tystep_shift;
+            while (likely(rowoffset <= maxrowoffset)) {
+                // Compute updated light/color levels if needed:
+                if (likely(updatecolorcounter %
+                        colorupdateinterval == 0)) {
+                    const int row = startrow + rowoffset;
+                    const int screentoprowoffset = row - screentop;
+                    int fullred = cr + (cr1to2diff *
+                        screentoprowoffset) / fullslicelen;
+                    int fullgreen = cg + (cg1to2diff *
+                        screentoprowoffset) / fullslicelen;
+                    int fullblue = cb + (cb1to2diff *
+                        screentoprowoffset) / fullslicelen;
+                    rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
+                    greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
+                    bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
+                    int redwhite = imin(imax(0, fullred -
+                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                    rednonwhite = imin(rednonwhite,
+                        LIGHT_COLOR_SCALAR - redwhite);
+                    int greenwhite = imin(imax(0, fullgreen -
+                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                    greennonwhite = imin(greennonwhite,
+                        LIGHT_COLOR_SCALAR - greenwhite);
+                    int bluewhite = imin(imax(0, fullblue -
+                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                    bluenonwhite = imin(bluenonwhite,
+                        LIGHT_COLOR_SCALAR - bluewhite);
+                    assert(fullred >= cr || fullred >= cr2);
                 }
-                #endif
+
+                // See how far we can blit with no light update:
+                const int next_to = imin(maxrowoffset,
+                    rowoffset + (colorupdateinterval - 1 -
+                    (updatecolorcounter % colorupdateinterval)) - 1);
+                // Blit until we need next light update:
+                while (likely(rowoffset <= next_to)) {
+                    tx_nomod_shift += txstep_shift;
+                    int64_t tx = (tx_nomod_shift >> 5) & texcoord_modulo_mask;
+                    ty_nomod_shift += tystep_shift;
+                    int64_t ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                    // Here, we're using the non-sideways regular tex.
+                    const int srcoffset = (
+                        (tx / coorddiv) * srccopylen
+                    ) + (
+                        (ty / coorddiv) * srccopylen * FIXED_ROOMTEX_SIZE
+                    );
+                    const uint8_t *readptr = &srcpixels[srcoffset];
+                    assert(srcoffset >= 0 &&
+                        srcoffset < srfw * srfh * srccopylen);
+                    *(writepointer + alphapixoffset) = 255;
+                    *writepointer = gammat[_assert_pix256(
+                        (*readptr) * rednonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * redwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    writepointer++;
+                    readptr++;
+                    *writepointer = gammat[_assert_pix256(
+                        (*readptr) * greennonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * greenwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    writepointer++;
+                    readptr++;
+                    *writepointer = gammat[_assert_pix256(
+                        (*readptr) * bluenonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * bluewhite /
+                        LIGHT_COLOR_SCALAR)];
+                    readptr++;
+                    writepointer++;
+                    updatecolorcounter++;
+                    rowoffset++;
+                    writepointer += writepointerplus;
+                    #if defined(DUPLICATE_FLOOR_PIX) && \
+                            DUPLICATE_FLOOR_PIX >= 1
+                    int extratarget = rowoffset + extradups - 1;
+                    while (likely(rowoffset <= extratarget &&
+                            rowoffset <= maxrowoffset)) {
+                        *(writepointer + alphapixoffset) = 255;
+                        memcpy(writepointer,
+                            writepointer - writepointerplus - 3,
+                            3);
+                        writepointer += 3;
+                        writepointer += writepointerplus;
+                        rowoffset++;
+                        tx_nomod_shift += txstep_shift;
+                        ty_nomod_shift += tystep_shift;
+                    }
+                    #endif
+                }
+            }
+        } else {
+            // Divisor to get from TEX_COORD_SCALER_2 to tex size:
+            assert(srf->w == FIXED_ROOMTEX_SIZE_2);
+            assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE_2);
+            assert(!math_isnpot(FIXED_ROOMTEX_SIZE_2));
+            const int coorddiv = (TEX_COORD_SCALER / FIXED_ROOMTEX_SIZE_2);
+            assert(coorddiv == 1 || coorddiv == 2 ||
+                   !math_isnpot(coorddiv));
+            assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE_2);
+
+            while (likely(rowoffset <= maxrowoffset)) {
+                // Compute updated light/color levels if needed:
+                if (likely(updatecolorcounter %
+                        colorupdateinterval == 0)) {
+                    const int row = startrow + rowoffset;
+                    const int screentoprowoffset = row - screentop;
+                    int fullred = cr + (cr1to2diff *
+                        screentoprowoffset) / fullslicelen;
+                    int fullgreen = cg + (cg1to2diff *
+                        screentoprowoffset) / fullslicelen;
+                    int fullblue = cb + (cb1to2diff *
+                        screentoprowoffset) / fullslicelen;
+                    rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
+                    greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
+                    bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
+                    int redwhite = imin(imax(0, fullred -
+                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                    rednonwhite = imin(rednonwhite,
+                        LIGHT_COLOR_SCALAR - redwhite);
+                    int greenwhite = imin(imax(0, fullgreen -
+                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                    greennonwhite = imin(greennonwhite,
+                        LIGHT_COLOR_SCALAR - greenwhite);
+                    int bluewhite = imin(imax(0, fullblue -
+                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                    bluenonwhite = imin(bluenonwhite,
+                        LIGHT_COLOR_SCALAR - bluewhite);
+                    assert(fullred >= cr || fullred >= cr2);
+                }
+
+                // See how far we can blit with no light update:
+                const int next_to = imin(maxrowoffset,
+                    rowoffset + (colorupdateinterval - 1 -
+                    (updatecolorcounter % colorupdateinterval)) - 1);
+                // Blit until we need next light update:
+                while (likely(rowoffset <= next_to)) {
+                    tx_nomod_shift += txstep_shift;
+                    int64_t tx = (tx_nomod_shift >> 5) & texcoord_modulo_mask;
+                    ty_nomod_shift += tystep_shift;
+                    int64_t ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                    // Here, we're using the non-sideways regular tex.
+                    const int srcoffset = (
+                        (tx / coorddiv) * srccopylen
+                    ) + (
+                        (ty / coorddiv) * srccopylen * FIXED_ROOMTEX_SIZE_2
+                    );
+                    const uint8_t *readptr = &srcpixels[srcoffset];
+                    assert(srcoffset >= 0 &&
+                        srcoffset < srfw * srfh * srccopylen);
+                    *(writepointer + alphapixoffset) = 255;
+                    *writepointer = gammat[_assert_pix256(
+                        (*readptr) * rednonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * redwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    writepointer++;
+                    readptr++;
+                    *writepointer = gammat[_assert_pix256(
+                        (*readptr) * greennonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * greenwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    writepointer++;
+                    readptr++;
+                    *writepointer = gammat[_assert_pix256(
+                        (*readptr) * bluenonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * bluewhite /
+                        LIGHT_COLOR_SCALAR)];
+                    readptr++;
+                    writepointer++;
+                    updatecolorcounter++;
+                    rowoffset++;
+                    writepointer += writepointerplus;
+                    #if defined(DUPLICATE_FLOOR_PIX) && \
+                            DUPLICATE_FLOOR_PIX >= 1
+                    int extratarget = rowoffset + extradups - 1;
+                    while (likely(rowoffset <= extratarget &&
+                            rowoffset <= maxrowoffset)) {
+                        *(writepointer + alphapixoffset) = 255;
+                        memcpy(writepointer,
+                            writepointer - writepointerplus - 3,
+                            3);
+                        writepointer += 3;
+                        writepointer += writepointerplus;
+                        rowoffset++;
+                        tx_nomod_shift += txstep_shift;
+                        ty_nomod_shift += tystep_shift;
+                    }
+                    #endif
+                }
             }
         }
         row += rowoffset;
@@ -929,6 +1045,21 @@ HOTSPOT static int roomcam_DrawWallSlice(
     assert(cr >= 0);
     assert(cg >= 0);
     assert(cb >= 0);
+    int crnonwhite = imin(cr, LIGHT_COLOR_SCALAR);
+    int cgnonwhite = imin(cg, LIGHT_COLOR_SCALAR);
+    int cbnonwhite = imin(cb, LIGHT_COLOR_SCALAR);
+    int crwhite = imin(imax(0, cr - LIGHT_COLOR_SCALAR),
+        LIGHT_COLOR_SCALAR);
+    crnonwhite = imin(crnonwhite, LIGHT_COLOR_SCALAR - crwhite);
+    int cgwhite = imin(imax(0, cg - LIGHT_COLOR_SCALAR),
+        LIGHT_COLOR_SCALAR);
+    cgnonwhite = imin(cgnonwhite, LIGHT_COLOR_SCALAR - cgwhite);
+    int cbwhite = imin(imax(0, cb - LIGHT_COLOR_SCALAR),
+        LIGHT_COLOR_SCALAR);
+    cbnonwhite = imin(cbnonwhite, LIGHT_COLOR_SCALAR - cbwhite);
+    assert(crwhite + crnonwhite <= LIGHT_COLOR_SCALAR);
+    assert(cgwhite + cgnonwhite <= LIGHT_COLOR_SCALAR);
+    assert(cbwhite + cbnonwhite <= LIGHT_COLOR_SCALAR);
     rfs2tex *t = (texinfo->type == GEOMTEX_ROOM ?
         roomlayer_GetTexOfRef(texinfo->roomtex->tex) :
         roomobj_GetTexOfRef(texinfo->blocktex->tex)
@@ -1047,195 +1178,202 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int32_t tystep_shift = (
             (int32_t)ty2_shift - (int32_t)ty1_shift) / steps;
         uint32_t ty_nomod_shift = ty1_shift;
-        #if defined(FIXED_ROOMTEX_SIZE) && \
-                        FIXED_ROOMTEX_SIZE > 2
-        // Divisor to get from TEX_COORD_SCALER to tex size:
-        assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE);
-        assert(!math_isnpot(FIXED_ROOMTEX_SIZE));
-        const int coorddiv = (TEX_COORD_SCALER / FIXED_ROOMTEX_SIZE);
-        assert(coorddiv == 1 || coorddiv == 2 ||
-               !math_isnpot(coorddiv));
-        assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE);
+        #if !defined(FIXED_ROOMTEX_SIZE) || \
+                FIXED_ROOMTEX_SIZE <= 2 || \
+                !defined(FIXED_ROOMTEX_SIZE_2) || \
+                FIXED_ROOMTEX_SIZE_2 <= 2
+        #error "need fixed tex sizes"
         #endif
-        int ty;
-        const int colorclippossible = (
-            cr > LIGHT_COLOR_SCALAR || cg > LIGHT_COLOR_SCALAR ||
-            cb > LIGHT_COLOR_SCALAR);
-        if (likely(!tghasalpha && !colorclippossible)) {
-            // Blit branch: [ ] render target alpha [ ] can clip
-            while (likely(targetwriteptr !=
-                    targetwriteptrend)) {
-                ty_nomod_shift += tystep_shift;
-                ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
-                // Remember, we're using the sideways tex.
-                #if defined(FIXED_ROOMTEX_SIZE) && \
-                        FIXED_ROOMTEX_SIZE > 2
-                const int sourcex = (
-                    (ty / coorddiv) * srccopylen
-                );
-                #else
-                const int sourcex = (
-                    (srfw * (TEX_COORD_SCALER - 1 - ty))
-                    / TEX_COORD_SCALER
-                ) * srccopylen;
-                #endif
-                const int srcoffset = (
-                    sourcex + sourcey_multiplied_w_copylen
-                );
-                uint8_t *readptr = (
-                    (uint8_t *)&srcpixels[srcoffset]
-                );
-                assert(srcoffset >= 0 &&
-                    srcoffset < srf->w * srf->h * srccopylen);
-                *targetwriteptr = gammat[_assert_pix256(
-                    (*readptr) * cr /
-                    LIGHT_COLOR_SCALAR)];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[_assert_pix256(
-                    (*readptr) * cg /
-                    LIGHT_COLOR_SCALAR)];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[_assert_pix256(
-                    (*readptr) * cb /
-                    LIGHT_COLOR_SCALAR)];
-                targetwriteptr += writeoffsetplus;
-            }
-        } else if (unlikely(!tghasalpha && colorclippossible)) {
-            // Blit branch: [ ] render target alpha [x] can clip
-            while (likely(targetwriteptr !=
-                    targetwriteptrend)) {
-                ty_nomod_shift += tystep_shift;
-                ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
-                // Remember, we're using the sideways tex.
-                #if defined(FIXED_ROOMTEX_SIZE) && \
-                        FIXED_ROOMTEX_SIZE > 2
-                const int sourcex = (
-                    (ty / coorddiv) * srccopylen
-                );
-                #else
-                const int sourcex = (
-                    (srfw * (TEX_COORD_SCALER - 1 - ty))
-                    / TEX_COORD_SCALER
-                ) * srccopylen;
-                #endif
-                const int srcoffset = (
-                    sourcex + sourcey_multiplied_w_copylen
-                );
-                uint8_t *readptr = (
-                    (uint8_t *)&srcpixels[srcoffset]
-                );
-                assert(srcoffset >= 0 &&
-                    srcoffset < srf->w * srf->h * srccopylen);
-                *targetwriteptr = gammat[_assert_pix256(
-                    math_pixcliptop(
-                    (*readptr) * cr /
-                    LIGHT_COLOR_SCALAR))];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[_assert_pix256(
-                    math_pixcliptop(
-                    (*readptr) * cg /
-                    LIGHT_COLOR_SCALAR))];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[_assert_pix256(math_pixcliptop(
-                    (*readptr) * cb /
-                    LIGHT_COLOR_SCALAR))];
-                targetwriteptr += writeoffsetplus;
-            }
-        } else if (unlikely(tghasalpha && colorclippossible)) {
-            // Blit branch: [x] render target alpha [x] can clip
-            while (likely(targetwriteptr !=
-                    targetwriteptrend)) {
-                ty_nomod_shift += tystep_shift;
-                ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
-                // Remember, we're using the sideways tex.
-                #if defined(FIXED_ROOMTEX_SIZE) && \
-                        FIXED_ROOMTEX_SIZE > 2
-                const int sourcex = (
-                    (ty / coorddiv) * srccopylen
-                );
-                #else
-                const int sourcex = (
-                    (srfw * (TEX_COORD_SCALER - 1 - ty))
-                    / TEX_COORD_SCALER
-                ) * srccopylen;
-                #endif
-                const int srcoffset = (
-                    sourcex + sourcey_multiplied_w_copylen
-                );
-                uint8_t *readptr = (
-                    (uint8_t *)&srcpixels[srcoffset]
-                );
-                assert(srcoffset >= 0 &&
-                    srcoffset < srf->w * srf->h * srccopylen);
-                *targetwriteptr = gammat[
-                    _assert_pix256(math_pixcliptop(
-                    (*readptr) * cr /
-                    LIGHT_COLOR_SCALAR))];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[
-                    _assert_pix256(math_pixcliptop(
-                    (*readptr) * cg /
-                    LIGHT_COLOR_SCALAR))];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[
-                    _assert_pix256(math_pixcliptop(
-                    (*readptr) * cb /
-                    LIGHT_COLOR_SCALAR))];
-                targetwriteptr++;
-                *targetwriteptr = 255;
-                targetwriteptr += writeoffsetplus;
-            }
-        } else if (unlikely(tghasalpha && !colorclippossible)) {
-            // Blit branch: [x] render target alpha [ ] can clip
-            while (likely(targetwriteptr !=
-                    targetwriteptrend)) {
-                ty_nomod_shift += tystep_shift;
-                ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
-                // Remember, we're using the sideways tex.
-                #if defined(FIXED_ROOMTEX_SIZE) && \
-                        FIXED_ROOMTEX_SIZE > 2
-                const int sourcex = (
-                    (ty / coorddiv) * srccopylen
-                );
-                #else
-                const int sourcex = (
-                    (srfw * (TEX_COORD_SCALER - 1 - ty))
-                    / TEX_COORD_SCALER
-                ) * srccopylen;
-                #endif
-                const int srcoffset = (
-                    sourcex + sourcey_multiplied_w_copylen
-                );
-                uint8_t *readptr = (
-                    (uint8_t *)&srcpixels[srcoffset]
-                );
-                assert(srcoffset >= 0 &&
-                    srcoffset < srf->w * srf->h * srccopylen);
-                *targetwriteptr = gammat[_assert_pix256(
-                    (*readptr) * cr /
-                    LIGHT_COLOR_SCALAR)];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[_assert_pix256(
-                    (*readptr) * cg /
-                    LIGHT_COLOR_SCALAR)];
-                targetwriteptr++;
-                readptr++;
-                *targetwriteptr = gammat[_assert_pix256(
-                    (*readptr) * cb /
-                    LIGHT_COLOR_SCALAR)];
-                targetwriteptr++;
-                *targetwriteptr = 255;
-                targetwriteptr += writeoffsetplus;
+        if (srf->w == FIXED_ROOMTEX_SIZE) {
+            // Divisor to get from TEX_COORD_SCALER to tex size:
+            assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE);
+            assert(!math_isnpot(FIXED_ROOMTEX_SIZE));
+            const int coorddiv = (TEX_COORD_SCALER / FIXED_ROOMTEX_SIZE);
+            assert(coorddiv == 1 || coorddiv == 2 ||
+                   !math_isnpot(coorddiv));
+            assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE);
+            int ty;
+            const int colorclippossible = (
+                crwhite > 0 || cgwhite > 0 ||
+                cbwhite > 0);
+            if (likely(!tghasalpha)) {
+                // Blit branch: tex size ONE, [ ] render target alpha
+                while (likely(targetwriteptr !=
+                        targetwriteptrend)) {
+                    ty_nomod_shift += tystep_shift;
+                    ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                    // Remember, we're using the sideways tex.
+                    const int sourcex = (
+                        (ty / coorddiv) * srccopylen
+                    );
+                    const int srcoffset = (
+                        sourcex + sourcey_multiplied_w_copylen
+                    );
+                    uint8_t *readptr = (
+                        (uint8_t *)&srcpixels[srcoffset]
+                    );
+                    assert(srcoffset >= 0 &&
+                        srcoffset < srf->w * srf->h * srccopylen);
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * crnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * crwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cgwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cbnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cbwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr += writeoffsetplus;
+                }
+            } else if (unlikely(tghasalpha)) {
+                // Blit branch: tex size ONE, [x] render target alpha
+                while (likely(targetwriteptr !=
+                        targetwriteptrend)) {
+                    ty_nomod_shift += tystep_shift;
+                    ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                    const int sourcex = (
+                        (ty / coorddiv) * srccopylen
+                    );
+                    const int srcoffset = (
+                        sourcex + sourcey_multiplied_w_copylen
+                    );
+                    uint8_t *readptr = (
+                        (uint8_t *)&srcpixels[srcoffset]
+                    );
+                    assert(srcoffset >= 0 &&
+                        srcoffset < srf->w * srf->h * srccopylen);
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * crnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * crwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cgwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cbnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cbwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    *targetwriteptr = 255;
+                    targetwriteptr += writeoffsetplus;
+                }
+            } else {
+                assert(0);  // should not be hit
             }
         } else {
-            assert(0);  // should not be hit
+            // Divisor to get from TEX_COORD_SCALER to tex size:
+            assert(srf->w == FIXED_ROOMTEX_SIZE_2);
+            assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE_2);
+            assert(!math_isnpot(FIXED_ROOMTEX_SIZE_2));
+            const int coorddiv = (TEX_COORD_SCALER / FIXED_ROOMTEX_SIZE_2);
+            assert(coorddiv == 1 || coorddiv == 2 ||
+                   !math_isnpot(coorddiv));
+            assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE_2);
+            int ty;
+            const int colorclippossible = (
+                crwhite > 0 || cgwhite > 0 ||
+                cbwhite > 0);
+            if (likely(!tghasalpha)) {
+                // Blit branch: tex size TWO, [ ] render target alpha
+                while (likely(targetwriteptr !=
+                        targetwriteptrend)) {
+                    ty_nomod_shift += tystep_shift;
+                    ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                    // Remember, we're using the sideways tex.
+                    const int sourcex = (
+                        (ty / coorddiv) * srccopylen
+                    );
+                    const int srcoffset = (
+                        sourcex + sourcey_multiplied_w_copylen
+                    );
+                    uint8_t *readptr = (
+                        (uint8_t *)&srcpixels[srcoffset]
+                    );
+                    assert(srcoffset >= 0 &&
+                        srcoffset < srf->w * srf->h * srccopylen);
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * crnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * crwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cgwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cbnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cbwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr += writeoffsetplus;
+                }
+            } else if (unlikely(tghasalpha)) {
+                // Blit branch: tex size TWO, [x] render target alpha
+                while (likely(targetwriteptr !=
+                        targetwriteptrend)) {
+                    ty_nomod_shift += tystep_shift;
+                    ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
+                    // Remember, we're using the sideways tex.
+                    const int sourcex = (
+                        (ty / coorddiv) * srccopylen
+                    );
+                    const int srcoffset = (
+                        sourcex + sourcey_multiplied_w_copylen
+                    );
+                    uint8_t *readptr = (
+                        (uint8_t *)&srcpixels[srcoffset]
+                    );
+                    assert(srcoffset >= 0 &&
+                        srcoffset < srf->w * srf->h * srccopylen);
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * crnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * crwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cgwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    readptr++;
+                    *targetwriteptr = gammat[_assert_pix256(
+                        (*readptr) * cbnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        255 * cbwhite /
+                        LIGHT_COLOR_SCALAR)];
+                    targetwriteptr++;
+                    *targetwriteptr = 255;
+                    targetwriteptr += writeoffsetplus;
+                }
+            } else {
+                assert(0);  // should not be hit
+            }
         }
     }
     return 1;
