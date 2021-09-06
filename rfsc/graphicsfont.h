@@ -22,24 +22,28 @@ int graphicsfont_GetLetterWidth(
 
 int graphicsfont_CalcWidth(
     rfsfont *f, const char *text,
-    double pt_size, double letter_spacing
+    double pt_size, double letter_spacing,
+    double outline_size
 );
 
 int graphicsfont_CalcHeight(
     rfsfont *f, const char *text, int width,
-    double pt_size, double letter_spacing
+    double pt_size, double letter_spacing,
+    double outline_size
 );
 
 int graphicsfont_Draw(
     rfsfont *f, const char *text, int width,
     int x, int y,
     double r, double g, double b, double a,
-    double pt_size, double letter_spacing
+    double pt_size, double letter_spacing,
+    double outline_size
 );
 
 char **graphicsfont_TextWrap(
     rfsfont *f, const char *text, int width,
-    double pt_size, double letter_spacing
+    double pt_size, double letter_spacing,
+    double outline_size
 );
 
 int graphicsfont_ExtractLetter(

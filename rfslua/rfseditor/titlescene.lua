@@ -298,14 +298,15 @@ function rfseditor.titlescene.on_draw()
         end
         local t = "Press Key Or Tap To Start"
         local show_width = math.min(
-            font:calcwidth(t, 14 * scaler), rfs.window.renderw
+            font:calcwidth(t, 14 * scaler, 0, 1),
+            rfs.window.renderw
         )
         local draw_x = rfs.window.renderw / 2 - show_width / 2
         local draw_y = rfs.window.renderh / 2
         font:draw(
             t, rfs.window.renderw, draw_x, draw_y,
             1, 0.9 * animf, 1.0, 0.7,
-            14 * scaler
+            14 * scaler, 0, 1
         )
     end
 

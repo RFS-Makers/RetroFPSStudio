@@ -13,6 +13,8 @@ httpdownload *http_NewDownload(
     const char *url, int64_t max_bytes, int retries
 );
 
+int http_IsDefinitelyInsecureUrl(const char *url);
+
 int64_t http_DownloadedByteCount(httpdownload *hp);
 
 int http_IsDownloadDone(httpdownload *hp);

@@ -15,12 +15,13 @@
 typedef struct room room;
 typedef struct roomobj roomobj;
 typedef struct roomcamcache roomcamcache;
+typedef struct roomrendercache roomrendercache;
 
 typedef struct roomcam {
     roomobj *obj;
     int32_t vangle, fov;  // degrees * ANGLE_SCALAR
     double vanglef, fovf;
-    uint8_t gamma;  // default: 128
+    uint8_t gamma;  // default: 128, 0 to 255
 
     roomcamcache *cache;
 } roomcam;
@@ -40,6 +41,14 @@ int32_t roomcam_XYZToViewplaneY(
 int roomcam_XYToViewplaneX(
     roomcam *cam, int w, int h, int64_t px, int64_t py,
     int32_t *result, uint8_t *resultbehindcam
+);
+
+
+int roomcam_DynamicLightAtXY(
+    roomrendercache *rcache, room *r,
+    int64_t x, int64_t y, int64_t z, int isatwallno,
+    int isfacingup, int isfacingdown, int scaletorange,
+    int32_t *cr, int32_t *cg, int32_t *cb
 );
 
 renderstatistics *roomcam_GetStats(roomcam *c);

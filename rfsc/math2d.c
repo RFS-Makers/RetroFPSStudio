@@ -185,12 +185,13 @@ HOTSPOT int math_lineintersect2di(
     if (dval == 0) {
         return 0;
     }
-    long double slopeA = (long double)valA / (long double)dval;
-    long double slopeB = (long double)valB / (long double)dval;
-    if (slopeA >= 0 && slopeA <= 1 &&
-            slopeB >= 0 && slopeB <= 1) {
-        *ix = roundl(l1x1 + (slopeA * (l1x2 - l1x1)));
-        *iy = roundl(l1y1 + (slopeA * (l1y2 - l1y1)));
+    const int64_t precisionf = 4096;
+    int64_t slopeA = valA * precisionf / dval;
+    int64_t slopeB = valB * precisionf / dval;
+    if (slopeA >= 0 && slopeA <= 1 * precisionf &&
+            slopeB >= 0 && slopeB <= 1 * precisionf) {
+        *ix = (l1x1 + (slopeA * (l1x2 - l1x1) / precisionf));
+        *iy = (l1y1 + (slopeA * (l1y2 - l1y1) / precisionf));
         return 1;
     }
     return 0;

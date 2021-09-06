@@ -74,12 +74,15 @@ static int _graphicsfont_calcwidth(lua_State *l) {
     double letterspacing = 0;
     if (lua_gettop(l) >= 4 && lua_type(l, 4) == LUA_TNUMBER)
         letterspacing = lua_tonumber(l, 4);
+    double outlinesize = 0;
+    if (lua_gettop(l) >= 5 && lua_type(l, 5) == LUA_TNUMBER)
+        outlinesize = lua_tonumber(l, 5);
     if (!text) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
     }
     int width = graphicsfont_CalcWidth(
-        f, text, pt_size, letterspacing
+        f, text, pt_size, letterspacing, outlinesize
     );
     if (width < 0) {
         lua_pushstring(l, "out of memory or internal error");
@@ -120,12 +123,15 @@ static int _graphicsfont_calcheight(lua_State *l) {
     double letterspacing = 0;
     if (lua_gettop(l) >= 5 && lua_type(l, 5) == LUA_TNUMBER)
         letterspacing = lua_tonumber(l, 5);
+    double outlinesize = 0;
+    if (lua_gettop(l) >= 6 && lua_type(l, 6) == LUA_TNUMBER)
+        outlinesize = lua_tonumber(l, 6);
     if (!text) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
     }
     int h = graphicsfont_CalcHeight(
-        f, text, width, pt_size, letterspacing
+        f, text, width, pt_size, letterspacing, outlinesize
     );
     if (h < 0) {
         lua_pushstring(l, "out of memory or internal error");
@@ -165,12 +171,15 @@ static int _graphicsfont_textwrap(lua_State *l) {
     double letterspacing = 0;
     if (lua_gettop(l) >= 5 && lua_type(l, 5) == LUA_TNUMBER)
         letterspacing = lua_tonumber(l, 5);
+    double outlinesize = 0;
+    if (lua_gettop(l) >= 6 && lua_type(l, 6) == LUA_TNUMBER)
+        outlinesize = lua_tonumber(l, 6);
     if (!text) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
     }
     char **lines = graphicsfont_TextWrap(
-        f, text, width, pt_size, letterspacing
+        f, text, width, pt_size, letterspacing, outlinesize
     );
     if (lines) {
         lua_pushstring(l, "out of memory or internal error");
@@ -251,13 +260,17 @@ static int _graphicsfont_draw(lua_State *l) {
     double letterspacing = 0;
     if (lua_gettop(l) >= 11 && lua_type(l, 11) == LUA_TNUMBER)
         letterspacing = lua_tonumber(l, 11);
+    double outlinesize = 0;
+    if (lua_gettop(l) >= 12 && lua_type(l, 12) == LUA_TNUMBER)
+        outlinesize = lua_tonumber(l, 12);
     if (!text) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
     }
     if (!graphicsfont_Draw(
             f, text, width, x, y,
-            r, g, b, a, pt_size, letterspacing
+            r, g, b, a, pt_size, letterspacing,
+            outlinesize
             )) {
         lua_pushstring(l, "internal error while drawing");
         return lua_error(l);

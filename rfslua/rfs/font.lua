@@ -28,7 +28,8 @@ end
 
 
 function rfs.font.classtable.calcwidth(
-        self, text, pt_size, letter_spacing
+        self, text, pt_size, letter_spacing,
+        outline_size
         )
     if type(text) ~= "string" then
         error("expected arg of type string")
@@ -37,12 +38,14 @@ function rfs.font.classtable.calcwidth(
         error("pt_size must be number, is " .. type(pt_size))
     end
     return _graphicsfont_calcwidth(
-        self, text, pt_size, letter_spacing
+        self, text, pt_size, letter_spacing,
+        outline_size
     )
 end
 
 function rfs.font.classtable.textwrap(
-        self, text, width, pt_size, letter_spacing
+        self, text, width, pt_size, letter_spacing,
+        outline_size
         )
     if type(text) ~= "string" then
         error("expected arg of type string")
@@ -51,11 +54,13 @@ function rfs.font.classtable.textwrap(
         error("pt_size must be number, is " .. type(pt_size))
     end
     return _graphicsfont_textwrap(
-        self, text, width, pt_size, letter_spacing)
+        self, text, width, pt_size, letter_spacing,
+        outline_size)
 end
 
 function rfs.font.classtable.calcheight(
-        self, text, width, pt_size, letter_spacing
+        self, text, width, pt_size, letter_spacing,
+        outline_size
         )
     if type(text) ~= "string" then
         error("expected arg of type string")
@@ -64,12 +69,13 @@ function rfs.font.classtable.calcheight(
         error("pt_size must be number, is " .. type(pt_size))
     end
     return _graphicsfont_calcheight(
-        self, text, width, pt_size, letter_spacing)
+        self, text, width, pt_size, letter_spacing,
+        outline_size)
 end
 
 function rfs.font.classtable.draw(
         self, text, width, x, y, r, g, b, a,
-        pt_size, letter_spacing
+        pt_size, letter_spacing, outline_size
         )
     if type(text) ~= "string" then
         error("expected arg of type string")
@@ -85,5 +91,5 @@ function rfs.font.classtable.draw(
     end
     return _graphicsfont_draw(
         self, text, width, x, y, r, g, b, a,
-        pt_size, letter_spacing)
+        pt_size, letter_spacing, outline_size)
 end
