@@ -31,6 +31,7 @@
 //#define DEBUG_TOUCH
 //#define DEBUG_DOWNLOADS
 //#define DEBUG_FS
+//#define DEBUG_AUDIODECODE
 #define HAVE_SDL
 
 #endif  // RFS2_COMPILECONFIG_H_

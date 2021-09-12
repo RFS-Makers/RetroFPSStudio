@@ -17,7 +17,10 @@
 #define ROOM_MAX_CORNERS 8
 #define MAX_ROOMS_PER_LAYER 256
 
-// Draw limits
+// Sound limits:
+#define MAX_SOUND_SECONDS 6
+
+// Draw limits:
 #define RENDER_MAX_PORTAL_DEPTH 12
 
 // General dimensions:

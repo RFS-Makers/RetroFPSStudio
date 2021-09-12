@@ -17,7 +17,7 @@ rfsfont *graphicsfont_Get(const char *path, char **errmsg);
 
 int graphicsfont_GetLetterWidth(
     rfsfont *f, const char *p, double scaler,
-    int *byteslen
+    int outline_px, int *byteslen
 );
 
 int graphicsfont_CalcWidth(
@@ -37,7 +37,7 @@ int graphicsfont_Draw(
     int x, int y,
     double r, double g, double b, double a,
     double pt_size, double letter_spacing,
-    double outline_size
+    double outline_size, int inverted_outline
 );
 
 char **graphicsfont_TextWrap(
@@ -50,6 +50,10 @@ int graphicsfont_ExtractLetter(
     rfsfont *f, const char *p, int *idx,
     char *out_letter,  // must take 5 bytes or more
     int *out_byteslen
+);
+
+int graphicsfont_RealOutlinePixelsAfterScaling(
+    rfsfont *f, double pt_size, double outline_size
 );
 
 

@@ -27,6 +27,7 @@ static int rfsforceno3d = 0;
 static int openinfullscreen = 0;
 static SDL_Window *rfswindow = NULL;
 static SDL_Renderer *rfsrenderer = NULL;
+static SDL_Texture *current_wintex = NULL;
 static rfssurf *current_winsrf = NULL;
 static int currently3dacc = 0;
 static char currentrendername[256] = "";
@@ -203,6 +204,8 @@ void outputwindow_UpdateViewport(int forceresize) {
     _lastseenrfswindowh = wh;
     rfssurf_Free(current_winsrf);
     current_winsrf = NULL;
+    SDL_DestroyTexture(current_wintex);
+    current_wintex = NULL;
 
     int w = 0;
     int h = 0;
@@ -245,6 +248,8 @@ void outputwindow_ForceScaledOutputSize(
         if (forcedoutputw >= 0 && forcedoutputh >= 0) {
             rfssurf_Free(current_winsrf);
             current_winsrf = NULL;
+            SDL_DestroyTexture(current_wintex);
+            current_wintex = NULL;
         }
         forcedoutputw = -1;
         forcedoutputh = -1;
@@ -258,18 +263,22 @@ void outputwindow_ForceScaledOutputSize(
             current_winsrf->h != h) {
         rfssurf_Free(current_winsrf);
         current_winsrf = NULL;
+        SDL_DestroyTexture(current_wintex);
+        current_wintex = NULL;
     }
 }
+
 
 int outputwindow_PresentSurface() {
     if (!current_winsrf || !rfswindow ||
             !rfsrenderer)
         return 0;
-    SDL_Texture *srf = rfssurf_AsTex(
+    current_wintex = rfssurf_AsTex_Update(
         rfsrenderer, current_winsrf,
-        current_winsrf->hasalpha
+        current_winsrf->hasalpha,
+        current_wintex
     );
-    if (!srf)
+    if (!current_wintex)
         return 0;
     double aspect_ratios_max_mismatch = fabs(
         (100.0/100.0) - (100.0/101.0)
@@ -302,16 +311,14 @@ int outputwindow_PresentSurface() {
             );
             dest.y = (rfswindowh - dest.h) / 2;
         }
-        SDL_RenderCopy(rfsrenderer, srf, NULL, &dest);
-        SDL_DestroyTexture(srf);
+        SDL_RenderCopy(rfsrenderer, current_wintex, NULL, &dest);
         SDL_RenderPresent(rfsrenderer);
         return 1;
     } else {
         SDL_Rect dest = {0};
         dest.w = rfswindoww;
         dest.h = rfswindowh;
-        SDL_RenderCopy(rfsrenderer, srf, NULL, &dest);
-        SDL_DestroyTexture(srf);
+        SDL_RenderCopy(rfsrenderer, current_wintex, NULL, &dest);
         SDL_RenderPresent(rfsrenderer);
         return 1;
     }

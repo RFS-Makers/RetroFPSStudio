@@ -196,7 +196,7 @@ rfs2tex *graphics_GetWriteCopyDifferentSize(
         return NULL;
     memset(t, 0, sizeof(*t));
     t->srfalpha = rfssurf_Create(w, h, 1);
-    t->srf = rfssurf_Create(w, h, 1);
+    t->srf = rfssurf_Create(w, h, 0);
     if (!t->srfalpha || !t->srf) {
         rfssurf_Free(t->srfalpha);
         rfssurf_Free(t->srf);
@@ -315,8 +315,10 @@ char *graphics_FixTexturePath(const char *path) {
     if (!p)
         return NULL;
     int result = 0;
-    if (!vfs_Exists(p, &result, 0))
+    if (!vfs_Exists(p, &result, 0)) {
+        free(p);
         return NULL;
+    }
 
     char *joined_1 = malloc(strlen(p) + strlen(".png") + 1);
     char *joined_2 = malloc(strlen(p) + strlen(".jpg") + 1);

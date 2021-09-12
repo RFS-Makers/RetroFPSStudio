@@ -52,6 +52,33 @@ static int _graphicsfont_get(lua_State *l) {
 }
 
 
+static int _graphicsfont_calcoutlinepx(lua_State *l) {
+    if (lua_gettop(l) < 3 || lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+                OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+                OBJREF_FONT ||
+            lua_type(l, 2) != LUA_TNUMBER ||
+            lua_type(l, 3) != LUA_TNUMBER) {
+        wrongargs: ;
+        lua_pushstring(l, "expected 3 args of types font, "
+            "number, number");
+        return lua_error(l);
+    }
+    double pt_size = lua_tonumber(l, 2);
+    double outline_size = lua_tonumber(l, 3);
+
+    scriptobjref *fref = ((scriptobjref*)lua_touserdata(l, 1));
+    rfsfont *f = (rfsfont *)(uintptr_t)fref->value;
+    if (!f) goto wrongargs;
+    int resultpx = (
+        graphicsfont_RealOutlinePixelsAfterScaling(
+            f, pt_size, outline_size));
+    lua_pushinteger(l, resultpx);
+    return 1;
+}
+
+
 static int _graphicsfont_calcwidth(lua_State *l) {
     if (lua_gettop(l) < 3 || lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
@@ -230,7 +257,9 @@ static int _graphicsfont_draw(lua_State *l) {
             "\"b\" (number or nil), "
             "\"a\" (number or nil), "
             "\"pt_size\" (number), "
-            "\"letter_spacing\" (number or nil)");
+            "\"letter_spacing\" (number or nil), "
+            "\"outline_size\" (number or nil), "
+            "\"invert_outline\" (boolean or nil)");
         return lua_error(l);
     }
     scriptobjref *fref = ((scriptobjref*)lua_touserdata(l, 1));
@@ -263,6 +292,9 @@ static int _graphicsfont_draw(lua_State *l) {
     double outlinesize = 0;
     if (lua_gettop(l) >= 12 && lua_type(l, 12) == LUA_TNUMBER)
         outlinesize = lua_tonumber(l, 12);
+    int outlineinverted = 0;
+    if (lua_gettop(l) >= 13 && lua_type(l, 13) == LUA_TBOOLEAN)
+        outlineinverted = lua_toboolean(l, 13);
     if (!text) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
@@ -270,7 +302,7 @@ static int _graphicsfont_draw(lua_State *l) {
     if (!graphicsfont_Draw(
             f, text, width, x, y,
             r, g, b, a, pt_size, letterspacing,
-            outlinesize
+            outlinesize, outlineinverted
             )) {
         lua_pushstring(l, "internal error while drawing");
         return lua_error(l);
@@ -290,4 +322,6 @@ void scriptcoregraphicsfont_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_graphicsfont_textwrap");
     lua_pushcfunction(l, _graphicsfont_draw);
     lua_setglobal(l, "_graphicsfont_draw");
+    lua_pushcfunction(l, _graphicsfont_calcoutlinepx);
+    lua_setglobal(l, "_graphicsfont_calcoutlinepx");
 }

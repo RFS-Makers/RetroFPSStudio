@@ -26,7 +26,10 @@ function rfs.ui.menuwidget.new(font, pt_size, width, centered)
     local self = {
         font=font,
         focused=false,
+        selected=-1,
         entries={},
+        blink_ts=rfs.time.ticks(),
+        outline_size=2,
         pt_size=math.max(1, math.round(pt_size)),
         border_size=math.max(1, math.round(pt_size * 1.5)),
         width=width,
@@ -39,6 +42,22 @@ function rfs.ui.menuwidget.new(font, pt_size, width, centered)
     return self
 end
 
+function rfs.ui.menuwidget.classtable.outline_px(self, no)
+    assert(self.entries[no] ~= nil)
+    if self.entries[no].text ~= nil and
+            #self.entries[no].text > 0 then
+        return self.font:calcoutlinepx(
+            math.max(1, math.round(
+                self.pt_size * self.entries[no].scale
+            )), self.outline_size)
+    else
+        return self.font:calcoutlinepx(
+            math.max(1, math.round(
+                self.pt_size * 1.0
+            )), self.outline_size)
+    end
+end
+
 function rfs.ui.menuwidget.classtable.set_centered(
         self, centered
         )
@@ -46,8 +65,27 @@ function rfs.ui.menuwidget.classtable.set_centered(
     self:update_size()
 end
 
+function rfs.ui.menuwidget.classtable.disable_entry(no)
+    if no < 1 or no > #self.entries then
+        return
+    end
+    self.entries[no].disabled = true
+    if self.selected == no then
+        self.selected = -1
+        local i = 1
+        while i <= #self.entries do
+            if not self.entries[i].disabled then
+                self.selected = i
+                break
+            end
+            i = i + 1
+        end
+    end
+end
+
 function rfs.ui.menuwidget.classtable.add_entry(
-        self, text, icon, red, green, blue
+        self, text, icon, red, green, blue,
+        focus_red, focus_green, focus_blue
         )
     if (type(text) ~= "string" and text ~= nil) or
             (type(icon) ~= "string" and icon ~= nil) then
@@ -62,6 +100,10 @@ function rfs.ui.menuwidget.classtable.add_entry(
              not rfs.vfs.exists(icon .. ".jpg")) then
         error("expected icon to refer to existing image")
     end
+    if text == nil and icon == nil then
+        error("entry must have either text or icon")
+    end
+
     if red ~= nil and type(red) ~= "number" then
         error("expected red color arg to be number, " ..
             "or unspecified")
@@ -74,20 +116,39 @@ function rfs.ui.menuwidget.classtable.add_entry(
         error("expected blue color arg to be number, " ..
             "or unspecified")
     end
-    if text == nil and icon == nil then
-        error("entry must have either text or icon")
-    end
     if red == nil then red = 1.0 end
     if green == nil then green = 1.0 end
     if blue == nil then blue = 1.0 end
+    if focus_red ~= nil and type(focus_red) ~= "number" then
+        error("expected focus_red color arg to be number, " ..
+            "or unspecified")
+    end
+    if focus_green ~= nil and type(focus_green) ~= "number" then
+        error("expected focus_green color arg to be number, " ..
+            "or unspecified")
+    end
+    if focus_blue ~= nil and type(focus_blue) ~= "number" then
+        error("expected focus_blue color arg to be number, " ..
+            "or unspecified")
+    end
+    if focus_red == nil then focus_red = 1.0 end
+    if focus_green == nil then focus_green = 0.0 end
+    if focus_blue == nil then focus_blue = 1.0 end
+
     local scale = 1.0
     if text == nil then
         scale = 2.0
     end
     table.insert(self.entries, {
         text=text, icon=icon, scale=scale,
-        red=red, green=green, blue=blue
+        red=red, green=green, blue=blue,
+        focus_red=focus_red,
+        focus_green=focus_green,
+        focus_blue=focus_blue
     })
+    if self.selected < 0 then
+        self.selected = #self.entries
+    end
     self:update_size()
 end
 
@@ -95,8 +156,67 @@ function rfs.ui.menuwidget.classtable.on_text(self, t)
 end
 
 function rfs.ui.menuwidget.classtable.on_keydown(self, k)
+    if not self.focused then
+        return
+    end
+    if (k == "down" or k == "s") and #self.entries ~= 0 then
+        local selected_next = math.max(1, self.selected + 1)
+        while true do
+            if selected_next > #self.entries then
+                selected_next = 1
+            elseif selected_next >= 1 and selected_next <=
+                    #self.entries and
+                    self.entries[selected_next].disabled then
+                selected_next = selected_next + 1
+            else
+                break
+            end
+        end
+        if self.selected ~= selected_next then
+            self.blink_ts = rfs.time.ticks()
+            self.selected = selected_next
+        end
+        return true
+    elseif (k == "up" or k == "w") and #self.entries ~= 0 then
+        local selected_next = self.selected - 1
+        while true do
+            if selected_next < 1 then
+                selected_next = #self.entries
+            elseif selected_next >= 1 and selected_next <=
+                    #self.entries and
+                    self.entries[selected_next].disabled then
+                selected_next = selected_next - 1
+            else
+                break
+            end
+        end
+        if self.selected ~= selected_next then
+            self.blink_ts = rfs.time.ticks()
+            self.selected = selected_next
+        end
+        return true
+    end
 end
 
+function rfs.ui.menuwidget.classtable.on_mousemove(self, x, y)
+    local i = 1
+    while i <= #self.entries do
+        if x >= self.entries[i].x and
+                x < self.entries[i].x +
+                self.entries[i].width and
+                y >= self.entries[i].y and
+                y < self.entries[i].y +
+                self.entries[i].height and
+                not self.entries[i].disabled then
+            if self.selected ~= i then
+                self.blink_ts = rfs.time.ticks()
+                self.selected = i
+            end
+            return true
+        end
+        i = i + 1
+    end
+end
 
 function rfs.ui.menuwidget.classtable.set_focus(self)
     self.focused = true
@@ -130,11 +250,13 @@ function rfs.ui.menuwidget.classtable.calculate_entry_size(
         "X", self.width,
         math.max(1, math.round(
             self.pt_size * self.entries[no].scale
-        ))
+        )), 1
     )
+    local icon_outline = 0
     local icon_width = 0
     local icon_height = 0
     if self.entries[no].icon ~= nil then
+        icon_outline = self:outline_px(no)
         icon_height = math.max(1, math.round(
             line_height * self.entries[no].scale))
         local tex = rfs.gfx.get_tex(self.entries[no].icon)
@@ -143,8 +265,11 @@ function rfs.ui.menuwidget.classtable.calculate_entry_size(
             icon_height * (w / h)
         ))
         local forced_scale = 1
-        if icon_width > self.width and icon_width > 0 then
-            forced_scale = (self.width / icon_width)
+        if icon_width + icon_outline * 2 > self.width and
+                icon_width > 0 then
+            forced_scale = (self.width /
+                math.max(0.1, icon_width +
+                icon_outline * 2))
             icon_width = math.max(1, math.round(
                 icon_width * forced_scale
             ))
@@ -155,7 +280,9 @@ function rfs.ui.menuwidget.classtable.calculate_entry_size(
     end
     local icon_with_border_width = 0
     if icon_width > 0 then
-        icon_with_border_width = icon_width
+        icon_with_border_width = (
+            icon_width + icon_outline * 2
+        )
         if self.entries[no].text ~= nil then
             icon_with_border_width = (
                 icon_with_border_width + border_size
@@ -168,14 +295,16 @@ function rfs.ui.menuwidget.classtable.calculate_entry_size(
         text_width = self.font:calcwidth(
             self.entries[no].text,
             math.max(1, math.round(self.pt_size *
-                self.entries[no].scale)))
+                self.entries[no].scale)),
+            1, self.outline_size)
         local text_max_width = math.max(1, self.width -
             icon_with_border_width)
         text_width = math.min(text_width, text_max_width)
         text_height = self.font:calcheight(
             self.entries[no].text, text_width,
             math.max(1, math.round(self.pt_size *
-                self.entries[no].scale)))
+                self.entries[no].scale)),
+            1, self.outline_size)
     end
     self.entries[no].icon_size = {
         icon_width, icon_height
@@ -223,30 +352,68 @@ function rfs.ui.menuwidget.classtable.update_size(self)
 end
 
 function rfs.ui.menuwidget.classtable.draw(self, x, y)
+    local now = rfs.time.ticks()
+    local animf = (now - self.blink_ts) % 1200
+    animf = math.round(animf / 1200)
+
     local i = 1
     while i <= #self.entries do
+        local draw_selected = (
+            i == self.selected and animf == 0 and
+            self.focused
+        )
         if self.entries[i].text ~= nil then
+            local tr = self.entries[i].red
+            local tg = self.entries[i].green
+            local tb = self.entries[i].blue
+            local tlwidth = 1
+            if draw_selected then
+                tr = self.entries[i].focus_red
+                tg = self.entries[i].focus_green
+                tb = self.entries[i].focus_blue
+                tlwidth = 0
+            end
             self.font:draw(
-                self.entries[i].text .. "", nil,
+                self.entries[i].text .. "", self.width,
                 x + self.entries[i].text_x +
                     self.entries[i].x,
                 y + self.entries[i].y,
-                self.entries[i].red, self.entries[i].green,
-                self.entries[i].blue, 1,
+                tr, tg, tb, 1,
                 math.max(1, math.round(self.pt_size *
-                    self.entries[i].scale))
+                    self.entries[i].scale)),
+                tlwidth, self.outline_size
             )
         end
         if self.entries[i].icon ~= nil then
+            local icon_outline = self:outline_px(i)
             local tex = rfs.gfx.get_tex(
                 self.entries[i].icon
             )
             local icon_size = self.entries[i].icon_size
             local w, h = rfs.gfx.get_tex_size(tex)
-            rfs.gfx.draw_tex(tex,
-                x + self.entries[i].x,
+            local olx = 0
+            local olw = 1.0
+            local olr = 0
+            local olg = 0
+            local olb = 0
+            if draw_selected then
+                olr = self.entries[i].focus_red
+                olg = self.entries[i].focus_green
+                olb = self.entries[i].focus_blue
+                olw = 0.9
+                olx = ((icon_size[1] + icon_outline * 2) -
+                    ((icon_size[1] * olw) + icon_outline * 2)) / 2
+            end
+            rfs.gfx.draw_rect(
+                x + self.entries[i].x + olx,
                 y + self.entries[i].y,
-                icon_size[1] / w, icon_size[2] / h)
+                (icon_size[1] * olw) + icon_outline * 2,
+                icon_size[2] + icon_outline * 2,
+                olr, olg, olb)
+            rfs.gfx.draw_tex(tex,
+                x + self.entries[i].x + olx + icon_outline,
+                y + self.entries[i].y + icon_outline,
+                (icon_size[1] * olw) / w, icon_size[2] / h)
         end
         i = i + 1
     end

@@ -43,6 +43,19 @@ function rfs.font.classtable.calcwidth(
     )
 end
 
+function rfs.font.classtable.calcoutlinepx(
+        self, pt_size, outline_size)
+    if type(pt_size) ~= "number" then
+        error("pt_size must be number, is " .. type(pt_size))
+    end
+    if type(outline_size) ~= "number" then
+        error("outline_size must be number, is " ..
+            type(outline_size))
+    end
+    return _graphicsfont_calcoutlinepx(
+        self, pt_size, outline_size)
+end
+
 function rfs.font.classtable.textwrap(
         self, text, width, pt_size, letter_spacing,
         outline_size
@@ -75,7 +88,8 @@ end
 
 function rfs.font.classtable.draw(
         self, text, width, x, y, r, g, b, a,
-        pt_size, letter_spacing, outline_size
+        pt_size, letter_spacing, outline_size,
+        inverted_outline
         )
     if type(text) ~= "string" then
         error("expected arg of type string")
@@ -91,5 +105,6 @@ function rfs.font.classtable.draw(
     end
     return _graphicsfont_draw(
         self, text, width, x, y, r, g, b, a,
-        pt_size, letter_spacing, outline_size)
+        pt_size, letter_spacing, outline_size,
+        inverted_outline)
 end

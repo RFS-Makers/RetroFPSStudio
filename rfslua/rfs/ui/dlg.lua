@@ -13,6 +13,10 @@ if rfs.ui.dlg == nil then
 end
 
 
+function rfs.ui.dlg.on_mousemove(x, y)
+
+end
+
 function rfs.ui.dlg.on_keydown(t)
     if type(t) ~= "string" then
         error("expected arg of type string")

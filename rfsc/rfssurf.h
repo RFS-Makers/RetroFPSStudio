@@ -59,8 +59,10 @@ void rfssurf_Free(rfssurf *surf);
 #include <SDL2/SDL.h>
 HOTSPOT SDL_Surface *rfssurf_AsSrf(rfssurf *srf, int withalpha);
 SDL_Texture *rfssurf_AsTex(
-    SDL_Renderer *r, rfssurf *srf, int withalpha
-);
+    SDL_Renderer *r, rfssurf *srf, int withalpha);
+SDL_Texture *rfssurf_AsTex_Update(
+    SDL_Renderer *r, rfssurf *srf, int withalpha,
+    SDL_Texture *updateto);
 #endif
 
 #endif  // RFS2_RFSSURF_H_

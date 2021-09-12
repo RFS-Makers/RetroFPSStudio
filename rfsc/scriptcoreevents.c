@@ -14,6 +14,8 @@
 
 #include "datetime.h"
 #include "outputwindow.h"
+#include "sdl/sdlkey_to_str.h"
+#include "sdl/sdlkeyboard.h"
 #include "settings.h"
 
 
@@ -33,6 +35,7 @@ void scriptcoreevents_SetRelativeMouse(int relative) {
     _updatemousemode();
 }
 
+
 int CountFingers() {
     int num = 0;
     int i = 0;
@@ -42,82 +45,6 @@ int CountFingers() {
         i++;
     }
     return num;
-}
-
-static void _keyboardev_to_char(SDL_Keycode sym, char *result) {
-    char buf[15];
-    memset(buf, 0, sizeof(buf));
-
-    if (sym >= SDLK_0 && sym <= SDLK_9) {
-        buf[0] = '0' + (sym - SDLK_0);
-    } else if (sym >= SDLK_a && sym <= SDLK_z) {
-        buf[0] = 'a' + (sym - SDLK_a);
-    } else if (sym == SDLK_F1) {
-        memcpy(buf, "f1", strlen("f1") + 1);
-    } else if (sym == SDLK_F2) {
-        memcpy(buf, "f2", strlen("f2") + 1);
-    } else if (sym == SDLK_F3) {
-        memcpy(buf, "f3", strlen("f3") + 1);
-    } else if (sym == SDLK_F4) {
-        memcpy(buf, "f4", strlen("f4") + 1);
-    } else if (sym == SDLK_F5) {
-        memcpy(buf, "f5", strlen("f5") + 1);
-    } else if (sym == SDLK_F6) {
-        memcpy(buf, "f6", strlen("f6") + 1);
-    } else if (sym == SDLK_F7) {
-        memcpy(buf, "f7", strlen("f7") + 1);
-    } else if (sym == SDLK_F8) {
-        memcpy(buf, "f8", strlen("f8") + 1);
-    } else if (sym == SDLK_F9) {
-        memcpy(buf, "f9", strlen("f9") + 1);
-    } else if (sym == SDLK_F10) {
-        memcpy(buf, "f10", strlen("f10") + 1);
-    } else if (sym == SDLK_F11) {
-        memcpy(buf, "f11", strlen("f11") + 1);
-    } else if (sym == SDLK_F12) {
-        memcpy(buf, "f12", strlen("f12") + 1);
-    } else if (sym == SDLK_UP) {
-        memcpy(buf, "up", strlen("up") + 1);
-    } else if (sym == SDLK_DOWN) {
-        memcpy(buf, "down", strlen("down") + 1);
-    } else if (sym == SDLK_LEFT) {
-        memcpy(buf, "left", strlen("left") + 1);
-    } else if (sym == SDLK_RIGHT) {
-        memcpy(buf, "right", strlen("right") + 1);
-    } else if (sym == SDLK_SPACE) {
-        memcpy(buf, "space", strlen("space") + 1);
-    } else if (sym == SDLK_RSHIFT) {
-        memcpy(buf, "rightshift", strlen("rightshift") + 1);
-    } else if (sym == SDLK_LSHIFT) {
-        memcpy(buf, "leftshift", strlen("leftshift") + 1);
-    } else if (sym == SDLK_RCTRL) {
-        memcpy(buf, "rightcontrol", strlen("rightcontrol") + 1);
-    } else if (sym == SDLK_LCTRL) {
-        memcpy(buf, "leftcontrol", strlen("leftcontrol") + 1);
-    } else if (sym == SDLK_ESCAPE || sym == SDLK_AC_BACK) {
-        memcpy(buf, "escape", strlen("escape") + 1);
-    } else if (sym == SDLK_BACKSPACE) {
-        memcpy(buf, "backspace", strlen("backspace") + 1);
-    } else if (sym == SDLK_QUOTE) {
-        memcpy(buf, "'", strlen("'") + 1);
-    } else if (sym == SDLK_COMMA) {
-        memcpy(buf, ",", strlen(",") + 1);
-    } else if (sym == SDLK_PERIOD) {
-        memcpy(buf, ".", strlen(".") + 1);
-    } else if (sym == SDLK_PAGEDOWN) {
-        memcpy(buf, "pagedown", strlen("pagedown") + 1);
-    } else if (sym == SDLK_PAGEUP) {
-        memcpy(buf, "pageup", strlen("pageup") + 1);
-    } else if (sym == SDLK_RALT) {
-        memcpy(buf, "rightalt", strlen("rightalt") + 1);
-    } else if (sym == SDLK_LALT) {
-        memcpy(buf, "leftalt", strlen("leftalt") + 1);
-    } else if (sym == SDLK_TAB) {
-        memcpy(buf, "tab", strlen("tab") + 1);
-    } else if (sym == SDLK_PAUSE) {
-        memcpy(buf, "pause", strlen("pause") + 1);
-    }
-    memcpy(result, buf, strlen(buf) + 1);
 }
 
 
@@ -145,6 +72,30 @@ static double single_finger_currentx = 0;
 static double single_finger_currenty = 0;
 static int64_t single_finger_downms = -1;
 static const int64_t single_finger_maxleftclickms = 1300;
+
+
+static int scriptcoreevents_iskeydown(lua_State *l) {
+    if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TSTRING) {
+        lua_pushstring(l, "expected arg of type string");
+        return lua_error(l);
+    }
+    const char *p = lua_tostring(l, 1);
+    if (!p) {
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    #ifdef HAVE_SDL
+    if (strcmp(p, "leftcontrol") == 0)
+        lua_pushboolean(l, lctrlpressed);
+    else if (strcmp(p, "rightcontrol") == 0)
+        lua_pushboolean(l, rctrlpressed);
+    else
+        lua_pushboolean(l, sdlkeyboard_IsKeyPressed(p));
+    #else
+    #error "code path not implemented"
+    #endif
+    return 0;
+}
 
 
 int scriptcoreevents_Process(lua_State *l) {
@@ -209,8 +160,37 @@ int scriptcoreevents_Process(lua_State *l) {
             else if (e.key.keysym.sym == SDLK_RCTRL)
                 rctrlpressed = 1;
             char key[15] = "";
-            _keyboardev_to_char(e.key.keysym.sym, key);
+            ConvertSDLKeyToStr(e.key.keysym.sym, key);
             if (strlen(key) > 0) {
+                if ((e.key.keysym.mod & KMOD_LCTRL) != 0 &&
+                        !lctrlpressed &&
+                        e.key.keysym.sym != SDLK_LCTRL) {
+                    // Buggy on-screen keyboard, maybe.
+                    lctrlpressed = 1;
+                    lua_newtable(l);
+                    lua_pushstring(l, "type");
+                    lua_pushstring(l, "keydown");
+                    lua_settable(l, -3);
+                    lua_pushstring(l, "key");
+                    lua_pushstring(l, "leftcontrol");
+                    lua_settable(l, -3);
+                    lua_rawseti(l, tbl_index, count + 1);
+                    count++;
+                } else if ((e.key.keysym.mod & KMOD_LCTRL) == 0 &&
+                        lctrlpressed &&
+                        e.key.keysym.sym != SDLK_LCTRL) {
+                    // Buggy on-screen keyboard, maybe.
+                    lctrlpressed = 0;
+                    lua_newtable(l);
+                    lua_pushstring(l, "type");
+                    lua_pushstring(l, "keyup");
+                    lua_settable(l, -3);
+                    lua_pushstring(l, "key");
+                    lua_pushstring(l, "leftcontrol");
+                    lua_settable(l, -3);
+                    lua_rawseti(l, tbl_index, count + 1);
+                    count++;
+                }
                 lua_newtable(l);
                 lua_pushstring(l, "type");
                 lua_pushstring(l, "keydown");
@@ -227,7 +207,7 @@ int scriptcoreevents_Process(lua_State *l) {
             else if (e.key.keysym.sym == SDLK_RCTRL)
                 rctrlpressed = 0;
             char key[15] = "";
-            _keyboardev_to_char(e.key.keysym.sym, key);
+            ConvertSDLKeyToStr(e.key.keysym.sym, key);
             if (strlen(key) > 0) {
                 lua_newtable(l);
                 lua_pushstring(l, "type");
@@ -394,6 +374,9 @@ int scriptcoreevents_Process(lua_State *l) {
                     lua_pushnumber(l, 2);
                     lua_pushnumber(l, single_finger_currenty);
                     lua_settable(l, -3);
+                    lua_settable(l, -3);
+                    lua_pushstring(l, "touch");
+                    lua_pushboolean(l, 1);
                     lua_settable(l, -3);
                     lua_rawseti(l, tbl_index, count + 1);
                     count++;
@@ -563,6 +546,9 @@ int scriptcoreevents_Process(lua_State *l) {
                 lua_pushnumber(l, (double)e.button.y * evdpimultiply);
                 lua_settable(l, -3);
                 lua_settable(l, -3);
+                lua_pushstring(l, "touch");
+                lua_pushboolean(l, 0);
+                lua_settable(l, -3);
                 lua_rawseti(l, tbl_index, count + 1);
                 count++;
             }
@@ -661,6 +647,8 @@ void scriptcoreevents_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_events_stoptextinput");
     lua_pushcfunction(l, _events_ctrlpressed);
     lua_setglobal(l, "_events_ctrlpressed");
+    lua_pushcfunction(l, scriptcoreevents_iskeydown);
+    lua_setglobal(l, "scriptcoreevents_iskeydown");
     lua_pushcfunction(l, _os_clipboardpaste);
     lua_setglobal(l, "_os_clipboardpaste");
 }

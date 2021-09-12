@@ -340,19 +340,24 @@ HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
             }
             int reverse_alphar = 0;
             if (likely(alphar >= INT_COLOR_SCALAR)) {
-                while (likely(salpha == 255 &&
-                        writeptr != writeptrend)) {
+                while (1) {
+                    if (unlikely(writeptr == writeptrend))
+                        break;
+                    if (sourcehasalpha) {
+                        salpha = *(readptr + 3);
+                        if (unlikely(salpha != 255))
+                            break;
+                    }
+                    assert(writeptr < writeptrend);
                     memcpy(
                         writeptr, readptr, 3
                     );
                     writeptr += 3;
                     if (tghasalpha) {
-                        *writeptr = 255;
+                        *writeptr = salpha;
                         writeptr++;
                     }
                     readptr += sourcestep;
-                    if (sourcehasalpha)
-                        salpha = *(readptr + 3);
                     continue;
                 }
                 continue;
@@ -847,44 +852,56 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
 }
 
 
-SDL_Texture *rfssurf_AsTex(
-        SDL_Renderer *r, rfssurf *srf, int withalpha
+SDL_Texture *rfssurf_AsTex_Update(
+        SDL_Renderer *r, rfssurf *srf, int withalpha,
+        SDL_Texture *updateto
         ) {
-    if (withalpha == srf->hasalpha) {
-        SDL_Texture *t = SDL_CreateTexture(
-            r, (withalpha ? SDL_PIXELFORMAT_RGBA8888 :
-            SDL_PIXELFORMAT_RGB24), SDL_TEXTUREACCESS_STREAMING,
-            srf->w, srf->h
-        );
-        if (!t) {
-            return NULL;
-        }
-        int pitch = 0;
-        uint8_t *tpixels = NULL;
-        if (SDL_LockTexture(t, NULL,
-                (void **)&tpixels, &pitch) < 0) {
+    SDL_Texture *t = (
+        updateto ? updateto : SDL_CreateTexture(
+        r, (withalpha ? SDL_PIXELFORMAT_RGBA8888 :
+        SDL_PIXELFORMAT_RGB24), SDL_TEXTUREACCESS_STREAMING,
+        srf->w, srf->h));
+    if (!t) {
+        return NULL;
+    }
+    int pitch = 0;
+    uint8_t *tpixels = NULL;
+    if (SDL_LockTexture(t, NULL,
+            (void **)&tpixels, &pitch) < 0) {
+        if (t != updateto)
             SDL_DestroyTexture(t);
-            return NULL;
-        }
-        uint8_t *readptr = srf->pixels;
-        int readstep = (withalpha ? 4 : 3);
-        uint8_t *readptrend = &srf->pixels[
-            srf->w * srf->h * readstep
-        ];
+        return NULL;
+    }
+    uint8_t *readptr = srf->pixels;
+    int readstep = (srf->hasalpha ? 4 : 3);
+    int writestep = (withalpha ? 4 : 3);
+    uint8_t *readptrend = &srf->pixels[
+        srf->w * srf->h * readstep
+    ];
+    if (withalpha == srf->hasalpha) {
         const int rowlen = (srf->w * readstep);
         while (readptr != readptrend) {
             memcpy(tpixels, readptr, rowlen);
             tpixels += pitch;
             readptr += rowlen;
         }
-        SDL_UnlockTexture(t);
-        return t;
+    } else {
+        while (readptr != readptrend) {
+            memcpy(tpixels, readptr, 3);
+            if (withalpha) tpixels[3] = 255;
+            tpixels += writestep;
+            readptr += readstep;
+        }
     }
-    SDL_Surface *sdlsrf = rfssurf_AsSrf(srf, withalpha);
-    SDL_Texture *t = SDL_CreateTextureFromSurface(
-        r, sdlsrf
-    );
+    SDL_UnlockTexture(t);
     return t;
+}
+
+
+SDL_Texture *rfssurf_AsTex(
+        SDL_Renderer *r, rfssurf *srf, int withalpha
+        ) {
+    return rfssurf_AsTex_Update(r, srf, withalpha, NULL);
 }
 #endif
 

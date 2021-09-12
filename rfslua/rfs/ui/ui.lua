@@ -12,6 +12,22 @@ dofile("rfslua/rfs/ui/menuwidget.lua")
 
 rfs.ui.default_font = "rfslua/res/ui/font/font_default"
 
+function rfs.ui.loadsounds()
+    if rfs.ui.confirmsound == nil then
+        rfs.ui.confirmsound = rfs.audio.preloadsfx(
+            "rfslua/res/default-game-res/sfx/confirm01"
+        )
+    end
+end
+
+function rfs.ui.playsound(sfx, vol)
+    if vol == nil then
+        vol = 1
+    end
+    vol = math.max(0.0, math.min(1.0, vol))
+    rfs.audio.play(sfx, vol * 0.8)
+end
+
 function rfs.ui.draw()
     rfs.ui.dlg.draw()
 end

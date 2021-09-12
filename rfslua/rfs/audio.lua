@@ -9,8 +9,51 @@ if rfs.audio == nil then
 end
 
 
+rfs.audio.play = function(path, volume, pan, looped)
+    if type(path) ~= "string" and type(path) ~= "userdata" then
+        error("sound path must be string or predecodedsound")
+    end
+    if rfs.audio.default_device == nil then
+        rfs.audio.default_device = rfs.audio.dev.open()
+    end
+    if type(volume) ~= "number" and volume ~= nil then
+        error("volume must be number or nil")
+    end
+    if type(pan) ~= "number" and pan ~= nil then
+        error("pan must be number or nil")
+    end
+    if type(looped) ~= "boolean" and looped ~= nil then
+        error("looped must be boolean or nil")
+    end
+    assert(rfs.audio.default_device ~= nil)
+    _h3daudio_playsound(rfs.audio.default_device, path,
+        volume, pan, looped)
+end
+
+rfs.audio.preloadsfx = function(path, dev)
+    if rfs.audio.default_device == nil then
+        rfs.audio.default_device = rfs.audio.dev.open()
+        if rfs.audio.default_device == nil then
+            error("failed to open audio")
+        end
+    end
+    if dev == nil then
+        dev = rfs.audio.default_device
+    end
+    local sound = _h3daudio_preloadsound(dev, path)
+    debug.setmetatable(sound, {
+        __gc = function(gcself)
+            local f = function(_gcself)
+                _h3daudio_destroypreloadedsound(_gcself)
+            end
+            pcall(f, _gcself)
+        end
+    })
+    return sound
+end
+
 rfs.audio.dev.open = function(name)
-    if type(name) ~= "string" and type(name) ~= nil then
+    if type(name) ~= "string" and type(name) ~= "nil" then
         error("device name must be string or nil")
     end
     local self = _h3daudio_opendevice(path)

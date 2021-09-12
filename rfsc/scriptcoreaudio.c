@@ -3,6 +3,9 @@
 // Reading this code for personal education and curiosity is ENCOURAGED!
 // See LICENSE.md for details
 
+#include "compileconfig.h"
+
+#include <assert.h>
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -11,7 +14,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "audio.h"
+#include "audio/audio.h"
+#include "audio/audiodecodedfile.h"
+#include "roomdefs.h"
 #include "scriptcore.h"
 #include "scriptcoreaudio.h"
 #include "scriptcoreerror.h"
@@ -51,6 +56,87 @@ int _h3daudio_listsoundcards(lua_State *l) {
         free(s);
         i++;
     }
+    return 1;
+}
+
+
+int _h3daudio_destroypreloadedsound(lua_State *l) {
+    if (lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+            OBJREF_PRELOADEDSOUND) {
+        lua_pushstring(
+            l, "expected 1 arg of type preloadedsound");
+        return lua_error(l);
+    }
+    h3daudiodecodedfile *f = (h3daudiodecodedfile *)(
+        (uintptr_t)((scriptobjref *)lua_touserdata(l, 1))->value);
+    if (!f) {
+        lua_pushstring(l, "couldn't access preloadedsound - "
+            "was it destroyed?");
+        return lua_error(l);
+    }
+    ((scriptobjref *)lua_touserdata(l, 1))->value = 0;
+    audiodecodedfile_Free(f);
+    return 0;
+}
+
+
+int _h3daudio_preloadsound(lua_State *l) {
+    if (lua_gettop(l) < 2 ||
+            lua_type(l, 2) != LUA_TSTRING ||
+            lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+            OBJREF_AUDIODEVICE) {
+        lua_pushstring(
+            l, "expected 2-5 arguments of types "
+            "audiodevice, string"
+        );
+        return lua_error(l);
+    }
+    h3daudiodevice *dev = h3daudio_GetDeviceById(
+        (int)((scriptobjref*)lua_touserdata(l, 1))->value
+    );
+    if (!dev) {
+        lua_pushstring(l, "couldn't access device - was it closed?");
+        return lua_error(l);
+    }
+    const char *soundpath = lua_tostring(l, 2);
+    if (!soundpath) {
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    char *errmsg = NULL;
+    h3daudiodecodedfile *f = audiodecodedfile_LoadEx(
+        soundpath, 0, h3daudio_GetDeviceSampleRate(dev),
+        MAX_SOUND_SECONDS + 0.5, &errmsg);
+    if (!f) {
+        char buf[512];
+        snprintf(buf, sizeof(buf) - 1,
+            "failed to preload sound: %s", (errmsg ? errmsg :
+            "(unknown error)"));
+        lua_pushstring(l, buf);
+        return lua_error(l);
+    }
+    if (audiodecodedfile_GetLengthInSeconds(f) >
+            MAX_SOUND_SECONDS) {
+        audiodecodedfile_Free(f);
+        lua_pushstring(l, "sound file is too long");
+        return lua_error(l);
+    }
+    scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
+    if (!ref) {
+        audiodecodedfile_Free(f);
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    memset(ref, 0, sizeof(*ref));
+    ref->magic = OBJREFMAGIC;
+    ref->type = OBJREF_PRELOADEDSOUND;
+    ref->value = (uintptr_t)f;
     return 1;
 }
 
@@ -181,30 +267,52 @@ int _h3daudio_destroydevice(lua_State *l) {
 
 int _h3daudio_playsound(lua_State *l) {
     if (lua_gettop(l) < 2 ||
-            lua_type(l, 2) != LUA_TSTRING ||
+            (lua_type(l, 2) != LUA_TSTRING && (
+             lua_type(l, 2) != LUA_TUSERDATA ||
+             ((scriptobjref*)lua_touserdata(l, 2))->magic !=
+             OBJREFMAGIC ||
+             ((scriptobjref*)lua_touserdata(l, 2))->type !=
+             OBJREF_PRELOADEDSOUND ||
+             ((scriptobjref*)lua_touserdata(l, 2))->value ==
+             0)) ||
             lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
             OBJREFMAGIC ||
             ((scriptobjref*)lua_touserdata(l, 1))->type !=
-            OBJREF_AUDIODEVICE) {
+            OBJREF_AUDIODEVICE
+            ) {
         lua_pushstring(
             l, "expected 2-5 arguments of types "
-            "audiodevice, string, number, number, boolean"
+            "audiodevice, string or preloadedsound, "
+            "number, number, boolean"
         );
         return lua_error(l);
     }
-    const char *soundpath = lua_tostring(l, 2);
-    int existsresult = 0;
-    if (!vfs_Exists(soundpath, &existsresult, 0)) {
-        lua_pushstring(l, "vfs_Exists() failed - out of memory?");
-        return lua_error(l);
-    }
-    if (!existsresult) {
-        char buf[512];
-        snprintf(buf, sizeof(buf) - 1,
-                 "sound file not found: %s", soundpath);
-        lua_pushstring(l, buf);
-        return lua_error(l);
+    h3daudiodecodedfile *soundref = NULL;
+    const char *soundpath = NULL;
+    if (lua_type(l, 2) == LUA_TSTRING) {
+        const char *soundpath_unfixed = lua_tostring(l, 2);
+        soundpath = (soundpath_unfixed ? audio_FixSfxPath(
+            soundpath_unfixed) : NULL);
+        int existsresult = 0;
+        if (!vfs_Exists(soundpath, &existsresult, 0)) {
+            lua_pushstring(l, "vfs_Exists() failed - out of memory?");
+            return lua_error(l);
+        }
+        if (!existsresult) {
+            char buf[512];
+            snprintf(buf, sizeof(buf) - 1,
+                     "sound file not found: %s", soundpath);
+            lua_pushstring(l, buf);
+            return lua_error(l);
+        }
+    } else {
+        assert(lua_type(l, 2) == LUA_TUSERDATA);
+        soundref = (h3daudiodecodedfile *)(
+            (uintptr_t)((scriptobjref *)
+            lua_touserdata(l, 2))->value
+        );
+        assert(soundref != NULL);
     }
     double volume = (
         (lua_gettop(l) >= 3 && lua_type(l, 3) == LUA_TNUMBER) ?
@@ -212,7 +320,7 @@ int _h3daudio_playsound(lua_State *l) {
     );
     double panning = (
         (lua_gettop(l) >= 4 && lua_type(l, 4) == LUA_TNUMBER) ?
-        lua_tonumber(l, 4) : 1.0
+        lua_tonumber(l, 4) : 0.0
     );
     int loop = (
         (lua_gettop(l) >= 5 && lua_type(l, 5) == LUA_TBOOLEAN) ?
@@ -227,9 +335,16 @@ int _h3daudio_playsound(lua_State *l) {
     }
     volume = fmax(0, fmin(1, volume));
     panning = fmax(-1, fmin(1, panning));
-    uint64_t soundid = h3daudio_PlaySoundFromFile(
-        dev, soundpath, volume, panning, loop
-    );
+    uint64_t soundid = 0;
+    if (soundref == NULL) {
+        soundid = h3daudio_PlayStreamedSoundFromFile(
+            dev, soundpath, volume, panning, loop
+        );
+    } else {
+        soundid = h3daudio_PlayPredecodedSound(
+            dev, soundref, volume, panning, loop
+        );
+    }
     if (soundid == 0) {
         char buf[512];
         snprintf(buf, sizeof(buf) - 1,
@@ -491,4 +606,8 @@ void scriptcoreaudio_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_h3daudio_soundisplaying");
     lua_pushcfunction(l, _h3daudio_soundhaderror);
     lua_setglobal(l, "_h3daudio_soundhaderror");
+    lua_pushcfunction(l, _h3daudio_destroypreloadedsound);
+    lua_setglobal(l, "_h3daudio_destroypreloadedsound");
+    lua_pushcfunction(l, _h3daudio_preloadsound);
+    lua_setglobal(l, "_h3daudio_preloadsound");
 }

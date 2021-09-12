@@ -26,6 +26,7 @@ function rfseditor.titlescene.show_titlemenu()
     rfseditor.titlescene._menu = (
         rfs.ui.menuwidget.new(nil, 17 * scaler, 50)
     )
+    rfseditor.titlescene._menu:set_focus()
     rfseditor.titlescene._menu:set_centered(true)
     rfseditor.titlescene._menu.id = "titlemenu"
     rfseditor.titlescene._menu:add_entry(
@@ -132,6 +133,7 @@ function rfseditor.titlescene.load_demo_level()
 end
 
 function rfseditor.titlescene.on_enter()
+    rfs.ui.loadsounds()
     rfseditor.titlescene._menu = nil
     rfseditor._democamts = nil
     if rfseditor._updatetask == nil then
@@ -163,10 +165,37 @@ function _devversion_warning()
     )
 end
 
+function rfseditor.titlescene.on_keydown(k)
+    if rfseditor.state == "show_press_any_key" and
+            k ~= "f11" then
+        rfseditor.state = "devwarning"
+        rfs.ui.playsound(rfs.ui.confirmsound)
+        _devversion_warning()
+        return
+    end
+    if rfseditor.titlescene._menu ~= nil then
+        if rfseditor.titlescene._menu:on_keydown(k) == true then
+            return
+        end
+    end
+end
+
 function rfseditor.titlescene.on_click(x, y, button)
     if rfseditor.state == "show_press_any_key" then
         rfseditor.state = "devwarning"
+        rfs.ui.playsound(rfs.ui.confirmsound)
         _devversion_warning()
+    end
+end
+
+function rfseditor.titlescene.on_mousemove(x, y)
+    if rfseditor.titlescene._menu ~= nil then
+        if rfseditor.titlescene._menu:on_mousemove(
+                x - rfseditor.titlescene._menu.x,
+                y - rfseditor.titlescene._menu.y
+                ) == true then
+            return
+        end
     end
 end
 
@@ -291,22 +320,19 @@ function rfseditor.titlescene.on_draw()
     -- Show the press any key
     if rfseditor.state == "show_press_any_key" then
         local now = rfs.time.ticks()
-        local animf = (now - rfseditor.show_any_key_ts) % 1600
-        animf = animf / 800
-        if animf > 1 then
-            animf = 2.0 - animf
-        end
+        local animf = (now - rfseditor.show_any_key_ts) % 1200
+        animf = math.round(animf / 1200)
         local t = "Press Key Or Tap To Start"
         local show_width = math.min(
-            font:calcwidth(t, 14 * scaler, 0, 1),
+            font:calcwidth(t, 14 * scaler, animf, 1),
             rfs.window.renderw
         )
         local draw_x = rfs.window.renderw / 2 - show_width / 2
         local draw_y = rfs.window.renderh / 2
         font:draw(
             t, rfs.window.renderw, draw_x, draw_y,
-            1, 0.9 * animf, 1.0, 0.7,
-            14 * scaler, 0, 1
+            1, 0.9 * animf, 1.0, 1.0,
+            14 * scaler, animf, 1
         )
     end
 

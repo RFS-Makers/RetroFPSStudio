@@ -342,8 +342,8 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const uint32_t tx2_shift = tx2_positive << 5;
         const int32_t txstep_shift = (
             (int32_t)tx2_shift - (int32_t)tx1_shift) / steps;
-        uint32_t tx_nomod_shift = tx1_shift;
-        uint32_t ty_nomod_shift = ty1_shift;
+        uint32_t tx_nomod_shift = tx1_shift - txstep_shift;
+        uint32_t ty_nomod_shift = ty1_shift - tystep_shift;
         #if !defined(FIXED_ROOMTEX_SIZE) || \
                 FIXED_ROOMTEX_SIZE <= 2 || \
                 !defined(FIXED_ROOMTEX_SIZE_2) || \
@@ -360,41 +360,48 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE);
 
             while (likely(rowoffset <= maxrowoffset)) {
-                // Compute updated light/color levels if needed:
-                if (likely(updatecolorcounter %
-                        colorupdateinterval == 0)) {
-                    const int row = startrow + rowoffset;
-                    const int screentoprowoffset = row - screentop;
-                    int fullred = cr + (cr1to2diff *
-                        screentoprowoffset) / fullslicelen;
-                    int fullgreen = cg + (cg1to2diff *
-                        screentoprowoffset) / fullslicelen;
-                    int fullblue = cb + (cb1to2diff *
-                        screentoprowoffset) / fullslicelen;
-                    rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
-                    greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
-                    bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
-                    int redwhite = imin(imax(0, fullred -
-                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
-                    rednonwhite = imin(rednonwhite,
-                        LIGHT_COLOR_SCALAR - redwhite);
-                    int greenwhite = imin(imax(0, fullgreen -
-                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
-                    greennonwhite = imin(greennonwhite,
-                        LIGHT_COLOR_SCALAR - greenwhite);
-                    int bluewhite = imin(imax(0, fullblue -
-                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
-                    bluenonwhite = imin(bluenonwhite,
-                        LIGHT_COLOR_SCALAR - bluewhite);
-                    assert(fullred >= cr || fullred >= cr2);
-                }
+                // Update light/color levels for next batch:
+                #ifndef NDEBUG
+                assert(updatecolorcounter %
+                       colorupdateinterval == 0);
+                #endif
+                const int row = startrow + rowoffset;
+                const int screentoprowoffset = row - screentop;
+                int fullred = cr + (cr1to2diff *
+                    screentoprowoffset) / fullslicelen;
+                int fullgreen = cg + (cg1to2diff *
+                    screentoprowoffset) / fullslicelen;
+                int fullblue = cb + (cb1to2diff *
+                    screentoprowoffset) / fullslicelen;
+                rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
+                greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
+                bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
+                int redwhite = imin(imax(0, fullred -
+                    LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                rednonwhite = imin(rednonwhite,
+                    LIGHT_COLOR_SCALAR - redwhite);
+                int greenwhite = imin(imax(0, fullgreen -
+                    LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                greennonwhite = imin(greennonwhite,
+                    LIGHT_COLOR_SCALAR - greenwhite);
+                int bluewhite = imin(imax(0, fullblue -
+                    LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                bluenonwhite = imin(bluenonwhite,
+                    LIGHT_COLOR_SCALAR - bluewhite);
+                assert(fullred >= cr || fullred >= cr2);
 
                 // See how far we can blit with no light update:
                 const int next_to = imin(maxrowoffset,
-                    rowoffset + (colorupdateinterval - 1 -
-                    (updatecolorcounter % colorupdateinterval)) - 1);
+                    rowoffset + (colorupdateinterval - 1));
                 // Blit until we need next light update:
-                while (likely(rowoffset <= next_to)) {
+                #if defined(DUPLICATE_FLOOR_PIX) && \
+                            DUPLICATE_FLOOR_PIX >= 1
+                const int loopiter = 1 + extradups;
+                #else
+                const int loopiter = 1;
+                #endif
+                #pragma GCC ivdep
+                for (; rowoffset <= next_to; rowoffset += loopiter) {
                     tx_nomod_shift += txstep_shift;
                     int64_t tx = (tx_nomod_shift >> 5) & texcoord_modulo_mask;
                     ty_nomod_shift += tystep_shift;
@@ -414,15 +421,15 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                         LIGHT_COLOR_SCALAR +
                         255 * redwhite /
                         LIGHT_COLOR_SCALAR)];
-                    writepointer++;
                     readptr++;
+                    writepointer++;
                     *writepointer = gammat[_assert_pix256(
                         (*readptr) * greennonwhite /
                         LIGHT_COLOR_SCALAR +
                         255 * greenwhite /
                         LIGHT_COLOR_SCALAR)];
-                    writepointer++;
                     readptr++;
+                    writepointer++;
                     *writepointer = gammat[_assert_pix256(
                         (*readptr) * bluenonwhite /
                         LIGHT_COLOR_SCALAR +
@@ -430,26 +437,32 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                         LIGHT_COLOR_SCALAR)];
                     readptr++;
                     writepointer++;
+                    #ifndef NDEBUG
                     updatecolorcounter++;
-                    rowoffset++;
+                    #endif
                     writepointer += writepointerplus;
                     #if defined(DUPLICATE_FLOOR_PIX) && \
                             DUPLICATE_FLOOR_PIX >= 1
-                    int extratarget = rowoffset + extradups - 1;
-                    while (likely(rowoffset <= extratarget &&
-                            rowoffset <= maxrowoffset)) {
+                    int innerrowoffset = rowoffset + 1;
+                    const int extratarget_past = imin(
+                        innerrowoffset + extradups - 1, next_to) + 1;
+                    while (likely(innerrowoffset != extratarget_past)) {
                         *(writepointer + alphapixoffset) = 255;
                         memcpy(writepointer,
                             writepointer - writepointerplus - 3,
                             3);
                         writepointer += 3;
                         writepointer += writepointerplus;
-                        rowoffset++;
+                        #ifndef NDEBUG
+                        updatecolorcounter++;
+                        #endif
+                        innerrowoffset++;
                         tx_nomod_shift += txstep_shift;
                         ty_nomod_shift += tystep_shift;
                     }
                     #endif
                 }
+                if (rowoffset > next_to) rowoffset = next_to + 1;
             }
         } else {
             // Divisor to get from TEX_COORD_SCALER_2 to tex size:
@@ -462,41 +475,48 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
             assert(TEX_COORD_SCALER / coorddiv == FIXED_ROOMTEX_SIZE_2);
 
             while (likely(rowoffset <= maxrowoffset)) {
-                // Compute updated light/color levels if needed:
-                if (likely(updatecolorcounter %
-                        colorupdateinterval == 0)) {
-                    const int row = startrow + rowoffset;
-                    const int screentoprowoffset = row - screentop;
-                    int fullred = cr + (cr1to2diff *
-                        screentoprowoffset) / fullslicelen;
-                    int fullgreen = cg + (cg1to2diff *
-                        screentoprowoffset) / fullslicelen;
-                    int fullblue = cb + (cb1to2diff *
-                        screentoprowoffset) / fullslicelen;
-                    rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
-                    greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
-                    bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
-                    int redwhite = imin(imax(0, fullred -
-                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
-                    rednonwhite = imin(rednonwhite,
-                        LIGHT_COLOR_SCALAR - redwhite);
-                    int greenwhite = imin(imax(0, fullgreen -
-                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
-                    greennonwhite = imin(greennonwhite,
-                        LIGHT_COLOR_SCALAR - greenwhite);
-                    int bluewhite = imin(imax(0, fullblue -
-                        LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
-                    bluenonwhite = imin(bluenonwhite,
-                        LIGHT_COLOR_SCALAR - bluewhite);
-                    assert(fullred >= cr || fullred >= cr2);
-                }
+                // Update light/color levels for next batch:
+                #ifndef NDEBUG
+                assert(updatecolorcounter %
+                       colorupdateinterval == 0);
+                #endif
+                const int row = startrow + rowoffset;
+                const int screentoprowoffset = row - screentop;
+                int fullred = cr + (cr1to2diff *
+                    screentoprowoffset) / fullslicelen;
+                int fullgreen = cg + (cg1to2diff *
+                    screentoprowoffset) / fullslicelen;
+                int fullblue = cb + (cb1to2diff *
+                    screentoprowoffset) / fullslicelen;
+                rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
+                greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
+                bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
+                int redwhite = imin(imax(0, fullred -
+                    LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                rednonwhite = imin(rednonwhite,
+                    LIGHT_COLOR_SCALAR - redwhite);
+                int greenwhite = imin(imax(0, fullgreen -
+                    LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                greennonwhite = imin(greennonwhite,
+                    LIGHT_COLOR_SCALAR - greenwhite);
+                int bluewhite = imin(imax(0, fullblue -
+                    LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
+                bluenonwhite = imin(bluenonwhite,
+                    LIGHT_COLOR_SCALAR - bluewhite);
+                assert(fullred >= cr || fullred >= cr2);
 
                 // See how far we can blit with no light update:
                 const int next_to = imin(maxrowoffset,
-                    rowoffset + (colorupdateinterval - 1 -
-                    (updatecolorcounter % colorupdateinterval)) - 1);
+                    rowoffset + (colorupdateinterval - 1));
                 // Blit until we need next light update:
-                while (likely(rowoffset <= next_to)) {
+                #if defined(DUPLICATE_FLOOR_PIX) && \
+                            DUPLICATE_FLOOR_PIX >= 1
+                const int loopiter = 1 + extradups;
+                #else
+                const int loopiter = 1;
+                #endif
+                #pragma GCC ivdep
+                for (; rowoffset <= next_to; rowoffset += loopiter) {
                     tx_nomod_shift += txstep_shift;
                     int64_t tx = (tx_nomod_shift >> 5) & texcoord_modulo_mask;
                     ty_nomod_shift += tystep_shift;
@@ -516,15 +536,15 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                         LIGHT_COLOR_SCALAR +
                         255 * redwhite /
                         LIGHT_COLOR_SCALAR)];
-                    writepointer++;
                     readptr++;
+                    writepointer++;
                     *writepointer = gammat[_assert_pix256(
                         (*readptr) * greennonwhite /
                         LIGHT_COLOR_SCALAR +
                         255 * greenwhite /
                         LIGHT_COLOR_SCALAR)];
-                    writepointer++;
                     readptr++;
+                    writepointer++;
                     *writepointer = gammat[_assert_pix256(
                         (*readptr) * bluenonwhite /
                         LIGHT_COLOR_SCALAR +
@@ -532,26 +552,32 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                         LIGHT_COLOR_SCALAR)];
                     readptr++;
                     writepointer++;
+                    #ifndef NDEBUG
                     updatecolorcounter++;
-                    rowoffset++;
+                    #endif
                     writepointer += writepointerplus;
                     #if defined(DUPLICATE_FLOOR_PIX) && \
                             DUPLICATE_FLOOR_PIX >= 1
-                    int extratarget = rowoffset + extradups - 1;
-                    while (likely(rowoffset <= extratarget &&
-                            rowoffset <= maxrowoffset)) {
+                    int innerrowoffset = rowoffset + 1;
+                    const int extratarget_past = imin(
+                        innerrowoffset + extradups - 1, next_to) + 1;
+                    while (likely(innerrowoffset != extratarget_past)) {
                         *(writepointer + alphapixoffset) = 255;
                         memcpy(writepointer,
                             writepointer - writepointerplus - 3,
                             3);
                         writepointer += 3;
                         writepointer += writepointerplus;
-                        rowoffset++;
+                        #ifndef NDEBUG
+                        updatecolorcounter++;
+                        #endif
+                        innerrowoffset++;
                         tx_nomod_shift += txstep_shift;
                         ty_nomod_shift += tystep_shift;
                     }
                     #endif
                 }
+                if (rowoffset > next_to) rowoffset = next_to + 1;
             }
         }
         row += rowoffset;
@@ -1177,7 +1203,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const uint32_t ty2_shift = ty2_positive << 5;
         const int32_t tystep_shift = (
             (int32_t)ty2_shift - (int32_t)ty1_shift) / steps;
-        uint32_t ty_nomod_shift = ty1_shift;
+        uint32_t ty_nomod_shift = ty1_shift - tystep_shift;
         #if !defined(FIXED_ROOMTEX_SIZE) || \
                 FIXED_ROOMTEX_SIZE <= 2 || \
                 !defined(FIXED_ROOMTEX_SIZE_2) || \
@@ -1279,7 +1305,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
                 assert(0);  // should not be hit
             }
         } else {
-            // Divisor to get from TEX_COORD_SCALER to tex size:
+            // Divisor to get from TEX_COORD_SCALER_2 to tex size:
             assert(srf->w == FIXED_ROOMTEX_SIZE_2);
             assert(TEX_COORD_SCALER >= FIXED_ROOMTEX_SIZE_2);
             assert(!math_isnpot(FIXED_ROOMTEX_SIZE_2));

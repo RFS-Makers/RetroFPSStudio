@@ -84,14 +84,19 @@ static int _graphics_gettex(lua_State *l) {
 }
 
 static int _graphics_drawrectangle(lua_State *l) {
-    if (lua_gettop(l) < 7 || lua_type(l, 1) != LUA_TNUMBER ||
-            lua_type(l, 2) != LUA_TNUMBER ||
-            lua_type(l, 3) != LUA_TNUMBER ||
-            lua_type(l, 4) != LUA_TNUMBER ||
-            lua_type(l, 5) != LUA_TNUMBER ||
-            lua_type(l, 6) != LUA_TNUMBER ||
-            lua_type(l, 7) != LUA_TNUMBER) {
-        lua_pushstring(l, "expected 7 args of type number");
+    if (lua_gettop(l) < 7 ||
+            lua_type(l, 1) != LUA_TNUMBER ||  // x
+            lua_type(l, 2) != LUA_TNUMBER ||  // y
+            lua_type(l, 3) != LUA_TNUMBER ||  // w
+            lua_type(l, 4) != LUA_TNUMBER ||  // h
+            lua_type(l, 5) != LUA_TNUMBER ||  // r
+            lua_type(l, 6) != LUA_TNUMBER ||  // g
+            lua_type(l, 7) != LUA_TNUMBER) {  // b
+        lua_pushstring(l, "expected 7-8 args of type "
+            "number [x], number [y], number [width], "
+            "number [height], number [red], "
+            "number [green], number [blue], and optional "
+            "number [alpha]");
         return lua_error(l);
     }
     double alpha = 1.0f;

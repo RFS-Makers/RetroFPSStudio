@@ -9,8 +9,8 @@
 #include <stdint.h>
 
 typedef struct h3daudiodevice h3daudiodevice;
-
-typedef struct h3dsound h3dsound;
+typedef struct h3daudiodecodedfile h3daudiodecodedfile;
+typedef struct rfssound rfssound;
 
 
 #define H3DAUDIO_BACKEND_DEFAULT 0
@@ -18,6 +18,7 @@ typedef struct h3dsound h3dsound;
 #define H3DAUDIO_BACKEND_SDL2_EXCLUSIVELOWLATENCY 2
 #define H3DAUDIO_BACKEND_MINIAUDIO 3
 
+#define MIXTYPE int16_t
 
 h3daudiodevice *h3daudio_OpenDeviceEx(
     int samplerate, int audiobufsize,
@@ -37,14 +38,32 @@ char *h3daudio_GetDeviceSoundcardName(
     int backendtype, int soundcardindex
 );
 
+int h3daudio_GetDeviceSampleRate(h3daudiodevice *dev);
+
 void h3daudio_DestroyDevice(h3daudiodevice *dev);
 
 const char *h3daudio_GetDeviceName(h3daudiodevice *dev);
 
-uint64_t h3daudio_PlaySoundFromFile(
+uint64_t h3daudio_PlayStreamedSoundFromFile(
     h3daudiodevice *dev, const char *path,
     double volume, double panning, int loop
 );
+
+uint64_t h3daudio_PlayPredecodedSound(
+    h3daudiodevice *dev, h3daudiodecodedfile *f,
+    double volume, double panning, int loop
+);
+
+uint64_t h3daudio_PlayCallbackSrcSound(
+    h3daudiodevice *dev,
+    int (*callback_read)(void *userdata,
+        void *buf, int bytes, int *haderror),
+    int (*callback_tostart)(void *userdata),
+    void (*callback_close)(void *userdata),
+    void *callback_userdata,
+    double volume, double panning, int loop
+);
+
 
 int h3daudio_IsSoundPlaying(
     h3daudiodevice *dev, uint64_t id
@@ -71,5 +90,9 @@ void h3daudio_StopSound(
 int h3daudio_GetDeviceId(h3daudiodevice *dev);
 
 h3daudiodevice *h3daudio_GetDeviceById(int id);
+
+void h3daudio_StopUsingPredecodedSound(h3daudiodecodedfile *f);
+
+char *audio_FixSfxPath(const char *path);
 
 #endif  // #ifndef RFS2_AUDIO_H_

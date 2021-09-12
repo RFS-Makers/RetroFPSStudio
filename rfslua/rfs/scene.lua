@@ -67,6 +67,16 @@ function rfs.scene.on_click(x, y, button)
     end
 end
 
+function rfs.scene.on_mousemove(x, y)
+    if rfs.ui.dlg.on_mousemove(x, y) then
+        return
+    end
+    if rfs.scene._current ~= nil and
+            rfs.scene._current.on_mousemove ~= nil then
+        rfs.scene._current.on_mousemove(x, y)
+    end
+end
+
 function rfs.scene.enter(scene)
     if scene.on_draw == nil then
         error("invalid scene")
