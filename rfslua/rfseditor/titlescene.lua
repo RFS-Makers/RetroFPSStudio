@@ -11,6 +11,79 @@ dofile("rfslua/rfseditor/_titlescene_license.lua")
 dofile("rfslua/rfseditor/_titlescene_update.lua")
 
 
+function rfseditor.titlescene.draw_particles()
+    if rfseditor.titlescene._particles == nil or
+            #rfseditor.titlescene._particles == 0 or
+            rfseditor.titlescene._particle_ts == nil then
+        return
+    end
+    local w, h = rfs.gfx.get_tex_size(
+        "rfslua/res/ui/titlemenu_cloudbg")
+    rfs.gfx.draw_tex(
+        rfs.gfx.get_tex("rfslua/res/ui/titlemenu_cloudbg"),
+        0, 0, rfs.window.renderw / w, rfs.window.renderh / h,
+        1, 1, 1, 1)
+    local scaler = rfs.ui.scaler
+    local i = 1
+    while i <= 20 do
+        local w, h = rfs.gfx.get_tex_size(
+            rfseditor.titlescene._particles[i].tex)
+        local size = 3.5
+        rfs.gfx.draw_tex(
+            rfseditor.titlescene._particles[i].tex,
+            rfs.window.renderw *
+                rfseditor.titlescene._particles[i].x -
+                0.5 * size * scaler * w,
+            rfs.window.renderh *
+                rfseditor.titlescene._particles[i].y -
+                0.5 * size * scaler * h,
+            size * scaler, size * scaler, 1, 1, 1, 1
+        )
+        i = i + 1
+    end
+end
+
+function rfseditor.titlescene.update_particles()
+    if rfseditor.titlescene._particles == nil or
+            #rfseditor.titlescene._particles == 0 or
+            rfseditor.titlescene._particle_ts == nil then
+        rfseditor.titlescene._particles = {}
+        local i = 1
+        while i <= 20 do
+            table.insert(rfseditor.titlescene._particles, {
+                x = -0.1 + 1.1 * math.random(),
+                y = 0.2 * math.random(),
+                vx = -0.00001 + 0.00002 * math.random(),
+                tex = rfs.gfx.get_tex(
+                    "rfslua/res/ui/titlemenu_cloud")
+            })
+            i = i + 1
+        end
+        rfseditor.titlescene._particle_ts = rfs.time.ticks()
+    else
+        local now = rfs.time.ticks()
+        while rfseditor.titlescene._particle_ts + 0.06 <
+                now do
+            local i = 1
+            while i <= #rfseditor.titlescene._particles do
+                rfseditor.titlescene._particles[i].x = (
+                    rfseditor.titlescene._particles[i].x +
+                    rfseditor.titlescene._particles[i].vx
+                )
+                if rfseditor.titlescene._particles[i].x > 1.11 then
+                    rfseditor.titlescene._particles[i].x = -0.1
+                elseif rfseditor.titlescene._particles[i].x < -0.11 then
+                    rfseditor.titlescene._particles[i].x = 1.1
+                end
+                i = i + 1
+            end
+            rfseditor.titlescene._particle_ts = (
+                rfseditor.titlescene._particle_ts + 0.06
+            )
+        end
+    end
+end
+
 function rfseditor.titlescene.on_debugstr()
     if rfs._show_renderstats and
             rfseditor._democam ~= nil then
@@ -203,6 +276,7 @@ function rfseditor.titlescene.on_update()
     rfseditor.titlescene.update_menu()
     _titlescreen_update_on_update()
     _titlescreen_license_on_update()
+    rfseditor.titlescene.update_particles()
 
     -- 3D world pos update:
     if rfseditor._democam ~= nil then
@@ -270,6 +344,9 @@ function rfseditor.titlescene.on_draw()
             0.1, 0, 0.1, 1.0
         )
     end
+
+    -- Fancy particles:
+    rfseditor.titlescene.draw_particles()
 
     -- Logo
     local logow, logoh = rfs.gfx.get_tex_size(
