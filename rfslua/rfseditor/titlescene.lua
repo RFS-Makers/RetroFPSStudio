@@ -25,7 +25,7 @@ function rfseditor.titlescene.draw_particles()
         1, 1, 1, 1)
     local scaler = rfs.ui.scaler
     local i = 1
-    while i <= 20 do
+    while i <= #rfseditor.titlescene._particles do
         local w, h = rfs.gfx.get_tex_size(
             rfseditor.titlescene._particles[i].tex)
         local size = 3.5
@@ -49,10 +49,10 @@ function rfseditor.titlescene.update_particles()
             rfseditor.titlescene._particle_ts == nil then
         rfseditor.titlescene._particles = {}
         local i = 1
-        while i <= 20 do
+        while i <= 13 do
             table.insert(rfseditor.titlescene._particles, {
                 x = -0.1 + 1.1 * math.random(),
-                y = 0.2 * math.random(),
+                y = 0.1 + 0.1 * math.random(),
                 vx = -0.00001 + 0.00002 * math.random(),
                 tex = rfs.gfx.get_tex(
                     "rfslua/res/ui/titlemenu_cloud")
@@ -70,10 +70,10 @@ function rfseditor.titlescene.update_particles()
                     rfseditor.titlescene._particles[i].x +
                     rfseditor.titlescene._particles[i].vx
                 )
-                if rfseditor.titlescene._particles[i].x > 1.11 then
-                    rfseditor.titlescene._particles[i].x = -0.1
-                elseif rfseditor.titlescene._particles[i].x < -0.11 then
-                    rfseditor.titlescene._particles[i].x = 1.1
+                if rfseditor.titlescene._particles[i].x > 1.21 then
+                    rfseditor.titlescene._particles[i].x = -0.2
+                elseif rfseditor.titlescene._particles[i].x < -0.21 then
+                    rfseditor.titlescene._particles[i].x = 1.2
                 end
                 i = i + 1
             end
