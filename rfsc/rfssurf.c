@@ -640,11 +640,13 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
         tgx + round(clipw * scalex), target->w);
     assert(maxx <= target->w);
     const int SCALE_SCALAR = 4096;
+    const int targetstep = (target->hasalpha ? 4 : 3);
+    const int sourcestep = (source->hasalpha ? 4 : 3);
     const int scaledivx = round(scalex * SCALE_SCALAR);
     const int scaledivy = round(scaley * SCALE_SCALAR);
     const int scaleintx = floor(scalex);
-    const int targetstep = (target->hasalpha ? 4 : 3);
-    const int sourcestep = (source->hasalpha ? 4 : 3);
+    const int scaleintx_minus1_times_tgstep = (
+        (scaleintx - 1) * targetstep);
     const int sourcehasalpha = source->hasalpha;
     const int targethasalpha = target->hasalpha;
     const int tgalphaoffset = (target->hasalpha ? 3 : 0);
@@ -699,14 +701,15 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
                     // (We fast forward through follow-ups too)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 4
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     writeptr += 4;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             writeptr += 4;
                             sourcex_shift += sourcexstep_shift;
@@ -717,16 +720,17 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                         alphabyte == 255)) {
                     // Special case for opaque source pixels in a row:
                     // (purely because it's faster that way)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 4
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     memcpy(writeptr, readptr, 3);
                     *(writeptr + 3) = 255;
                     writeptr += 4;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             memcpy(writeptr, readptr, 3);
                             *(writeptr + 3) = 255;
@@ -792,14 +796,15 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
                     // (We fast forward through all follow-ups too)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 3
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     writeptr += 3;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             writeptr += 3;
                             sourcex_shift += sourcexstep_shift;
@@ -810,15 +815,16 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                         alphabyte == 255)) {
                     // Special case for opaque source pixels in a row:
                     // (purely because it's faster that way)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 3
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     memcpy(writeptr, readptr, 3);
                     writeptr += 3;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             memcpy(writeptr, readptr, 3);
                             writeptr += 3;
@@ -871,16 +877,17 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 int alphar = inta;
                 if (likely(!alphaed)) {
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 3
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     *(writeptr + tgalphaoffset) = 255;
                     memcpy(writeptr, readptr, 3);
                     writeptr += targetstep;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             *(writeptr + tgalphaoffset) = 255;
                             memcpy(writeptr, readptr, 3);
@@ -1002,6 +1009,8 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
     const int SCALE_SCALAR = 4096;
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
+    const int scaleintx_tgstep = (
+        scalex * targetstep);
     const int sourcehasalpha = source->hasalpha;
     const int targethasalpha = target->hasalpha;
     const int tgalphaoffset = (target->hasalpha ? 3 : 0);
@@ -1044,7 +1053,7 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                     // (purely because it's faster that way)
                     while (1) {
                         uint8_t *innerwriteptrend = (
-                            writeptr + scalex * targetstep
+                            writeptr + scaleintx_tgstep
                         );
                         innerwriteptrend = (
                             innerwriteptrend < writeptrend ?
@@ -1128,7 +1137,7 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                     // If the blit isn't colored, we can fast-forward
                     // everything since we don't need any blending:
                     uint8_t *innerwriteptrend = (
-                        writeptr + scalex * targetstep
+                        writeptr + scaleintx_tgstep
                     );
                     innerwriteptrend = (
                         innerwriteptrend < writeptrend ?
@@ -1275,6 +1284,10 @@ HOTSPOT void rfssurf_BlitScaled(
     const int scaleintx = floor(scalex);
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
+    const int scaleintx_times_tgstep = (
+        scaleintx * targetstep);
+    const int scaleintx_minus1_times_tgstep = (
+        (scaleintx - 1) * targetstep);
     const int sourcehasalpha = source->hasalpha;
     const int targethasalpha = target->hasalpha;
     const int tgalphaoffset = (target->hasalpha ? 3 : 0);
@@ -1335,14 +1348,15 @@ HOTSPOT void rfssurf_BlitScaled(
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
                     // (We fast forward through follow-ups too)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 3
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     writeptr += 4;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             writeptr += 4;
                             sourcex_shift += sourcexstep_shift;
@@ -1353,16 +1367,17 @@ HOTSPOT void rfssurf_BlitScaled(
                         alphabyte == 255)) {
                     // Special case for opaque source pixels in a row:
                     // (purely because it's faster that way)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 3
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     *(writeptr + 3) = 255;
                     memcpy(writeptr, readptr, 3);
                     writeptr += 4;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             memcpy(writeptr, readptr, 3);
                             *(writeptr + 3) = 255;
@@ -1434,14 +1449,15 @@ HOTSPOT void rfssurf_BlitScaled(
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
                     // (We fast forward through all follow-ups too)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 3
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     writeptr += 3;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             writeptr += 3;
                             sourcex_shift += sourcexstep_shift;
@@ -1452,15 +1468,16 @@ HOTSPOT void rfssurf_BlitScaled(
                         alphabyte == 255)) {
                     // Special case for opaque source pixels in a row:
                     // (purely because it's faster that way)
-                    uint8_t *innerwriteptrend = (
-                        writeptr + scaleintx * 3
-                    );
-                    innerwriteptrend = (
-                        innerwriteptrend < writeptrend ?
-                        innerwriteptrend : writeptrend);
                     memcpy(writeptr, readptr, 3);
                     writeptr += 3;
-                    if (likely(scaleintx > 0)) {
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
                             memcpy(writeptr, readptr, 3);
                             writeptr += 3;
@@ -1524,15 +1541,21 @@ HOTSPOT void rfssurf_BlitScaled(
                     *(writeptr + tgalphaoffset) = 255;
                     memcpy(writeptr, readptr, 3);
                     writeptr += targetstep;
-                    int i = 1;
-                    while (i < scaleintx &&
-                            writeptr != writeptrend) {
-                        *(writeptr + tgalphaoffset) = 255;
-                        memcpy(writeptr, readptr, 3);
-                        writeptr += targetstep;
-                        i++;
+                    if (likely(scaleintx > 1)) {
+                        uint8_t *innerwriteptrend = (
+                            writeptr +
+                            scaleintx_minus1_times_tgstep
+                        );
+                        innerwriteptrend = (
+                            innerwriteptrend < writeptrend ?
+                            innerwriteptrend : writeptrend);
+                        while (writeptr != innerwriteptrend) {
+                            *(writeptr + tgalphaoffset) = 255;
+                            memcpy(writeptr, readptr, 3);
+                            writeptr += targetstep;
+                            sourcex_shift += sourcexstep_shift;
+                        }
                     }
-                    sourcex_shift += sourcexstep_shift * (i - 1);
                     continue;
                 }
                 int reverse_alphar = (INT_COLOR_SCALAR - alphar);
