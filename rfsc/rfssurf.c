@@ -280,8 +280,12 @@ HOTSPOT void rfssurf_Rect(rfssurf *target,
 HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph
         ) {
+    // The most simple blitter that supports neither overall blit alpha
+    // nor coloring. It's also the fastest.
+
+    // Some checks and clip to our render target:
     if (!sanitize_clipping(&tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
-            source, target))
+            source, target))  // clip to target
         return;
     assert(clipx >= 0 && clipy >= 0 &&
         clipx < source->w && clipy < source->h);
@@ -447,6 +451,10 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
         double r, double g, double b, double a
         ) {
+    // Simplified fast blitter that has no idea of scaling at all.
+    // It can do coloring though.
+
+    // Basic fall-through check and preparing things:
     if (fabs(r - 1.0) < 0.0001 &&
             fabs(r - 1.0) < 0.0001 &&
             fabs(r - 1.0) < 0.0001 &&
@@ -476,7 +484,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
     int intb = intbfull;
     if (intb > INT_COLOR_SCALAR) intb = INT_COLOR_SCALAR - intbwhite;
     if (!sanitize_clipping(&tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
-            source, target))
+            source, target))  // clip to target
         return;
     const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
     assert(clipalpha > 0);
@@ -583,6 +591,10 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
         int clipw, int cliph,
         double scalex, double scaley, double a
         ) {
+    // Specialized blitter that can scale, but it's
+    // faster due to skipping color processing.
+
+    // See if we can fall through to a simpler blitter:
     if (round(scalex * clipw) < 1 || round(scaley * cliph) < 1)
         return;
     if ((fabs(scalex - 1) < 0.0001f &&
@@ -595,7 +607,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
     }
     if (!sanitize_clipping_scaled(
             &tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
-            source, target, scalex, scaley))
+            source, target, scalex, scaley))  // clip to target
         return;
     assert(clipx >= 0 && clipy >= 0 &&
         clipx < source->w && clipy < source->h);
@@ -683,6 +695,8 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
+                    // Special case where the pixel is invisible:
+                    // (We fast forward through follow-ups too)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 4
                     );
@@ -699,6 +713,8 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     continue;
                 } else if (likely(!alphaed &&
                         alphabyte == 255)) {
+                    // Special case for opaque source pixels in a row:
+                    // (purely because it's faster that way)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 4
                     );
@@ -772,6 +788,8 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
+                    // Special case where the pixel is invisible:
+                    // (We fast forward through all follow-ups too)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 3
                     );
@@ -788,6 +806,8 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     continue;
                 } else if (likely(!alphaed &&
                         alphabyte == 255)) {
+                    // Special case for opaque source pixels in a row:
+                    // (purely because it's faster that way)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 3
                     );
@@ -915,6 +935,11 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
         int scalex, int scaley,
         double r, double g, double b
         ) {
+    // Specialized blitter that optimizes the special case where
+    // the sprite is scaled up by an exact int factor, and
+    // with 100% overall blit alpha.
+
+    // Check various base conditions and fall-throughs:
     if (scalex < 1 || scaley < 1)
         return;
     if (scalex == 1 && scaley == 1) {
@@ -924,7 +949,7 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
     }
     if (!sanitize_clipping_scaled(
             &tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
-            source, target, scalex, scaley))
+            source, target, scalex, scaley))  // clip to target
         return;
     assert(clipx >= 0 && clipy >= 0 &&
         clipx < source->w && clipy < source->h);
@@ -1004,6 +1029,8 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                 readptr += 4;
                 const int alphabyte = (int)*(readptr + 3);
                 if (likely(alphabyte == 0)) {
+                    // Special case where the pixel is invisible:
+                    // (handle that faster)
                     int skipforward = imin(
                         scalex, (writeptrend - writeptr) /
                         targetstep);
@@ -1011,6 +1038,8 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                     continue;
                 } else if (likely(!colored &&
                         alphabyte == 255)) {
+                    // Special case for opaque source pixels in a row:
+                    // (purely because it's faster that way)
                     while (1) {
                         uint8_t *innerwriteptrend = (
                             writeptr + scalex * targetstep
@@ -1094,6 +1123,8 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = 255;
                 if (likely(!colored)) {
+                    // If the blit isn't colored, we can fast-forward
+                    // everything since we don't need any blending:
                     uint8_t *innerwriteptrend = (
                         writeptr + scalex * targetstep
                     );
@@ -1149,6 +1180,10 @@ HOTSPOT void rfssurf_BlitScaled(
         double scalex, double scaley,
         double r, double g, double b, double a
         ) {
+    // Most generalized, but slowest blitter that can handle
+    // scaling, coloring, alpha, and everything.
+
+    // Base checks and fall-through to simpler blitters:
     if (round(scalex * clipw) < 1 ||
             round(scaley * cliph) < 1)
         return;
@@ -1178,7 +1213,7 @@ HOTSPOT void rfssurf_BlitScaled(
     }
     if (!sanitize_clipping_scaled(
             &tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
-            source, target, scalex, scaley))
+            source, target, scalex, scaley))  // clip to target
         return;
     assert(clipx >= 0 && clipy >= 0 &&
         clipx < source->w && clipy < source->h);
@@ -1296,6 +1331,8 @@ HOTSPOT void rfssurf_BlitScaled(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
+                    // Special case where the pixel is invisible:
+                    // (We fast forward through follow-ups too)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 3
                     );
@@ -1312,6 +1349,8 @@ HOTSPOT void rfssurf_BlitScaled(
                     continue;
                 } else if (likely(!coloredoralphaed &&
                         alphabyte == 255)) {
+                    // Special case for opaque source pixels in a row:
+                    // (purely because it's faster that way)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 3
                     );
@@ -1391,6 +1430,8 @@ HOTSPOT void rfssurf_BlitScaled(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
+                    // Special case where the pixel is invisible:
+                    // (We fast forward through all follow-ups too)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 3
                     );
@@ -1407,6 +1448,8 @@ HOTSPOT void rfssurf_BlitScaled(
                     continue;
                 } else if (likely(!coloredoralphaed &&
                         alphabyte == 255)) {
+                    // Special case for opaque source pixels in a row:
+                    // (purely because it's faster that way)
                     uint8_t *innerwriteptrend = (
                         writeptr + scaleintx * 3
                     );
