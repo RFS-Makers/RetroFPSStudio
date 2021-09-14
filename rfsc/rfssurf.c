@@ -277,7 +277,8 @@ HOTSPOT void rfssurf_Rect(rfssurf *target,
 }
 
 
-HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
+HOTSPOT void rfssurf_BlitSimple(
+        rfssurf *restrict target, rfssurf *restrict source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph
         ) {
     // The most simple blitter that supports neither overall blit alpha
@@ -447,7 +448,8 @@ void rfssurf_Free(rfssurf *surf) {
 }
 
 
-HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
+HOTSPOT void rfssurf_BlitColor(
+        rfssurf *restrict target, rfssurf *restrict source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
         double r, double g, double b, double a
         ) {
@@ -586,7 +588,7 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
 
 
 HOTSPOT void rfssurf_BlitScaledUncolored(
-        rfssurf *target, rfssurf *source,
+        rfssurf *restrict target, rfssurf *restrict source,
         int tgx, int tgy, int clipx, int clipy,
         int clipw, int cliph,
         double scalex, double scaley, double a
@@ -930,7 +932,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
 
 
 HOTSPOT void rfssurf_BlitScaledIntOpaque(
-        rfssurf *target, rfssurf *source,
+        rfssurf *restrict target, rfssurf *restrict source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
         int scalex, int scaley,
         double r, double g, double b
@@ -1175,7 +1177,7 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
 
 
 HOTSPOT void rfssurf_BlitScaled(
-        rfssurf *target, rfssurf *source,
+        rfssurf *restrict target, rfssurf *restrict source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
         double scalex, double scaley,
         double r, double g, double b, double a

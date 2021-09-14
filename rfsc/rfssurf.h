@@ -16,7 +16,7 @@
 
 typedef struct rfssurf {
     int w,h;
-    uint8_t *pixels;
+    uint8_t *restrict pixels;
     uint8_t hasalpha;
     #if defined(HAVE_SDL)
     SDL_Surface *sdlsrf;
@@ -36,16 +36,19 @@ HOTSPOT void rfssurf_Rect(rfssurf *target,
     double r, double g, double b, double a
 );
 
-HOTSPOT void rfssurf_BlitSimple(rfssurf *target, rfssurf *source,
+HOTSPOT void rfssurf_BlitSimple(
+    rfssurf *restrict target, rfssurf *restrict source,
     int tgx, int tgy, int clipx, int clipy, int clipw, int cliph
 );
 
-HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
+HOTSPOT void rfssurf_BlitColor(
+    rfssurf *restrict target, rfssurf *restrict source,
     int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
     double r, double g, double b, double a
 );
 
-HOTSPOT void rfssurf_BlitScaled(rfssurf *target, rfssurf *source,
+HOTSPOT void rfssurf_BlitScaled(
+    rfssurf *restrict target, rfssurf *restrict source,
     int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
     double scalex, double scaley,
     double r, double g, double b, double a
