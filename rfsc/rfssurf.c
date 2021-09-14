@@ -579,7 +579,8 @@ HOTSPOT void rfssurf_BlitColor(rfssurf *target, rfssurf *source,
 
 HOTSPOT void rfssurf_BlitScaledUncolored(
         rfssurf *target, rfssurf *source,
-        int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
+        int tgx, int tgy, int clipx, int clipy,
+        int clipw, int cliph,
         double scalex, double scaley, double a
         ) {
     if (round(scalex * clipw) < 1 || round(scaley * cliph) < 1)
@@ -627,6 +628,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
     const int SCALE_SCALAR = 4096;
     const int scaledivx = round(scalex * SCALE_SCALAR);
     const int scaledivy = round(scaley * SCALE_SCALAR);
+    const int scaleintx = floor(scalex);
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
     const int sourcehasalpha = source->hasalpha;
@@ -650,12 +652,12 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
         uint8_t *writeptrend = &target->pixels[targetoffset +
             (maxx - tgx) * targetstep];
         uint64_t sourcexstart_shift = (
-            ((uint64_t)imin(clipw - 1, 0 * SCALE_SCALAR / scaledivx) << 16)
-        );
+            ((uint64_t)imin(clipw - 1,
+            0 * SCALE_SCALAR / scaledivx) << 16));
         uint64_t sourcexend_shift = (
-            ((uint64_t)(imin(clipw, (maxx - tgx) * SCALE_SCALAR /
-                scaledivx)) << 16)
-        );
+            ((uint64_t)(imin(clipw,
+                (maxx - tgx) * SCALE_SCALAR /
+                scaledivx)) << 16));
         const int64_t sourcexstep_shift = (
             (int64_t)(sourcexend_shift - sourcexstart_shift) /
             (int64_t)imax(1,
@@ -681,13 +683,39 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 4
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
                     writeptr += 4;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            writeptr += 4;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
                     continue;
                 } else if (likely(!alphaed &&
                         alphabyte == 255)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 4
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
                     memcpy(writeptr, readptr, 3);
                     *(writeptr + 3) = 255;
                     writeptr += 4;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            memcpy(writeptr, readptr, 3);
+                            *(writeptr + 3) = 255;
+                            writeptr += 4;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
                     continue;
                 }
                 int alphar = (inta *
@@ -744,12 +772,37 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 3
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
                     writeptr += 3;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            writeptr += 3;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
                     continue;
                 } else if (likely(!alphaed &&
                         alphabyte == 255)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 3
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
                     memcpy(writeptr, readptr, 3);
                     writeptr += 3;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            memcpy(writeptr, readptr, 3);
+                            writeptr += 3;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
                     continue;
                 }
                 int alphar = (inta *
@@ -796,9 +849,23 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 int alphar = inta;
                 if (likely(!alphaed)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 3
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
                     *(writeptr + tgalphaoffset) = 255;
                     memcpy(writeptr, readptr, 3);
                     writeptr += targetstep;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            *(writeptr + tgalphaoffset) = 255;
+                            memcpy(writeptr, readptr, 3);
+                            writeptr += targetstep;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
                     continue;
                 }
                 int reverse_alphar = (INT_COLOR_SCALAR - alphar);
@@ -806,30 +873,28 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     (int)(*writeptr) *
                         reverse_alphar / INT_COLOR_SCALAR +
                     ((int)(*readptr)) * alphar /
-                        INT_COLOR_SCALAR
-                ));
+                        INT_COLOR_SCALAR));
                 writeptr++;
                 readptr++;
                 *writeptr = _assert_pix256((
                     (int)(*writeptr) *
                         reverse_alphar / INT_COLOR_SCALAR +
                     ((int)(*readptr)) * alphar /
-                        INT_COLOR_SCALAR
-                ));
+                        INT_COLOR_SCALAR));
                 writeptr++;
                 readptr++;
                 *writeptr = _assert_pix256((
                     (int)(*writeptr) *
                         reverse_alphar / INT_COLOR_SCALAR +
                     ((int)(*readptr)) * alphar /
-                        INT_COLOR_SCALAR
-                ));
+                        INT_COLOR_SCALAR));
                 writeptr++;
                 readptr++;
                 if (likely(target->hasalpha)) {
                     int a = (int)(*writeptr) *
                         INT_COLOR_SCALAR;
-                    a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
+                    a = (INT_COLOR_SCALAR * 255 - a) *
+                        reverse_alphar /
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a);
                     *writeptr = _assert_pix256(
@@ -940,7 +1005,8 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                 const int alphabyte = (int)*(readptr + 3);
                 if (likely(alphabyte == 0)) {
                     int skipforward = imin(
-                        scalex, (writeptrend - writeptr) / targetstep);
+                        scalex, (writeptrend - writeptr) /
+                        targetstep);
                     writeptr += targetstep * skipforward;
                     continue;
                 } else if (likely(!colored &&
@@ -952,7 +1018,8 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                         innerwriteptrend = (
                             innerwriteptrend < writeptrend ?
                             innerwriteptrend : writeptrend);
-                        while (likely(writeptr != innerwriteptrend)) {
+                        while (likely(writeptr !=
+                                innerwriteptrend)) {
                             *(writeptr + tgalphaoffset) = 255;
                             memcpy(writeptr, readptr, 3);
                             writeptr += targetstep;
@@ -1027,13 +1094,17 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = 255;
                 if (likely(!colored)) {
-                    int i = 0;
-                    while (likely(i < scalex &&
-                            writeptr != writeptrend)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scalex * targetstep
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
+                    assert(scalex > 0);
+                    while (likely(writeptr != innerwriteptrend)) {
                         *(writeptr + tgalphaoffset) = 255;
                         memcpy(writeptr, readptr, 3);
                         writeptr += targetstep;
-                        i++;
                     }
                     continue;
                 }
@@ -1072,14 +1143,14 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
 }
 
 
-
 HOTSPOT void rfssurf_BlitScaled(
         rfssurf *target, rfssurf *source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
         double scalex, double scaley,
         double r, double g, double b, double a
         ) {
-    if (round(scalex * clipw) < 1 || round(scaley * cliph) < 1)
+    if (round(scalex * clipw) < 1 ||
+            round(scaley * cliph) < 1)
         return;
     if ((fabs(scalex - 1) < 0.0001f &&
             fabs(scaley - 1) < 0.0001f) ||
@@ -1137,11 +1208,14 @@ HOTSPOT void rfssurf_BlitScaled(
     int intbwhite = (intbfull - INT_COLOR_SCALAR);
     if (intbwhite < 0) intbwhite = 0;
     int intr = intrfull;
-    if (intr > INT_COLOR_SCALAR) intr = INT_COLOR_SCALAR - intrwhite;
+    if (intr > INT_COLOR_SCALAR)
+        intr = INT_COLOR_SCALAR - intrwhite;
     int intg = intgfull;
-    if (intg > INT_COLOR_SCALAR) intg = INT_COLOR_SCALAR - intgwhite;
+    if (intg > INT_COLOR_SCALAR)
+        intg = INT_COLOR_SCALAR - intgwhite;
     int intb = intbfull;
-    if (intb > INT_COLOR_SCALAR) intb = INT_COLOR_SCALAR - intbwhite;
+    if (intb > INT_COLOR_SCALAR)
+        intb = INT_COLOR_SCALAR - intbwhite;
     const int coloredoralphaed = (
         intrfull != INT_COLOR_SCALAR ||
         intgfull != INT_COLOR_SCALAR ||
@@ -1161,6 +1235,7 @@ HOTSPOT void rfssurf_BlitScaled(
     const int SCALE_SCALAR = 4096;
     const int scaledivx = round(scalex * SCALE_SCALAR);
     const int scaledivy = round(scaley * SCALE_SCALAR);
+    const int scaleintx = floor(scalex);
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
     const int sourcehasalpha = source->hasalpha;
@@ -1169,9 +1244,11 @@ HOTSPOT void rfssurf_BlitScaled(
     if (y >= maxy || tgx >= maxx)
         return;
     while (y < maxy) {
-        int targetoffset = (y * target->w + tgx) * targetstep;
+        int targetoffset = (
+            (y * target->w + tgx) * targetstep);
         assert(targetoffset >= 0 && targetoffset <
-            target->w * target->h * (target->hasalpha ? 4 : 3));
+            target->w * target->h *
+            (target->hasalpha ? 4 : 3));
         int sourceoffset_start = (
             ((int)imin(clipy + cliph - 1,
                 ((y - tgy) * SCALE_SCALAR / scaledivy) +
@@ -1180,18 +1257,19 @@ HOTSPOT void rfssurf_BlitScaled(
         ) * sourcestep;
         assert(inta >= 0 && intr >= 0 && intg >= 0 && intb >= 0);
         assert(inta <= INT_COLOR_SCALAR);
-        assert(intrwhite >= 0 && intgwhite >= 0 && intbwhite >= 0);
+        assert(intrwhite >= 0 && intgwhite >= 0 &&
+               intbwhite >= 0);
         uint8_t *writeptr = &target->pixels[targetoffset];
         uint8_t *writeptrstart = writeptr;
         uint8_t *writeptrend = &target->pixels[targetoffset +
             (maxx - tgx) * targetstep];
         uint64_t sourcexstart_shift = (
-            ((uint64_t)imin(clipw - 1, 0 * SCALE_SCALAR / scaledivx) << 16)
-        );
+            ((uint64_t)imin(clipw - 1,
+            0 * SCALE_SCALAR / scaledivx) << 16));
         uint64_t sourcexend_shift = (
-            ((uint64_t)(imin(clipw, (maxx - tgx) * SCALE_SCALAR /
-                scaledivx)) << 16)
-        );
+            ((uint64_t)(imin(clipw,
+                (maxx - tgx) * SCALE_SCALAR /
+                scaledivx)) << 16));
         const int64_t sourcexstep_shift = (
             (int64_t)(sourcexend_shift - sourcexstart_shift) /
             (int64_t)imax(1,
@@ -1204,8 +1282,9 @@ HOTSPOT void rfssurf_BlitScaled(
         int64_t sourcex_shift = (
             sourcexstart_shift - sourcexstep_shift
         );
-        if (likely(sourcehasalpha)) {
-            // Source WITH alpha branch.
+        if (likely(sourcehasalpha &&
+                targethasalpha)) {
+            // Source WITH ALPHA, target WITH ALPHA branch.
             while (writeptr != writeptrend) {
                 // XXX: assumes little endian. format is BGR/ABGR
                 sourcex_shift += sourcexstep_shift;
@@ -1217,18 +1296,44 @@ HOTSPOT void rfssurf_BlitScaled(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
-                    writeptr += targetstep;
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 3
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
+                    writeptr += 4;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            writeptr += 4;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
                     continue;
                 } else if (likely(!coloredoralphaed &&
                         alphabyte == 255)) {
-                    *(writeptr + tgalphaoffset) = 255;
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 3
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
+                    *(writeptr + 3) = 255;
                     memcpy(writeptr, readptr, 3);
-                    writeptr += targetstep;
+                    writeptr += 4;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            memcpy(writeptr, readptr, 3);
+                            *(writeptr + 3) = 255;
+                            writeptr += 4;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
                     continue;
                 }
-                int alphar = (inta *
-                    ((int)alphabyte
-                        * INT_COLOR_SCALAR / 255)) / INT_COLOR_SCALAR;
+                int alphar = (inta * ((int)alphabyte *
+                        INT_COLOR_SCALAR / 255)) /
+                        INT_COLOR_SCALAR;
                 assert(alphar <= INT_COLOR_SCALAR);
                 int reverse_alphar = (INT_COLOR_SCALAR - alphar);
                 *writeptr = _assert_pix256((
@@ -1237,8 +1342,101 @@ HOTSPOT void rfssurf_BlitScaled(
                     ((int)(*readptr) *
                         intr / INT_COLOR_SCALAR +
                         255 *
-                        intrwhite / INT_COLOR_SCALAR) * alphar /
-                        INT_COLOR_SCALAR
+                        intrwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intg / INT_COLOR_SCALAR +
+                        255 *
+                        intgwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intb / INT_COLOR_SCALAR +
+                        255 *
+                        intbwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR));
+                writeptr++;
+                readptr++;
+                int a = (int)(*writeptr) *
+                    INT_COLOR_SCALAR;
+                a = (INT_COLOR_SCALAR * 255 - a) *
+                    reverse_alphar /
+                    INT_COLOR_SCALAR;
+                a = (INT_COLOR_SCALAR * 255 - a);
+                *writeptr = _assert_pix256(
+                    a / INT_COLOR_SCALAR
+                );
+                writeptr++;
+            }
+        } else if (likely(sourcehasalpha &&
+                !targethasalpha)) {
+            // Source WITH ALPHA, target with NO ALPHA branch.
+            while (writeptr != writeptrend) {
+                // XXX: assumes little endian. format is BGR/ABGR
+                sourcex_shift += sourcexstep_shift;
+                int sourcex = imin(clipw - 1,
+                    (int64_t)sourcex_shift >> (int64_t)16);
+                int sourceoffset = (
+                    sourceoffset_start + sourcex * 4
+                );
+                uint8_t *readptr = &source->pixels[sourceoffset];
+                const int alphabyte = *(readptr + 3);
+                if (likely(alphabyte == 0)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 3
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
+                    writeptr += 3;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            writeptr += 3;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
+                    continue;
+                } else if (likely(!coloredoralphaed &&
+                        alphabyte == 255)) {
+                    uint8_t *innerwriteptrend = (
+                        writeptr + scaleintx * 3
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
+                    memcpy(writeptr, readptr, 3);
+                    writeptr += 3;
+                    if (likely(scaleintx > 0)) {
+                        while (writeptr != innerwriteptrend) {
+                            memcpy(writeptr, readptr, 3);
+                            writeptr += 3;
+                            sourcex_shift += sourcexstep_shift;
+                        }
+                    }
+                    continue;
+                }
+                int alphar = (inta * ((int)alphabyte *
+                        INT_COLOR_SCALAR / 255)) /
+                        INT_COLOR_SCALAR;
+                assert(alphar <= INT_COLOR_SCALAR);
+                int reverse_alphar = (INT_COLOR_SCALAR - alphar);
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intr / INT_COLOR_SCALAR +
+                        255 *
+                        intrwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
                 ));
                 writeptr++;
                 readptr++;
@@ -1248,8 +1446,8 @@ HOTSPOT void rfssurf_BlitScaled(
                     ((int)(*readptr) *
                         intg / INT_COLOR_SCALAR +
                         255 *
-                        intgwhite / INT_COLOR_SCALAR) * alphar /
-                        INT_COLOR_SCALAR
+                        intgwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
                 ));
                 writeptr++;
                 readptr++;
@@ -1259,22 +1457,11 @@ HOTSPOT void rfssurf_BlitScaled(
                     ((int)(*readptr) *
                         intb / INT_COLOR_SCALAR +
                         255 *
-                        intbwhite / INT_COLOR_SCALAR) * alphar /
-                        INT_COLOR_SCALAR
+                        intbwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
                 ));
                 writeptr++;
                 readptr++;
-                if (likely(target->hasalpha)) {
-                    int a = (int)(*writeptr) *
-                        INT_COLOR_SCALAR;
-                    a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
-                        INT_COLOR_SCALAR;
-                    a = (INT_COLOR_SCALAR * 255 - a);
-                    *writeptr = _assert_pix256(
-                        a / INT_COLOR_SCALAR
-                    );
-                    writeptr++;
-                }
             }
         } else {
             // Source WITHOUT alpha loop.
@@ -1292,6 +1479,15 @@ HOTSPOT void rfssurf_BlitScaled(
                     *(writeptr + tgalphaoffset) = 255;
                     memcpy(writeptr, readptr, 3);
                     writeptr += targetstep;
+                    int i = 1;
+                    while (i < scaleintx &&
+                            writeptr != writeptrend) {
+                        *(writeptr + tgalphaoffset) = 255;
+                        memcpy(writeptr, readptr, 3);
+                        writeptr += targetstep;
+                        i++;
+                    }
+                    sourcex_shift += sourcexstep_shift * (i - 1);
                     continue;
                 }
                 int reverse_alphar = (INT_COLOR_SCALAR - alphar);
@@ -1301,8 +1497,8 @@ HOTSPOT void rfssurf_BlitScaled(
                     ((int)(*readptr) *
                         intr / INT_COLOR_SCALAR +
                         255 *
-                        intrwhite / INT_COLOR_SCALAR) * alphar /
-                        INT_COLOR_SCALAR
+                        intrwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
                 ));
                 writeptr++;
                 readptr++;
@@ -1312,8 +1508,8 @@ HOTSPOT void rfssurf_BlitScaled(
                     ((int)(*readptr) *
                         intg / INT_COLOR_SCALAR +
                         255 *
-                        intgwhite / INT_COLOR_SCALAR) * alphar /
-                        INT_COLOR_SCALAR
+                        intgwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
                 ));
                 writeptr++;
                 readptr++;
@@ -1323,15 +1519,16 @@ HOTSPOT void rfssurf_BlitScaled(
                     ((int)(*readptr) *
                         intb / INT_COLOR_SCALAR +
                         255 *
-                        intbwhite / INT_COLOR_SCALAR) * alphar /
-                        INT_COLOR_SCALAR
+                        intbwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
                 ));
                 writeptr++;
                 readptr++;
                 if (likely(target->hasalpha)) {
                     int a = (int)(*writeptr) *
                         INT_COLOR_SCALAR;
-                    a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
+                    a = (INT_COLOR_SCALAR * 255 - a) *
+                        reverse_alphar /
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a);
                     *writeptr = _assert_pix256(
