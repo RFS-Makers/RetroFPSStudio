@@ -325,6 +325,7 @@ HOTSPOT void rfssurf_BlitSimple(
             int alphar;
             uint8_t salpha = 255;
             if (likely(sourcehasalpha)) {
+                // See if we can skip zero pixels faster:
                 salpha = *(readptr + 3);
                 if (likely(salpha == 0)) {
                     while (likely(writeptr != writeptrend &&
@@ -343,6 +344,7 @@ HOTSPOT void rfssurf_BlitSimple(
             } else {
                 alphar = INT_COLOR_SCALAR;
             }
+            // Regular heavy duty blit:
             int reverse_alphar = 0;
             if (likely(alphar >= INT_COLOR_SCALAR)) {
                 while (1) {
@@ -395,8 +397,9 @@ HOTSPOT void rfssurf_BlitSimple(
                 writeptr++;
                 readptr++;
                 if (tghasalpha) {
-                    // ^ possibly faster to branch for rgb-only surfaces,
-                    // since math_pixcliptop also branches anyway.
+                    // ^ possibly faster to branch for rgb-only
+                    // surfaces, since math_pixcliptop also
+                    // branches anyway.
                     int a = (*writeptr) *
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
@@ -516,6 +519,7 @@ HOTSPOT void rfssurf_BlitColor(
             // XXX: assumes little endian. format is BGR/ABGR
             int alphar;
             if (likely(source->hasalpha)) {
+                // Check if we can skip invisible pixels faster:
                 uint8_t salpha = *(readptr + 3);
                 if (likely(salpha == 0)) {
                     while (likely(writeptr != writeptrend &&
@@ -535,6 +539,7 @@ HOTSPOT void rfssurf_BlitColor(
             } else {
                 alphar = inta;
             }
+            // Regular heavy duty path:
             int reverse_alphar = (INT_COLOR_SCALAR - alphar);
             *writeptr = _assert_pix256(
                 (int)(*writeptr) *
@@ -700,7 +705,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
-                    // (We fast forward through follow-ups too)
+                    // (We fast forward through upscale pixel size)
                     writeptr += 4;
                     if (likely(scaleintx > 1)) {
                         uint8_t *innerwriteptrend = (
@@ -718,8 +723,8 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     continue;
                 } else if (likely(!alphaed &&
                         alphabyte == 255)) {
-                    // Special case for opaque source pixels in a row:
-                    // (purely because it's faster that way)
+                    // Special case for opaque source pixels,
+                    // batching upscaled ones:
                     memcpy(writeptr, readptr, 3);
                     *(writeptr + 3) = 255;
                     writeptr += 4;
@@ -740,6 +745,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     }
                     continue;
                 }
+                // Regular heavy duty blit:
                 int alphar = (inta *
                     ((int)alphabyte *
                         INT_COLOR_SCALAR / 255)) /
@@ -795,7 +801,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
-                    // (We fast forward through all follow-ups too)
+                    // (We fast forward through upscale pixel size)
                     writeptr += 3;
                     if (likely(scaleintx > 1)) {
                         uint8_t *innerwriteptrend = (
@@ -813,8 +819,8 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     continue;
                 } else if (likely(!alphaed &&
                         alphabyte == 255)) {
-                    // Special case for opaque source pixels in a row:
-                    // (purely because it's faster that way)
+                    // Special case for opaque source pixels,
+                    // batching upscaled ones:
                     memcpy(writeptr, readptr, 3);
                     writeptr += 3;
                     if (likely(scaleintx > 1)) {
@@ -833,6 +839,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     }
                     continue;
                 }
+                // Regular heavy duty blit:
                 int alphar = (inta *
                     ((int)alphabyte *
                         INT_COLOR_SCALAR / 255)) /
@@ -877,6 +884,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 int alphar = inta;
                 if (likely(!alphaed)) {
+                    // Special case: don't need to touch every pixel.
                     *(writeptr + tgalphaoffset) = 255;
                     memcpy(writeptr, readptr, 3);
                     writeptr += targetstep;
@@ -897,6 +905,7 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                     }
                     continue;
                 }
+                // Regular heavy duty blitter:
                 int reverse_alphar = (INT_COLOR_SCALAR - alphar);
                 *writeptr = _assert_pix256((
                     (int)(*writeptr) *
@@ -1049,8 +1058,8 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                     continue;
                 } else if (likely(!colored &&
                         alphabyte == 255)) {
-                    // Special case for opaque source pixels in a row:
-                    // (purely because it's faster that way)
+                    // Special case for opaque source pixels,
+                    // batching it if upscaling:
                     while (1) {
                         uint8_t *innerwriteptrend = (
                             writeptr + scaleintx_tgstep
@@ -1262,12 +1271,6 @@ HOTSPOT void rfssurf_BlitScaled(
     int intb = intbfull;
     if (intb > INT_COLOR_SCALAR)
         intb = INT_COLOR_SCALAR - intbwhite;
-    const int coloredoralphaed = (
-        intrfull != INT_COLOR_SCALAR ||
-        intgfull != INT_COLOR_SCALAR ||
-        intbfull != INT_COLOR_SCALAR ||
-        inta != INT_COLOR_SCALAR
-    );
 
     const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
     assert(clipalpha > 0);
@@ -1347,7 +1350,7 @@ HOTSPOT void rfssurf_BlitScaled(
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
-                    // (We fast forward through follow-ups too)
+                    // (We fast forward through upscale pixel size)
                     writeptr += 4;
                     if (likely(scaleintx > 1)) {
                         uint8_t *innerwriteptrend = (
@@ -1363,30 +1366,12 @@ HOTSPOT void rfssurf_BlitScaled(
                         }
                     }
                     continue;
-                } else if (likely(!coloredoralphaed &&
-                        alphabyte == 255)) {
-                    // Special case for opaque source pixels in a row:
-                    // (purely because it's faster that way)
-                    *(writeptr + 3) = 255;
-                    memcpy(writeptr, readptr, 3);
-                    writeptr += 4;
-                    if (likely(scaleintx > 1)) {
-                        uint8_t *innerwriteptrend = (
-                            writeptr +
-                            scaleintx_minus1_times_tgstep
-                        );
-                        innerwriteptrend = (
-                            innerwriteptrend < writeptrend ?
-                            innerwriteptrend : writeptrend);
-                        while (writeptr != innerwriteptrend) {
-                            memcpy(writeptr, readptr, 3);
-                            *(writeptr + 3) = 255;
-                            writeptr += 4;
-                            sourcex_shift += sourcexstep_shift;
-                        }
-                    }
-                    continue;
                 }
+                // NOTE: no special case for alpha=255, since
+                // we got guaranteed color tint or we would have
+                // gone into rfssurf_BlitScaledUncolored instead.
+
+                // Regular heavy duty blitting:
                 int alphar = (inta * ((int)alphabyte *
                         INT_COLOR_SCALAR / 255)) /
                         INT_COLOR_SCALAR;
@@ -1448,7 +1433,7 @@ HOTSPOT void rfssurf_BlitScaled(
                 const int alphabyte = *(readptr + 3);
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
-                    // (We fast forward through all follow-ups too)
+                    // (We fast forward through upscale pixel size)
                     writeptr += 3;
                     if (likely(scaleintx > 1)) {
                         uint8_t *innerwriteptrend = (
@@ -1459,33 +1444,14 @@ HOTSPOT void rfssurf_BlitScaled(
                             innerwriteptrend < writeptrend ?
                             innerwriteptrend : writeptrend);
                         while (writeptr != innerwriteptrend) {
-                            writeptr += 3;
-                            sourcex_shift += sourcexstep_shift;
-                        }
-                    }
-                    continue;
-                } else if (likely(!coloredoralphaed &&
-                        alphabyte == 255)) {
-                    // Special case for opaque source pixels in a row:
-                    // (purely because it's faster that way)
-                    memcpy(writeptr, readptr, 3);
-                    writeptr += 3;
-                    if (likely(scaleintx > 1)) {
-                        uint8_t *innerwriteptrend = (
-                            writeptr +
-                            scaleintx_minus1_times_tgstep
-                        );
-                        innerwriteptrend = (
-                            innerwriteptrend < writeptrend ?
-                            innerwriteptrend : writeptrend);
-                        while (writeptr != innerwriteptrend) {
-                            memcpy(writeptr, readptr, 3);
                             writeptr += 3;
                             sourcex_shift += sourcexstep_shift;
                         }
                     }
                     continue;
                 }
+                // NOTE: as explained in loop above, no 255 case.
+                // Regular heavy duty blit:
                 int alphar = (inta * ((int)alphabyte *
                         INT_COLOR_SCALAR / 255)) /
                         INT_COLOR_SCALAR;
@@ -1537,27 +1503,10 @@ HOTSPOT void rfssurf_BlitScaled(
                 );
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 int alphar = inta;
-                if (likely(!coloredoralphaed)) {
-                    *(writeptr + tgalphaoffset) = 255;
-                    memcpy(writeptr, readptr, 3);
-                    writeptr += targetstep;
-                    if (likely(scaleintx > 1)) {
-                        uint8_t *innerwriteptrend = (
-                            writeptr +
-                            scaleintx_minus1_times_tgstep
-                        );
-                        innerwriteptrend = (
-                            innerwriteptrend < writeptrend ?
-                            innerwriteptrend : writeptrend);
-                        while (writeptr != innerwriteptrend) {
-                            *(writeptr + tgalphaoffset) = 255;
-                            memcpy(writeptr, readptr, 3);
-                            writeptr += targetstep;
-                            sourcex_shift += sourcexstep_shift;
-                        }
-                    }
-                    continue;
-                }
+                // Note: since source has no alpha and we always
+                // have tinting here, there are no good fast paths.
+
+                // Regular heavy duty blit:
                 int reverse_alphar = (INT_COLOR_SCALAR - alphar);
                 *writeptr = _assert_pix256((
                     (int)(*writeptr) *
