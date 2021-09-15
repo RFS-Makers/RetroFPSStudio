@@ -1043,6 +1043,7 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
         int sourceoffset = sourceoffset_start - sourcestep;
         if (sourcehasalpha) {
             // Branch where source HAS ALPHA.
+            const int skipforwardbytes = scalex * targetstep;
             uint8_t *readptr = &source->pixels[sourceoffset];
             while (writeptr != writeptrend) {
                 // XXX: assumes little endian. format is BGR/ABGR
@@ -1051,10 +1052,9 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
                 if (likely(alphabyte == 0)) {
                     // Special case where the pixel is invisible:
                     // (handle that faster)
-                    int skipforward = imin(
-                        scalex, (writeptrend - writeptr) /
-                        targetstep);
-                    writeptr += targetstep * skipforward;
+                    writeptr += skipforwardbytes;
+                    if (writeptr > writeptrend)
+                        break;
                     continue;
                 } else if (likely(!colored &&
                         alphabyte == 255)) {
@@ -1215,9 +1215,9 @@ HOTSPOT void rfssurf_BlitScaled(
             tgx, tgy, clipx, clipy,
             clipw, cliph, r, g, b, a);
     }
-    if (fabs(round(scalex) - scalex) < 0.0001f &&
-            fabs(round(scaley) - scaley) < 0.0001f &&
-            fabs(a - 1) < 0.0001f) {
+    if (fabs(round(scalex) - scalex) < 0.001f &&
+            fabs(round(scaley) - scaley) < 0.001f &&
+            fabs(a - 1) < 0.01f) {
         return rfssurf_BlitScaledIntOpaque(
             target, source,
             tgx, tgy, clipx, clipy, clipw, cliph,
@@ -1664,10 +1664,14 @@ SDL_Texture *rfssurf_AsTex_Update(
     ];
     if (withalpha == srf->hasalpha) {
         const int rowlen = (srf->w * readstep);
-        while (readptr != readptrend) {
-            memcpy(tpixels, readptr, rowlen);
-            tpixels += pitch;
-            readptr += rowlen;
+        if (pitch == rowlen) {
+            memcpy(tpixels, readptr, rowlen * srf->h);
+        } else {
+            while (readptr != readptrend) {
+                memcpy(tpixels, readptr, rowlen);
+                tpixels += pitch;
+                readptr += rowlen;
+            }
         }
     } else {
         while (readptr != readptrend) {
