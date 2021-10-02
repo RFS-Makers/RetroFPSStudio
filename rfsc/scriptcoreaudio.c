@@ -16,6 +16,7 @@
 
 #include "audio/audio.h"
 #include "audio/audiodecodedfile.h"
+#include "midi/midmus.h"
 #include "roomdefs.h"
 #include "scriptcore.h"
 #include "scriptcoreaudio.h"
@@ -60,8 +61,99 @@ int _h3daudio_listsoundcards(lua_State *l) {
 }
 
 
+int _h3daudio_loadsong(lua_State *l) {
+    if (lua_gettop(l) < 1 ||
+            lua_type(l, 1) != LUA_TSTRING) {
+        lua_pushstring(l, "expected arg of type string");
+        return lua_error(l);
+    }
+    const char *p = lua_tostring(l, 1);
+    if (!p) {
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    uint64_t byteslen = 0;
+    if (!vfs_SizeEx(
+            p, p, &byteslen, 0)) {
+        char buf[512];
+        snprintf(buf, sizeof(buf) - 1,
+            "failed to read midi file from disk: %s", p);
+        lua_pushstring(l, buf);
+        return lua_error(l);
+    }
+    if (byteslen > 1 * 1024 * 1024) {
+        char buf[512];
+        snprintf(buf, sizeof(buf) - 1,
+            "midi file too large: %s", p);
+        lua_pushstring(l, buf);
+        return lua_error(l);
+    }
+    char *bytes = malloc(byteslen);
+    if (!bytes) {
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    if (!vfs_GetBytesEx(
+            p, p, 0, byteslen, bytes, 0
+            )) {
+        free(bytes);
+        char buf[512];
+        snprintf(buf, sizeof(buf) - 1,
+            "failed to read midi file from disk: %s", p);
+        lua_pushstring(l, buf);
+        return lua_error(l);
+    }
+    midmussong *song = midmussong_Load(bytes, byteslen);
+    free(bytes);
+    if (!song) {
+        char buf[512];
+        snprintf(buf, sizeof(buf) - 1,
+            "failed to parse file contents "
+            "as midi: %s", p);
+        lua_pushstring(l, buf);
+        return lua_error(l);
+    }
+    scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
+    if (!ref) {
+        midmussong_Free(song);
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    memset(ref, 0, sizeof(*ref));
+    ref->magic = OBJREFMAGIC;
+    ref->type = OBJREF_MIDMUSSONG;
+    ref->value = (uintptr_t)song;
+    return 1;
+}
+
+
+int _h3daudio_destroysong(lua_State *l) {
+    if (lua_gettop(l) < 1 ||
+            lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+            OBJREF_MIDMUSSONG) {
+        lua_pushstring(
+            l, "expected arg of type midmussong");
+        return lua_error(l);
+    }
+    midmussong *s = (midmussong *)(
+        (uintptr_t)((scriptobjref *)lua_touserdata(l, 1))->value);
+    if (!s) {
+        lua_pushstring(l, "couldn't access midmussong - "
+            "was it destroyed?");
+        return lua_error(l);
+    }
+    ((scriptobjref *)lua_touserdata(l, 1))->value = 0;
+    midmussong_Free(s);
+    return 0;
+}
+
+
 int _h3daudio_destroypreloadedsound(lua_State *l) {
-    if (lua_type(l, 1) != LUA_TUSERDATA ||
+    if (lua_gettop(l) < 1 ||
+            lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
             OBJREFMAGIC ||
             ((scriptobjref*)lua_touserdata(l, 1))->type !=
@@ -610,4 +702,8 @@ void scriptcoreaudio_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_h3daudio_destroypreloadedsound");
     lua_pushcfunction(l, _h3daudio_preloadsound);
     lua_setglobal(l, "_h3daudio_preloadsound");
+    lua_pushcfunction(l, _h3daudio_destroysong);
+    lua_setglobal(l, "_h3daudio_destroysong");
+    lua_pushcfunction(l, _h3daudio_loadsong);
+    lua_setglobal(l, "_h3daudio_loadsong");
 }

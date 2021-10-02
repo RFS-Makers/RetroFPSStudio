@@ -28,6 +28,8 @@ function rfs.roomcam._class:render(self, x, y, w, h)
 end
 
 rfs.roomcam._class.draw = _roomcam_render
+rfs.roomcam._class.set_gamma = _roomcam_setgamma
+rfs.roomcam._class.get_gamma = _roomcam_getgamma
 rfs.roomcam._class.set_pos = _roomobj_setpos
 rfs.roomcam._class.get_pos = _roomobj_getpos
 rfs.roomcam._class.set_angle = _roomobj_setangle

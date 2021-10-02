@@ -27,6 +27,10 @@ SDL_Window *outputwindow_GetWindow();
 
 void outputwindow_SetFullscreen();
 
+void outputwindow_ToggleFullscreen();
+
+int outputwindow_GetIsFullscreen();
+
 void outputwindow_UpdateViewport(int forceresize);
 
 void outputwindow_CloseWindow();

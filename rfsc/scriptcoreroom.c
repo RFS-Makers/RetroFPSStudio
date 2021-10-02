@@ -11,6 +11,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "graphics.h"
 #include "math2d.h"
 #include "room.h"
 #include "roomcam.h"
@@ -22,6 +23,7 @@
 #include "roomserialize.h"
 #include "scriptcore.h"
 #include "scriptcoreroom.h"
+#include "vfs.h"
 
 
 static int _roomobj_newinvismovable(lua_State *l) {
@@ -42,6 +44,53 @@ static int _roomobj_newinvismovable(lua_State *l) {
     ref->value = (uintptr_t)mov->obj->id;
     return 1;
 }
+
+
+static int _roomobj_newspritemovable(lua_State *l) {
+    if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TSTRING) {
+        lua_pushstring(l, "expected arg of type string");
+        return lua_error(l);
+    }
+    const char *spritepath = lua_tostring(l, 1);
+    if (!spritepath) {
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    char *pathfixed = graphics_FixTexturePath(spritepath);
+    if (!pathfixed) {
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    printf("path fixed: %s\n", pathfixed);
+    int _exists = 0;
+    if (!vfs_Exists(pathfixed, &_exists, 0) || !_exists) {
+        free(pathfixed);
+        char buf[512];
+        snprintf(buf, sizeof(buf) - 1,
+            "no such sprite path, or I/O error on access: %s",
+            spritepath);
+        lua_pushstring(l, buf);
+        return lua_error(l);
+    }
+    free(pathfixed);
+    movable *mov = movable_CreateWithSingleSprite(spritepath);
+    if (!mov) {
+        lua_pushstring(l, "failed to create object");
+        return lua_error(l);
+    }
+    scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
+    if (!ref) {
+        roomobj_Destroy(mov->obj);
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    memset(ref, 0, sizeof(*ref));
+    ref->magic = OBJREFMAGIC;
+    ref->type = OBJREF_ROOMOBJ;
+    ref->value = (uintptr_t)mov->obj->id;
+    return 1;
+}
+
 
 static int _roomobj_getid(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
@@ -124,6 +173,55 @@ static int _movable_setemit(lua_State *l) {
     cmov->emit_range = radius;
     return 0;
 }
+
+
+static int _roomcam_getgamma(lua_State *l) {
+    if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+                OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+                OBJREF_ROOMOBJ) {
+        wrongargs:;
+        lua_pushstring(l, "expected arg of type roomcam");
+        return lua_error(l);
+    }
+    roomobj *obj = roomobj_ById(
+        (uint64_t)((scriptobjref *)lua_touserdata(l, 1))->value
+    );
+    if (!obj || obj->objtype != ROOMOBJ_CAMERA)
+        goto wrongargs;
+    roomcam *cam = (roomcam *)obj->objdata;
+    lua_pushinteger(l, cam->gamma);
+    return 1;
+}
+
+
+static int _roomcam_setgamma(lua_State *l) {
+    if (lua_gettop(l) < 2 || lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+                OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+                OBJREF_ROOMOBJ ||
+            lua_type(l, 2) != LUA_TNUMBER) {
+        wrongargs:;
+        lua_pushstring(l, "expected args of types roomcam, number");
+        return lua_error(l);
+    }
+    roomobj *obj = roomobj_ById(
+        (uint64_t)((scriptobjref *)lua_touserdata(l, 1))->value
+    );
+    if (!obj || obj->objtype != ROOMOBJ_CAMERA)
+        goto wrongargs;
+    roomcam *cam = (roomcam *)obj->objdata;
+    int64_t gamma = (
+        lua_isinteger(l, 2) ? lua_tointeger(l, 2) :
+        ((int64_t)round(lua_tonumber(l, 2))));
+    if (gamma < 0LL) gamma = 0;
+    if (gamma > 255LL) gamma = 255LL;
+    cam->gamma = gamma;
+    return 0;
+}
+
 
 static int _roomcam_renderstats(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
@@ -670,6 +768,41 @@ static int _roomlayer_global_getlargestcolliderlimit(lua_State *l) {
     return 1;
 }
 
+
+static int _roomlayer_global_getroomtexsizes(lua_State *l) {
+    lua_newtable(l);
+    lua_pushinteger(l, 1);
+    lua_pushinteger(l, FIXED_ROOMTEX_SIZE);
+    lua_settable(l, -3);
+    if (FIXED_ROOMTEX_SIZE_2 != FIXED_ROOMTEX_SIZE) {
+        lua_pushinteger(l, 2);
+        lua_pushinteger(l, FIXED_ROOMTEX_SIZE_2);
+        lua_settable(l, -3);
+    }
+    return 1;
+}
+
+
+static int _roomlayer_global_getspritetexsizes(lua_State *l) {
+    lua_newtable(l);
+    lua_pushinteger(l, 1);
+    lua_pushinteger(l, FIXED_ROOMTEX_SIZE);
+    lua_settable(l, -3);
+    if (FIXED_ROOMTEX_SIZE_2 != FIXED_ROOMTEX_SIZE) {
+        lua_pushinteger(l, 2);
+        lua_pushinteger(l, FIXED_ROOMTEX_SIZE_2);
+        lua_settable(l, -3);
+    }
+    if (FIXED_SPRITETEX_EXTRASIZE != FIXED_ROOMTEX_SIZE &&
+            FIXED_SPRITETEX_EXTRASIZE != FIXED_ROOMTEX_SIZE_2) {
+        lua_pushinteger(l, 3);
+        lua_pushinteger(l, FIXED_SPRITETEX_EXTRASIZE);
+        lua_settable(l, -3);
+    }
+    return 1;
+}
+
+
 static int _roomlayer_getallrooms(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
@@ -755,6 +888,16 @@ void scriptcoreroom_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_roomcam_renderstats");
     lua_pushcfunction(l, _roomobj_newinvismovable);
     lua_setglobal(l, "_roomobj_newinvismovable");
+    lua_pushcfunction(l, _roomobj_newspritemovable);
+    lua_setglobal(l, "_roomobj_newspritemovable");
     lua_pushcfunction(l, _movable_setemit);
     lua_setglobal(l, "_movable_setemit");
+    lua_pushcfunction(l, _roomcam_setgamma);
+    lua_setglobal(l, "_roomcam_setgamma");
+    lua_pushcfunction(l, _roomcam_getgamma);
+    lua_setglobal(l, "_roomcam_getgamma");
+    lua_pushcfunction(l, _roomlayer_global_getroomtexsizes);
+    lua_setglobal(l, "_roomlayer_global_getroomtexsizes");
+    lua_pushcfunction(l, _roomlayer_global_getspritetexsizes);
+    lua_setglobal(l, "_roomlayer_global_getspritetexsizes");
 }

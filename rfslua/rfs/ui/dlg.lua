@@ -9,12 +9,40 @@ if rfs.ui.dlg == nil then
     rfs.ui.dlg = {}
     rfs.ui.dlg.bordersize = 10
     rfs.ui.dlg.bordercolor = {0.1, 0.1, 0.1}
+    rfs.ui.dlg.focuscolor = {0.7, 0.0, 0.7}
+    rfs.ui.dlg.textcolor = {0, 0, 0}
     rfs.ui.dlg.bgcolor = {1.0, 0.9, 1.0}
 end
 
 
 function rfs.ui.dlg.on_mousemove(x, y)
-
+    if not rfs.ui.dlg.isactive() then
+        return false
+    end
+    rfs.ui.dlg.update_sizes()
+    if x < rfs.ui.dlg.dlgx or y < rfs.ui.dlg.dlgy or
+            x > rfs.ui.dlg.dlgx + rfs.ui.dlg.dlgw or
+            y > rfs.ui.dlg.dlgy + rfs.ui.dlg.dlgh then
+        return false
+    end
+    x = x - rfs.ui.dlg.dlgx
+    y = y - rfs.ui.dlg.dlgy
+    local buttonidx = 0
+    for _, button in ipairs(rfs.ui.dlg.buttons) do
+        buttonidx = buttonidx + 1
+        if x > button.x and x < button.x + button.width and
+                y > button.y and
+                y < button.y + button.height then
+            if buttonidx ~= rfs.ui.dlg.focus_index then
+                rfs.ui.dlg.focus_index = buttonidx
+                rfs.ui.playsound(rfs.ui.focussound)
+                rfs.ui.dlg.__focus_ts = rfs.time.ticks()
+                rfs.ui.dlg.__last_draw_scale = nil  -- redraw.
+            end
+            return true
+        end
+    end
+    return true
 end
 
 function rfs.ui.dlg.on_keydown(t)
@@ -26,8 +54,41 @@ function rfs.ui.dlg.on_keydown(t)
     end
     if rfs.ui.dlg.widget ~= nil and
             rfs.ui.dlg.widget.on_keydown ~= nil then
-        rfs.ui.dlg.widget:on_keydown(t)
+        if rfs.ui.dlg.widget:on_keydown(t) == true then
+            rfs.ui.dlg.__last_draw_scale = nil  -- redraw.
+            return true
+        end
+    end
+    if (t == "up" or t == "left" or t == "w" or t == "a") and
+            #rfs.ui.dlg.buttons > 1 then
+        rfs.ui.dlg.focus_index = rfs.ui.dlg.focus_index - 1
+        if rfs.ui.dlg.focus_index < 1 then
+            rfs.ui.dlg.focus_index = #rfs.ui.dlg.buttons
+        end
+        rfs.ui.playsound(rfs.ui.focussound)
+        rfs.ui.dlg.__focus_ts = rfs.time.ticks()
         rfs.ui.dlg.__last_draw_scale = nil  -- redraw.
+        return true
+    elseif (t == "down" or t == "right" or t == "s" or t == "d") and
+            #rfs.ui.dlg.buttons > 1 then
+        rfs.ui.dlg.focus_index = rfs.ui.dlg.focus_index - 1
+        if rfs.ui.dlg.focus_index < 1 then
+            rfs.ui.dlg.focus_index = #rfs.ui.dlg.buttons
+        end
+        rfs.ui.playsound(rfs.ui.focussound)
+        rfs.ui.dlg.__focus_ts = rfs.time.ticks()
+        rfs.ui.dlg.__last_draw_scale = nil  -- redraw.
+        return true
+    elseif (t == "return" or t == "e") and
+            rfs.ui.dlg.focus_index >= 1 and
+            rfs.ui.dlg.focus_index <= #rfs.ui.dlg.buttons then
+        local button = rfs.ui.dlg.buttons[
+            rfs.ui.dlg.focus_index]
+        rfs.ui.playsound(rfs.ui.oksound)
+        if type(button.func) == "function" then
+            button.func(rfs.ui.dlg.get_result())
+        end
+        return true
     end
     return true
 end
@@ -94,6 +155,7 @@ function rfs.ui.dlg.on_click(x, y, button)
             if x > button.x and x < button.x + button.width and
                     y > button.y and
                     y < button.y + button.height then
+                rfs.ui.playsound(rfs.ui.oksound)
                 if type(button.func) == "function" then
                     button.func(rfs.ui.dlg.get_result())
                 end
@@ -320,6 +382,11 @@ function rfs.ui.dlg.show(text, buttons, widget, icon)
     rfs.ui.dlg.close()
 
     -- Set settings and widget:
+    rfs.ui.dlg.__fontname = rfs.ui.default_font
+    if rfs.ui.dlg.font == nil then
+        rfs.ui.dlg.font = (
+            rfs.font.load(rfs.ui.dlg.__fontname))
+    end
     rfs.ui.dlg.widget = nil
     rfs.ui.dlg.widget_info = widget
     if widget.type == "entry" then
@@ -348,8 +415,11 @@ function rfs.ui.dlg.show(text, buttons, widget, icon)
     end
     rfs.ui.dlg.__active = true
     rfs.ui.dlg.__launch_ts = rfs.time.ticks()
+    rfs.ui.dlg.__focus_ts = rfs.time.ticks()
     rfs.ui.dlg.__fontname = rfs.ui.default_font
+    rfs.ui.dlg.focus_index = 1
     rfs.ui.dlg.__fontpt = 14
+    rfs.ui.dlg.__last_draw_focused = false
     rfs.ui.dlg.__last_draw_scale = nil
     rfs.ui.dlg.buttons = buttons
     rfs.ui.dlg.__rt_w = 0
@@ -361,11 +431,15 @@ function rfs.ui.dlg.draw()
     if not rfs.ui.dlg.isactive() then
         return
     end
+    local focusyes = (((
+        rfs.time.ticks() - rfs.ui.dlg.__focus_ts
+    ) % 1200) < 600);
     if rfs.ui.dlg.rt == nil or
             rfs.ui.dlg.__last_draw_scale ~=
             rfs.ui.scaler or
             rfs.ui.dlg.__rt_w ~= rfs.window.renderw or
             rfs.ui.dlg.__rt_h ~= rfs.window.renderh or
+            rfs.ui.dlg.__last_draw_focused ~= focusyes or
             rfs.time.ticks() < rfs.ui.dlg.__launch_ts + 1000 then
         if rfs.ui.dlg.rt == nil then
             rfs.ui.dlg.rt = rfs.gfx.create_target(1, 1, true)
@@ -378,6 +452,7 @@ function rfs.ui.dlg.draw()
         local effectiveborder = rfs.ui.dlg.effectiveborder
         rfs.ui.dlg.__rt_w = rfs.window.renderw
         rfs.ui.dlg.__rt_h = rfs.window.renderh
+        rfs.ui.dlg.__last_draw_focused = focusyes
         rfs.ui.dlg.__last_draw_scale = rfs.ui.scaler
         local oldt = rfs.gfx.get_draw_target()
         rfs.gfx.set_draw_target(rfs.ui.dlg.rt)
@@ -424,7 +499,9 @@ function rfs.ui.dlg.draw()
                 rfs.ui.dlg.iconscale
             )
         end
+        local buttonidx = 0
         for _, button in ipairs(rfs.ui.dlg.buttons) do
+            buttonidx = buttonidx + 1
             local br = (
                 rfs.ui.dlg.bgcolor[1] * 2 +
                 rfs.ui.dlg.bordercolor[1]
@@ -443,13 +520,21 @@ function rfs.ui.dlg.draw()
                 button.width, button.height,
                 br, bg, bb, 1
             )
+            local tr = rfs.ui.dlg.textcolor[1]
+            local tg = rfs.ui.dlg.textcolor[2]
+            local tb = rfs.ui.dlg.textcolor[3]
+            if focusyes and buttonidx == rfs.ui.dlg.focus_index then
+                tr = rfs.ui.dlg.focuscolor[1]
+                tg = rfs.ui.dlg.focuscolor[2]
+                tb = rfs.ui.dlg.focuscolor[3]
+            end
             rfs.ui.dlg.font:draw(
                 button.text, nil,
                 rfs.ui.dlg.dlgx + button.x +
                 rfs.ui.dlg.button_border_width,
                 rfs.ui.dlg.dlgy +
                 button.y + rfs.ui.dlg.button_border_width,
-                0, 0, 0, 1,
+                tr, tg, tb, 1,
                 rfs.ui.dlg.__fontpt * rfs.ui.scaler
             )
         end

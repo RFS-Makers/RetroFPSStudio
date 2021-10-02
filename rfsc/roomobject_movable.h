@@ -33,7 +33,11 @@ typedef struct movable {
 
 movable *movable_Create();
 
-
 movable *movable_CreateWithId(uint64_t id);
+
+movable *movable_CreateWithSingleSprite(const char *sprite);
+
+movable *movable_CreateWithSingleSpriteAndId(
+    const char *sprite, uint64_t sid);
 
 #endif  // RFS2_ROOMOBJECT_MOVABLE_H_

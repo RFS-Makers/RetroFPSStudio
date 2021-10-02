@@ -15,8 +15,19 @@ rfs.ui.default_font = "rfslua/res/ui/font/font_default"
 function rfs.ui.loadsounds()
     if rfs.ui.confirmsound == nil then
         rfs.ui.confirmsound = rfs.audio.preloadsfx(
-            "rfslua/res/default-game-res/sfx/confirm01"
-        )
+            "rfslua/res/default-game-res/sfx/confirm01")
+    end
+    if rfs.ui.focussound == nil then
+        rfs.ui.focussound = rfs.audio.preloadsfx(
+            "rfslua/res/default-game-res/sfx/click02.wav")
+    end
+    if rfs.ui.oksound == nil then
+        rfs.ui.oksound = rfs.audio.preloadsfx(
+            "rfslua/res/default-game-res/sfx/click03.wav")
+    end
+    if rfs.ui.cancelsound == nil then
+        rfs.ui.cancelsound = rfs.audio.preloadsfx(
+            "rfslua/res/default-game-res/sfx/click01.wav")
     end
 end
 

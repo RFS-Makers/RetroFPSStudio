@@ -922,7 +922,8 @@ char *json_EncodedStrFromStackEx(
                         lua_tonumber(l, -2) ||
                     lua_tonumber(l, -2) < 1 ||
                     lua_tonumber(l, -2) >
-                        lua_rawlen(l, valueindex))) {
+                        lua_rawlen(l, valueindex) ||
+                    (is_first_value && lua_tonumber(l, -2) != 1))) {
                 lua_pop(l, 2);  // remove iterated key + value
                 if (error) {
                     char buf[512];
@@ -975,10 +976,17 @@ char *json_EncodedStrFromStackEx(
                 json_Free(v);
                 return NULL;
             }
+            #ifndef NDEBUG
+            int prevaluestack = lua_gettop(l);
+            #endif
             char *value_str = json_EncodedStrFromStackEx(
                 l, -1, maxdepth - 1, error
             );
             lua_pop(l, 1);  // remove value now
+            #ifndef NDEBUG
+            assert(prevaluestack - 1 == lua_gettop(l));
+            assert(lua_type(l, -1) == LUA_TSTRING);
+            #endif
             if (!value_str) {
                 lua_pop(l, 1);  // remove iterated key
                 free(key_str);
@@ -1022,6 +1030,8 @@ char *json_EncodedStrFromStackEx(
             free(key_str);
             free(value_str);
             is_first_value = 0;
+            assert(lua_gettop(l) > 0);
+            assert(lua_type(l, -1) == LUA_TSTRING);
         }
         if (!got_key_value) {
             assert(encoded == NULL && is_first_value);
@@ -1102,6 +1112,7 @@ char *json_EncodedStrFromStackEx(
     }
 }
 
+
 int json_PushEncodedStrToLuaStack(
         lua_State *l, int valueindex, char **error
         ) {
@@ -1111,6 +1122,7 @@ int json_PushEncodedStrToLuaStack(
     lua_pushstring(l, s);
     return 1;
 }
+
 
 int json_PushDecodedValueToLuaStackEx(
         lua_State *l, jsonvalue *jv, int maxdepth
@@ -1170,6 +1182,7 @@ int json_PushDecodedValueToLuaStackEx(
         return 0;
     }
 }
+
 
 int json_PushDecodedValueToLuaStack(lua_State *l, jsonvalue *jv) {
     return json_PushDecodedValueToLuaStackEx(l, jv, 64);

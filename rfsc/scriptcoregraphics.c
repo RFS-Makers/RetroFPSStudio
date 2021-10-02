@@ -28,6 +28,16 @@ static int _graphics_setfullscreen(ATTR_UNUSED lua_State *l) {
     return 0;
 }
 
+static int _graphics_togglefullscreen(ATTR_UNUSED lua_State *l) {
+    outputwindow_ToggleFullscreen();
+    return 0;
+}
+
+static int _graphics_isfullscreen(ATTR_UNUSED lua_State *l) {
+    lua_pushboolean(l, outputwindow_GetIsFullscreen());
+    return 1;
+}
+
 static int _graphics_forceoutputsize(lua_State *l) {
     if (lua_gettop(l) < 2 || lua_type(l, 1) != LUA_TNUMBER ||
             lua_type(l, 2) != LUA_TNUMBER) {
@@ -524,4 +534,8 @@ void scriptcoregraphics_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_graphics_forceoutputsize");
     lua_pushcfunction(l, _graphics_setfullscreen);
     lua_setglobal(l, "_graphics_setfullscreen");
+    lua_pushcfunction(l, _graphics_togglefullscreen);
+    lua_setglobal(l, "_graphics_togglefullscreen");
+    lua_pushcfunction(l, _graphics_isfullscreen);
+    lua_setglobal(l, "_graphics_isfullscreen");
 }

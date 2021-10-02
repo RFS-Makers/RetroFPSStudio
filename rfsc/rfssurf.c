@@ -884,7 +884,8 @@ HOTSPOT void rfssurf_BlitScaledUncolored(
                 uint8_t *readptr = &source->pixels[sourceoffset];
                 int alphar = inta;
                 if (likely(!alphaed)) {
-                    // Special case: don't need to touch every pixel.
+                    // Special case: don't need to touch
+                    // color channels for pixels -> faster.
                     *(writeptr + tgalphaoffset) = 255;
                     memcpy(writeptr, readptr, 3);
                     writeptr += targetstep;
@@ -1194,6 +1195,348 @@ HOTSPOT void rfssurf_BlitScaledIntOpaque(
 }
 
 
+HOTSPOT void rfssurf_BlitScaledBeyond2X(
+        rfssurf *restrict target, rfssurf *restrict source,
+        int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
+        double scalex, double scaley,
+        double r, double g, double b, double a
+        ) {
+    // Almost the fully generalized blitter, except that
+    // the blit must be scaling up 2x or higher on all axes.
+    // This allows skipping one branch for higher speed: while
+    // that may seem ridiculous to near-duplicate the function
+    // for, colored/alpha sprites with >2x scale are THE common
+    // per disaster case for ingame sprites.
+    // So we desperately want to optimize this all we can.
+
+    // Base sanity checks:
+    assert(scalex >= 2 && scaley >= 2);
+    if (!sanitize_clipping_scaled(
+            &tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
+            source, target, scalex, scaley))  // clip to target
+        return;
+    assert(clipx >= 0 && clipy >= 0 &&
+        clipx < source->w && clipy < source->h);
+    assert(clipw >= 0 && clipy >= 0);
+    assert(tgx >= 0 && tgy >= 0 &&
+        tgx < target->w && tgy < target->h);
+    /*printf("sanitized clip scaled gave us: "
+        "unscaled: sx/sy/sw/sh %d/%d/%d/%d tx/ty %d/%d, "
+        "rendertarget: w/h %d/%d, "
+        "scaled: swscaled/shscaled: %f,%f\n",
+        clipx, clipy, clipw, cliph, tgx, tgy,
+        target->w, target->h,
+        (double)clipw * scalex, (double)cliph * scaley);*/
+    const int INT_COLOR_SCALAR = 1024;
+    assert(INT_COLOR_SCALAR >= 2 &&
+        !math_isnpot(INT_COLOR_SCALAR));
+    int intrfull = round(fmin(2 * INT_COLOR_SCALAR,
+        fmax(0, r * (double)INT_COLOR_SCALAR)));
+    int intgfull = round(fmin(2 * INT_COLOR_SCALAR,
+        fmax(0, g * (double)INT_COLOR_SCALAR)));
+    int intbfull = round(fmin(2 * INT_COLOR_SCALAR,
+        fmax(0, b * (double)INT_COLOR_SCALAR)));
+    int inta = round(fmin(INT_COLOR_SCALAR,
+        fmax(0, a * (double)INT_COLOR_SCALAR)));
+    int intrwhite = (intrfull - INT_COLOR_SCALAR);
+    if (intrwhite < 0) intrwhite = 0;
+    int intgwhite = (intgfull - INT_COLOR_SCALAR);
+    if (intgwhite < 0) intgwhite = 0;
+    int intbwhite = (intbfull - INT_COLOR_SCALAR);
+    if (intbwhite < 0) intbwhite = 0;
+    int intr = intrfull;
+    if (intr > INT_COLOR_SCALAR)
+        intr = INT_COLOR_SCALAR - intrwhite;
+    int intg = intgfull;
+    if (intg > INT_COLOR_SCALAR)
+        intg = INT_COLOR_SCALAR - intgwhite;
+    int intb = intbfull;
+    if (intb > INT_COLOR_SCALAR)
+        intb = INT_COLOR_SCALAR - intbwhite;
+
+    const int clipalpha = floor(1 * INT_COLOR_SCALAR / 255);
+    assert(clipalpha > 0);
+    const int maxy = imin(
+        tgy + round(cliph * scaley), target->h);
+    assert(maxy <= target->h);
+    int y = tgy;
+    const int maxx = imin(
+        tgx + round(clipw * scalex), target->w);
+    assert(maxx <= target->w);
+    const int SCALE_SCALAR = 4096;
+    const int scaledivx = round(scalex * SCALE_SCALAR);
+    const int scaledivy = round(scaley * SCALE_SCALAR);
+    const int scaleintx = floor(scalex);
+    const int targetstep = (target->hasalpha ? 4 : 3);
+    const int sourcestep = (source->hasalpha ? 4 : 3);
+    const int scaleintx_times_tgstep = (
+        scaleintx * targetstep);
+    const int scaleintx_minus1_times_tgstep = (
+        (scaleintx - 1) * targetstep);
+    const int sourcehasalpha = source->hasalpha;
+    const int targethasalpha = target->hasalpha;
+    const int tgalphaoffset = (target->hasalpha ? 3 : 0);
+    if (y >= maxy || tgx >= maxx)
+        return;
+    while (y < maxy) {
+        int targetoffset = (
+            (y * target->w + tgx) * targetstep);
+        assert(targetoffset >= 0 && targetoffset <
+            target->w * target->h *
+            (target->hasalpha ? 4 : 3));
+        int sourceoffset_start = (
+            ((int)imin(clipy + cliph - 1,
+                ((y - tgy) * SCALE_SCALAR / scaledivy) +
+                clipy)) *
+            source->w + clipx
+        ) * sourcestep;
+        assert(inta >= 0 && intr >= 0 && intg >= 0 && intb >= 0);
+        assert(inta <= INT_COLOR_SCALAR);
+        assert(intrwhite >= 0 && intgwhite >= 0 &&
+               intbwhite >= 0);
+        uint8_t *writeptr = &target->pixels[targetoffset];
+        uint8_t *writeptrstart = writeptr;
+        uint8_t *writeptrend = &target->pixels[targetoffset +
+            (maxx - tgx) * targetstep];
+        uint64_t sourcexstart_shift = (
+            ((uint64_t)imin(clipw - 1,
+            0 * SCALE_SCALAR / scaledivx) << 16));
+        uint64_t sourcexend_shift = (
+            ((uint64_t)(imin(clipw,
+                (maxx - tgx) * SCALE_SCALAR /
+                scaledivx)) << 16));
+        const int64_t sourcexstep_shift = (
+            (int64_t)(sourcexend_shift - sourcexstart_shift) /
+            (int64_t)imax(1,
+            (maxx - tgx) - 1  // Correct would be - 0,
+                // but due to rounding issues it looks better to
+                // shoot to the right side slightly "early" on some
+                // uneven scaling factors (1.5x etc).
+            ));
+        int64_t sourcex_shift = (
+            sourcexstart_shift - sourcexstep_shift
+        );
+        if (likely(sourcehasalpha &&
+                targethasalpha)) {
+            // Source WITH ALPHA, target WITH ALPHA branch.
+            while (writeptr != writeptrend) {
+                // XXX: assumes little endian. format is BGR/ABGR
+                sourcex_shift += sourcexstep_shift;
+                int sourcex = imin(clipw - 1,
+                    (int64_t)sourcex_shift >> (int64_t)16);
+                int sourceoffset = (
+                    sourceoffset_start + sourcex * 4
+                );
+                uint8_t *readptr = &source->pixels[sourceoffset];
+                const int alphabyte = *(readptr + 3);
+                if (likely(alphabyte == 0)) {
+                    // Special case where the pixel is invisible:
+                    // (We fast forward through upscale pixel size)
+                    writeptr += 4;
+                    uint8_t *innerwriteptrend = (
+                        writeptr +
+                        scaleintx_minus1_times_tgstep
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
+                    while (writeptr != innerwriteptrend) {
+                        writeptr += 4;
+                        sourcex_shift += sourcexstep_shift;
+                    }
+                    continue;
+                }
+                // NOTE: no special case for alpha=255, since
+                // we got guaranteed color tint or we would have
+                // gone into rfssurf_BlitScaledUncolored instead.
+
+                // Regular heavy duty blitting:
+                int alphar = (inta * ((int)alphabyte *
+                        INT_COLOR_SCALAR / 255)) /
+                        INT_COLOR_SCALAR;
+                assert(alphar <= INT_COLOR_SCALAR);
+                int reverse_alphar = (INT_COLOR_SCALAR - alphar);
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intr / INT_COLOR_SCALAR +
+                        255 *
+                        intrwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intg / INT_COLOR_SCALAR +
+                        255 *
+                        intgwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intb / INT_COLOR_SCALAR +
+                        255 *
+                        intbwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR));
+                writeptr++;
+                readptr++;
+                int a = (int)(*writeptr) *
+                    INT_COLOR_SCALAR;
+                a = (INT_COLOR_SCALAR * 255 - a) *
+                    reverse_alphar /
+                    INT_COLOR_SCALAR;
+                a = (INT_COLOR_SCALAR * 255 - a);
+                *writeptr = _assert_pix256(
+                    a / INT_COLOR_SCALAR
+                );
+                writeptr++;
+            }
+        } else if (likely(sourcehasalpha &&
+                !targethasalpha)) {
+            // Source WITH ALPHA, target with NO ALPHA branch.
+            while (writeptr != writeptrend) {
+                // XXX: assumes little endian. format is BGR/ABGR
+                sourcex_shift += sourcexstep_shift;
+                int sourcex = imin(clipw - 1,
+                    (int64_t)sourcex_shift >> (int64_t)16);
+                int sourceoffset = (
+                    sourceoffset_start + sourcex * 4
+                );
+                uint8_t *readptr = &source->pixels[sourceoffset];
+                const int alphabyte = *(readptr + 3);
+                if (likely(alphabyte == 0)) {
+                    // Special case where the pixel is invisible:
+                    // (We fast forward through upscale pixel size)
+                    writeptr += 3;
+                    uint8_t *innerwriteptrend = (
+                        writeptr +
+                        scaleintx_minus1_times_tgstep
+                    );
+                    innerwriteptrend = (
+                        innerwriteptrend < writeptrend ?
+                        innerwriteptrend : writeptrend);
+                    while (writeptr != innerwriteptrend) {
+                        writeptr += 3;
+                        sourcex_shift += sourcexstep_shift;
+                    }
+                    continue;
+                }
+                // NOTE: as explained in loop above, no 255 case.
+                // Regular heavy duty blit:
+                int alphar = (inta * ((int)alphabyte *
+                        INT_COLOR_SCALAR / 255)) /
+                        INT_COLOR_SCALAR;
+                assert(alphar <= INT_COLOR_SCALAR);
+                int reverse_alphar = (INT_COLOR_SCALAR - alphar);
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intr / INT_COLOR_SCALAR +
+                        255 *
+                        intrwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
+                ));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intg / INT_COLOR_SCALAR +
+                        255 *
+                        intgwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
+                ));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intb / INT_COLOR_SCALAR +
+                        255 *
+                        intbwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
+                ));
+                writeptr++;
+                readptr++;
+            }
+        } else {
+            // Source WITHOUT alpha loop.
+            while (writeptr != writeptrend) {
+                // XXX: assumes little endian. format is BGR/ABGR
+                sourcex_shift += sourcexstep_shift;
+                int sourcex = imin(clipw - 1,
+                    (int64_t)sourcex_shift >> (int64_t)16);
+                int sourceoffset = (
+                    sourceoffset_start + sourcex * 3
+                );
+                uint8_t *readptr = &source->pixels[sourceoffset];
+                int alphar = inta;
+                // Note: since source has no alpha and we always
+                // have tinting here, there are no good fast paths.
+
+                // Regular heavy duty blit:
+                int reverse_alphar = (INT_COLOR_SCALAR - alphar);
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intr / INT_COLOR_SCALAR +
+                        255 *
+                        intrwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
+                ));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intg / INT_COLOR_SCALAR +
+                        255 *
+                        intgwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
+                ));
+                writeptr++;
+                readptr++;
+                *writeptr = _assert_pix256((
+                    (int)(*writeptr) *
+                        reverse_alphar / INT_COLOR_SCALAR +
+                    ((int)(*readptr) *
+                        intb / INT_COLOR_SCALAR +
+                        255 *
+                        intbwhite / INT_COLOR_SCALAR) *
+                        alphar / INT_COLOR_SCALAR
+                ));
+                writeptr++;
+                readptr++;
+                if (likely(target->hasalpha)) {
+                    int a = (int)(*writeptr) *
+                        INT_COLOR_SCALAR;
+                    a = (INT_COLOR_SCALAR * 255 - a) *
+                        reverse_alphar /
+                        INT_COLOR_SCALAR;
+                    a = (INT_COLOR_SCALAR * 255 - a);
+                    *writeptr = _assert_pix256(
+                        a / INT_COLOR_SCALAR
+                    );
+                    writeptr++;
+                }
+            }
+        }
+        y++;
+    }
+}
+
+
 HOTSPOT void rfssurf_BlitScaled(
         rfssurf *restrict target, rfssurf *restrict source,
         int tgx, int tgy, int clipx, int clipy, int clipw, int cliph,
@@ -1231,6 +1574,12 @@ HOTSPOT void rfssurf_BlitScaled(
             tgx, tgy, clipx, clipy, clipw, cliph,
             scalex, scaley, a);
     }
+    if (scalex >= 2 && scaley >= 2) {
+        return rfssurf_BlitScaledBeyond2X(
+            target, source,
+            tgx, tgy, clipx, clipy, clipw, cliph,
+            scalex, scaley, r, g, b, a);
+    }
     if (!sanitize_clipping_scaled(
             &tgx, &tgy, &clipx, &clipy, &clipw, &cliph,
             source, target, scalex, scaley))  // clip to target
@@ -1248,6 +1597,8 @@ HOTSPOT void rfssurf_BlitScaled(
         target->w, target->h,
         (double)clipw * scalex, (double)cliph * scaley);*/
     const int INT_COLOR_SCALAR = 1024;
+    assert(INT_COLOR_SCALAR >= 2 &&
+        !math_isnpot(INT_COLOR_SCALAR));
     int intrfull = round(fmin(2 * INT_COLOR_SCALAR,
         fmax(0, r * (double)INT_COLOR_SCALAR)));
     int intgfull = round(fmin(2 * INT_COLOR_SCALAR,
@@ -1338,6 +1689,7 @@ HOTSPOT void rfssurf_BlitScaled(
         if (likely(sourcehasalpha &&
                 targethasalpha)) {
             // Source WITH ALPHA, target WITH ALPHA branch.
+            #pragma GCC unroll 0
             while (writeptr != writeptrend) {
                 // XXX: assumes little endian. format is BGR/ABGR
                 sourcex_shift += sourcexstep_shift;
@@ -1355,11 +1707,12 @@ HOTSPOT void rfssurf_BlitScaled(
                     if (likely(scaleintx > 1)) {
                         uint8_t *innerwriteptrend = (
                             writeptr +
-                            scaleintx_times_tgstep
+                            scaleintx_minus1_times_tgstep
                         );
                         innerwriteptrend = (
                             innerwriteptrend < writeptrend ?
                             innerwriteptrend : writeptrend);
+                        #pragma GCC unroll 2
                         while (writeptr != innerwriteptrend) {
                             writeptr += 4;
                             sourcex_shift += sourcexstep_shift;
@@ -1421,6 +1774,7 @@ HOTSPOT void rfssurf_BlitScaled(
         } else if (likely(sourcehasalpha &&
                 !targethasalpha)) {
             // Source WITH ALPHA, target with NO ALPHA branch.
+            #pragma GCC unroll 0
             while (writeptr != writeptrend) {
                 // XXX: assumes little endian. format is BGR/ABGR
                 sourcex_shift += sourcexstep_shift;
@@ -1443,6 +1797,7 @@ HOTSPOT void rfssurf_BlitScaled(
                         innerwriteptrend = (
                             innerwriteptrend < writeptrend ?
                             innerwriteptrend : writeptrend);
+                        #pragma GCC unroll 2
                         while (writeptr != innerwriteptrend) {
                             writeptr += 3;
                             sourcex_shift += sourcexstep_shift;
@@ -1493,6 +1848,7 @@ HOTSPOT void rfssurf_BlitScaled(
             }
         } else {
             // Source WITHOUT alpha loop.
+            #pragma GCC unroll 0
             while (writeptr != writeptrend) {
                 // XXX: assumes little endian. format is BGR/ABGR
                 sourcex_shift += sourcexstep_shift;
@@ -1607,8 +1963,8 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
     const uint8_t *srfpixels = srf->pixels;
     const int sdlsrfpitch = srf->sdlsrf->pitch;
     int sourceoffset = 0;
-    int y = 0;
-    while (y < height) {
+    #pragma GCC unroll 0
+    for (int y = 0; y < height; y++) {
         int x = 0;
         char *pnow = p;
         char *maxp = p + (4 * width);
@@ -1629,7 +1985,6 @@ HOTSPOT SDL_Surface *rfssurf_AsSrf(
             srfpixels += sourcestepsize;
         }
         p += sdlsrfpitch;
-        y++;
     }
     SDL_UnlockSurface(srf->sdlsrf);
     return srf->sdlsrf;

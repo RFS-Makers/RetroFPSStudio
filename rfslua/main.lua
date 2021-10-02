@@ -28,7 +28,18 @@ while argno + 1 <= #pargs do
         print("RFS2 v" .. rfs.version)
         os.exit(0)
     end
-    if v == "--internal-do-update-to" then
+    if v == "--sha512crypt" then
+        if argno + 3 > #pargs then
+            error("--sha512crypt needs 3 arguments: " ..
+                "key salt rounds")
+        end
+        local key = tostring(pargs[argno + 1])
+        local salt = tostring(pargs[argno + 2])
+        local rounds = tonumber(pargs[argno + 3])
+        print(_crypto_sha512crypt(key, salt, rounds))
+        os.exit(0)
+    end
+    if v == "--internal-do-update-to" and argno + 1 <= #pargs then
         optionknown = true
         local target = os.normpath(pargs[argno + 1])
         rfseditor._updatetask = function()

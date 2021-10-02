@@ -11,7 +11,9 @@ if rfs.window == nil then
     rfs.window.uiscaler = 1
 end
 
+rfs.window.toggle_fullscreen = _graphics_togglefullscreen
 rfs.window.enable_fullscreen = _graphics_setfullscreen
+rfs.window.is_fullscreen = _graphics_isfullscreen
 rfs.window.force_software = _window_no3dacc
 rfs.window.set_rel_mouse = _window_setrelmouse
 rfs.window.quit = _window_quit

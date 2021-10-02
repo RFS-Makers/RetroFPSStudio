@@ -65,32 +65,39 @@ function rfs.ui.menuwidget.classtable.set_centered(
     self:update_size()
 end
 
-function rfs.ui.menuwidget.classtable.disable_entry(no)
+function rfs.ui.menuwidget.classtable.disable_entry(self, no)
     if no < 1 or no > #self.entries then
         return
     end
     self.entries[no].disabled = true
     if self.selected == no then
-        self.selected = -1
-        local i = 1
-        while i <= #self.entries do
-            if not self.entries[i].disabled then
-                self.selected = i
+        self.selected = self.selected + 1
+        while self.selected ~= no do
+            if self.selected > #self.entries then
+                self.selected = 1
+            elseif not self.entries[self.selected].disabled then
                 break
+            else
+                self.selected = self.selected + 1
             end
-            i = i + 1
+        end
+        if self.selected == no then
+            self.selected = -1
         end
     end
 end
 
 function rfs.ui.menuwidget.classtable.add_entry(
-        self, text, icon, red, green, blue,
+        self, text, icon, func, red, green, blue,
         focus_red, focus_green, focus_blue
         )
     if (type(text) ~= "string" and text ~= nil) or
             (type(icon) ~= "string" and icon ~= nil) then
         error("expected text and icon args to " ..
             "be string if specified")
+    end
+    if type(func) ~= "function" and func ~= nil then
+        error("expected func arg to be function if specified")
     end
     if (type(icon) == "string" and
              not rfs.vfs.exists(icon) and
@@ -144,7 +151,8 @@ function rfs.ui.menuwidget.classtable.add_entry(
         red=red, green=green, blue=blue,
         focus_red=focus_red,
         focus_green=focus_green,
-        focus_blue=focus_blue
+        focus_blue=focus_blue,
+        func=func
     })
     if self.selected < 0 then
         self.selected = #self.entries
@@ -159,7 +167,8 @@ function rfs.ui.menuwidget.classtable.on_keydown(self, k)
     if not self.focused then
         return
     end
-    if (k == "down" or k == "s") and #self.entries ~= 0 then
+    if (k == "down" or k == "s" or k == "right") and
+            #self.entries ~= 0 then
         local selected_next = math.max(1, self.selected + 1)
         while true do
             if selected_next > #self.entries then
@@ -173,11 +182,13 @@ function rfs.ui.menuwidget.classtable.on_keydown(self, k)
             end
         end
         if self.selected ~= selected_next then
+            rfs.ui.playsound(rfs.ui.focussound)
             self.blink_ts = rfs.time.ticks()
             self.selected = selected_next
         end
         return true
-    elseif (k == "up" or k == "w") and #self.entries ~= 0 then
+    elseif (k == "up" or k == "w" or k == "left") and
+            #self.entries ~= 0 then
         local selected_next = self.selected - 1
         while true do
             if selected_next < 1 then
@@ -191,10 +202,44 @@ function rfs.ui.menuwidget.classtable.on_keydown(self, k)
             end
         end
         if self.selected ~= selected_next then
+            rfs.ui.playsound(rfs.ui.focussound)
             self.blink_ts = rfs.time.ticks()
             self.selected = selected_next
         end
         return true
+    elseif (k == "return" or k == "e") and
+            #self.entries > 0 and
+            self.selected >= 1 and
+            self.selected <= #self.entries and
+            not self.entries[self.selected].disabled then
+        rfs.ui.playsound(rfs.ui.oksound)
+        if self.entries[self.selected].func ~= nil then
+            self.entries[self.selected].func()
+        end
+        return true
+    end
+end
+
+function rfs.ui.menuwidget.classtable.on_click(
+        self, x, y, button)
+    local i = 1
+    while i <= #self.entries do
+        if x >= self.entries[i].x and
+                x < self.entries[i].x +
+                self.entries[i].width and
+                y >= self.entries[i].y and
+                y < self.entries[i].y +
+                self.entries[i].height and
+                not self.entries[i].disabled then
+            self.selected = i
+            rfs.ui.playsound(rfs.ui.oksound)
+            self.blink_ts = rfs.time.ticks()
+            if self.entries[i].func ~= nil then
+                self.entries[i].func()
+            end
+            return true
+        end
+        i = i + 1
     end
 end
 
@@ -209,6 +254,7 @@ function rfs.ui.menuwidget.classtable.on_mousemove(self, x, y)
                 self.entries[i].height and
                 not self.entries[i].disabled then
             if self.selected ~= i then
+                rfs.ui.playsound(rfs.ui.focussound)
                 self.blink_ts = rfs.time.ticks()
                 self.selected = i
             end

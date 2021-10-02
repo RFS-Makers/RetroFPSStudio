@@ -43,6 +43,7 @@ function rfseditor.titlescene.draw_particles()
     end
 end
 
+
 function rfseditor.titlescene.update_particles()
     if rfseditor.titlescene._particles == nil or
             #rfseditor.titlescene._particles == 0 or
@@ -84,6 +85,7 @@ function rfseditor.titlescene.update_particles()
     end
 end
 
+
 function rfseditor.titlescene.on_debugstr()
     if rfs._show_renderstats and
             rfseditor._democam ~= nil then
@@ -92,6 +94,120 @@ function rfseditor.titlescene.on_debugstr()
     end
     return ""
 end
+
+
+function rfseditor.titlescene.show_titlegammasettings()
+    rfseditor.state = "titlemenu"
+    local scaler = rfs.ui.scaler
+    rfseditor.titlescene._menu = (
+        rfs.ui.menuwidget.new(nil, 17 * scaler, 50)
+    )
+    rfseditor.titlescene._menu:set_focus()
+    rfseditor.titlescene._menu:set_centered(true)
+    rfseditor.titlescene._menu.id = "titlesettings"
+    rfseditor.titlescene._menu:add_entry(
+        "BRIGHTNESS")
+    rfseditor.titlescene._menu:add_entry(
+        "Brighter", nil, function()
+            rfseditor.settings.gamma = math.min(255,
+                rfseditor.settings.gamma + 15
+            )
+            if rfseditor._democam ~= nil then
+                rfseditor._democam:set_gamma(
+                    rfseditor.settings.gamma)
+            end
+            rfseditor.settings.save()
+        end
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Darker", nil, function()
+            rfseditor.settings.gamma = math.max(0,
+                rfseditor.settings.gamma - 15
+            )
+            if rfseditor._democam ~= nil then
+                rfseditor._democam:set_gamma(
+                    rfseditor.settings.gamma)
+            end
+            rfseditor.settings.save()
+        end
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Reset", nil, function()
+            rfseditor.settings.gamma = 128
+            if rfseditor._democam ~= nil then
+                rfseditor._democam:set_gamma(
+                    rfseditor.settings.gamma)
+            end
+            rfseditor.settings.save()
+        end
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Back", nil,
+        rfseditor.titlescene.show_titledisplaysettings
+    )
+    rfseditor.titlescene._menu:disable_entry(1)
+    rfseditor.titlescene.update_menu()
+end
+
+
+function rfseditor.titlescene.show_titledisplaysettings()
+    rfseditor.state = "titlemenu"
+    local scaler = rfs.ui.scaler
+    rfseditor.titlescene._menu = (
+        rfs.ui.menuwidget.new(nil, 17 * scaler, 50)
+    )
+    rfseditor.titlescene._menu:set_focus()
+    rfseditor.titlescene._menu:set_centered(true)
+    rfseditor.titlescene._menu.id = "titlesettings"
+    rfseditor.titlescene._menu:add_entry(
+        "DISPLAY")
+    rfseditor.titlescene._menu:add_entry(
+        "Brightness...", nil,
+        rfseditor.titlescene.show_titlegammasettings
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Toggle Fullscreen", nil,
+        function()
+            rfs.window.toggle_fullscreen()
+            rfseditor.settings.fullscreen = (
+                rfs.window.is_fullscreen())
+            rfseditor.settings.save()
+        end
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Back", nil, rfseditor.titlescene.show_titlesettings
+    )
+    rfseditor.titlescene._menu:disable_entry(1)
+    rfseditor.titlescene.update_menu()
+end
+
+
+function rfseditor.titlescene.show_titlesettings()
+    rfseditor.state = "titlemenu"
+    local scaler = rfs.ui.scaler
+    rfseditor.titlescene._menu = (
+        rfs.ui.menuwidget.new(nil, 17 * scaler, 50)
+    )
+    rfseditor.titlescene._menu:set_focus()
+    rfseditor.titlescene._menu:set_centered(true)
+    rfseditor.titlescene._menu.id = "titlesettings"
+    rfseditor.titlescene._menu:add_entry(
+        "SETTINGS")
+    rfseditor.titlescene._menu:add_entry(
+        "Display...", nil,
+        rfseditor.titlescene.show_titledisplaysettings
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "About...", nil,
+        rfseditor.titlescene.show_credits
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Back", nil, rfseditor.titlescene.show_titlemenu
+    )
+    rfseditor.titlescene._menu:disable_entry(1)
+    rfseditor.titlescene.update_menu()
+end
+
 
 function rfseditor.titlescene.show_titlemenu()
     rfseditor.state = "titlemenu"
@@ -109,18 +225,25 @@ function rfseditor.titlescene.show_titlemenu()
         nil, "rfslua/res/ui/$rgsmenu_play"
     )
     rfseditor.titlescene._menu:add_entry(
-        "Settings"
+        "Settings", nil, rfseditor.titlescene.show_titlesettings
     )
     rfseditor.titlescene._menu:add_entry(
-        "Quit"
+        "Quit", nil, function()
+            rfseditor.titlescene._menu = nil
+            rfseditor.titlescene._quitts = rfs.time.ticks()
+            rfseditor.state = "quitting"
+        end
     )
     rfseditor.titlescene.update_menu()
 end
 
+
 function rfseditor.titlescene.update_menu()
     local scaler = rfs.ui.scaler
-    if rfseditor.titlescene._menu ~= nil and
-            rfseditor.titlescene._menu.id == "titlemenu" then
+    if rfseditor.titlescene._menu ~= nil and (
+            rfseditor.titlescene._menu.id == "titlemenu" or
+            rfseditor.titlescene._menu.id == "titlesettings")
+            then
         rfseditor.titlescene._menu:set_pt(
             math.max(1, math.round(17 * scaler))
         )
@@ -146,6 +269,7 @@ function rfseditor.titlescene.update_menu()
         end
     end
 end
+
 
 function rfseditor.titlescene.load_demo_level()
     if rfseditor._demolevel ~= nil then
@@ -195,18 +319,33 @@ function rfseditor.titlescene.load_demo_level()
         floor={texpath="rfslua/res/default-game-res/texture/wood1"},  
     }})
     local obj = rfs.movable.new_invisible()
-    obj:set_light(1, 0.8, 0, rfseditor.defaults.one_meter_units * 4)
+    obj:set_light(0, 0.8, 1, rfseditor.defaults.one_meter_units * 4)
     obj:set_layer(lvl)
+    local torch = rfs.movable.new_sprite(
+        "rfslua/res/default-game-res/sprite/scenery/torch_$emit")
+    torch:set_light(1, 0.8, 0, rfseditor.defaults.one_meter_units * 3)
+    torch:set_pos(
+        rfseditor.defaults.one_meter_units * 0.02,
+        -(rfseditor.defaults.one_meter_units * 0.01), 0)
+    torch:set_layer(lvl)
     rfseditor._demolevel = lvl
     if rfseditor._democam == nil then
         rfseditor._democam = rfs.roomcam.new()
         assert(rfseditor._democam ~= nil)
+        rfseditor._democam:set_gamma(rfseditor.settings.gamma)
     end
     rfseditor._democam:set_layer(rfseditor._demolevel)
 end
 
+
 function rfseditor.titlescene.on_enter()
+    rfseditor.settings.load()
     rfs.ui.loadsounds()
+    if rfseditor.settings.fullscreen and
+            not rfs.window.is_fullscreen() then
+        rfs.window.enable_fullscreen()
+    end
+    --local songtest = rfs.song.load("test.mid")
     rfseditor.titlescene._menu = nil
     rfseditor._democamts = nil
     if rfseditor._updatetask == nil then
@@ -218,7 +357,11 @@ function rfseditor.titlescene.on_enter()
     else
         rfseditor.state = "do_update_task"
     end
+    if rfseditor.settings.fullscreen then
+        rfs.window.enable_fullscreen()
+    end
 end
+
 
 function _devversion_warning()
     rfs.ui.dlg.show(
@@ -253,13 +396,25 @@ function rfseditor.titlescene.on_keydown(k)
     end
 end
 
+
 function rfseditor.titlescene.on_click(x, y, button)
     if rfseditor.state == "show_press_any_key" then
         rfseditor.state = "devwarning"
         rfs.ui.playsound(rfs.ui.confirmsound)
         _devversion_warning()
+        return
+    end
+    if rfseditor.titlescene._menu ~= nil then
+        if rfseditor.titlescene._menu:on_click(
+                x - rfseditor.titlescene._menu.x,
+                y - rfseditor.titlescene._menu.y,
+                button
+                ) == true then
+            return
+        end
     end
 end
+
 
 function rfseditor.titlescene.on_mousemove(x, y)
     if rfseditor.titlescene._menu ~= nil then
@@ -272,11 +427,19 @@ function rfseditor.titlescene.on_mousemove(x, y)
     end
 end
 
+
 function rfseditor.titlescene.on_update()
     rfseditor.titlescene.update_menu()
     _titlescreen_update_on_update()
     _titlescreen_license_on_update()
     rfseditor.titlescene.update_particles()
+
+    -- Handle delayed quit:
+    if rfseditor.state == "quitting" and
+            rfseditor.titlescene._quitts + 300 <
+            rfs.time.ticks() then
+        rfs.window.quit()
+    end
 
     -- 3D world pos update:
     if rfseditor._democam ~= nil then
@@ -316,6 +479,7 @@ function rfseditor.titlescene.on_update()
     end
 end
 
+
 function rfseditor.titlescene.on_draw()
     local scaler = rfs.ui.scaler
     rfseditor.titlescene.horimenu = (
@@ -326,8 +490,9 @@ function rfseditor.titlescene.on_draw()
         rfseditor.titlescene.horimenu = false
     end
     if rfseditor.state == "titlemenu" and
-            (rfseditor.titlescene._menu == nil or
-            rfseditor.titlescene._menu.id ~= "titlemenu") then
+            (rfseditor.titlescene._menu == nil or (
+            rfseditor.titlescene._menu.id ~= "titlemenu" and
+            rfseditor.titlescene._menu.id ~= "titlesettings")) then
         rfseditor.titlescene.show_titlemenu()
     end
     rfseditor.titlescene.update_menu()

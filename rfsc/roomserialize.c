@@ -824,7 +824,8 @@ int roomserialize_lua_SetObjectProperties(
                     snprintf(buf, sizeof(buf) - 1,
                         "object with id %" PRIu64 " has "
                         "\"sprite\" "
-                        "with \"texpath\" not a string",
+                        "with \"texpath\" set, but "
+                        "not to a string",
                         objid);
                     *err = strdup(buf);
                     lua_settop(l, startstack);
@@ -848,7 +849,9 @@ int roomserialize_lua_SetObjectProperties(
                     if (t && (t->w != FIXED_ROOMTEX_SIZE ||
                             t->h != FIXED_ROOMTEX_SIZE) &&
                             (t->w != FIXED_ROOMTEX_SIZE_2 ||
-                            t->h != FIXED_ROOMTEX_SIZE_2)) {
+                            t->h != FIXED_ROOMTEX_SIZE_2) &&
+                            (t->w != FIXED_SPRITETEX_EXTRASIZE ||
+                            t->h != FIXED_SPRITETEX_EXTRASIZE)) {
                         *err = strdup("sprite tex has "
                             "wrong size");
                         lua_settop(l, startstack);

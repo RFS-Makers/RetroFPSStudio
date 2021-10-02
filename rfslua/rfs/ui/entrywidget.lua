@@ -10,7 +10,8 @@ if rfs.ui.entrywidget == nil then
 end
 
 function rfs.ui.entrywidget.new(font, pt_size, width, multiline)
-    if type(font) ~= "table" or type(font.calcheight) ~= "function" then
+    if type(font) ~= "userdata" or
+            type(font.calcheight) ~= "function" then
         error("expected arg #1 to be RFS font")
     end
     if type(pt_size) ~= "number" then
@@ -51,10 +52,17 @@ end
 function rfs.ui.entrywidget.classtable.on_keydown(self, k)
     if k == "backspace" then
         self.text = self.text:sub(1, #self.text - 1)
+        return true
     elseif k == "v" then
         if rfs.events.ctrl_pressed() then
             self:on_text(os.clipboard_paste())
+            return true
         end
+    elseif k == "w" or k == "s" or k == "a" or k == "d" or
+            k == "e" then
+        -- Make sure these aren't treated up the chain,
+        -- since we need them for text input:
+        return true
     end
 end
 
@@ -87,7 +95,7 @@ function rfs.ui.entrywidget.classtable.update_size(self)
         i = i + 1
     end
     local lineheight = self.font:calcheight(
-        self.pt_size, t
+        t, nil, self.pt_size
     )
     self.height = lineheight + self.border_size * 2
 end
@@ -117,7 +125,7 @@ function rfs.ui.entrywidget.classtable.draw(self, x, y)
         wlimit = self.width
     else
         local draw_w = self.font:calcwidth(
-            self.pt_size, self.text .. "■"
+            self.text .. "■", self.pt_size
         )
         xtextoffset = math.min(0, -(draw_w - self.width))
     end
@@ -125,11 +133,10 @@ function rfs.ui.entrywidget.classtable.draw(self, x, y)
         x, y, self.width, self.height
     )
     self.font:draw(
-        self.pt_size, self.text .. "■",
+        self.text .. "■", nil,
         x + self.border_size + xtextoffset,
         y + self.border_size,
-        nil,
-        fgr, fgg, fgb, 1
+        fgr, fgg, fgb, 1, self.pt_size
     )
     rfs.gfx.pop_scissors()
 end

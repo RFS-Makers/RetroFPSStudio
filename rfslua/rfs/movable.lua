@@ -24,6 +24,20 @@ function rfs.movable.new_invisible()
     return result
 end
 
+function rfs.movable.new_sprite(path)
+    local result = _roomobj_newspritemovable(path)
+    debug.setmetatable(result, {
+        __index = rfs.movable._class,
+        --[[__gc = function(self)
+            local f = function(gcself)
+                _roomobj_destroy(gcself)
+            end
+            pcall(f, self)
+        end]]
+    })
+    return result
+end
+
 rfs.movable._class.set_pos = _roomobj_setpos
 rfs.movable._class.get_pos = _roomobj_getpos
 rfs.movable._class.set_angle = _roomobj_setangle

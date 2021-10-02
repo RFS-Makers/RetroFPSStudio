@@ -19,6 +19,7 @@
 #include "scriptcore.h"
 #include "scriptcorearchive.h"
 #include "scriptcoreaudio.h"
+#include "scriptcorecrypto.h"
 #include "scriptcoreerror.h"
 #include "scriptcoreevents.h"
 #include "scriptcorefilesys.h"
@@ -170,6 +171,7 @@ int scriptcore_Run(int argc, const char **argv) {
     scriptcoreplatform_AddFunctions(l);
     scriptcorefilesys_AddFunctions(l);
     scriptcorefilesys_RegisterVFS(l);
+    scriptcorecrypto_AddFunctions(l);
     scriptcoreevents_AddFunctions(l);
     scriptcorejson_AddFunctions(l);
     scriptcoremath_AddFunctions(l);

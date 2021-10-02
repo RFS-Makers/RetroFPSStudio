@@ -42,16 +42,19 @@ const char *outputwindow_RendererName() {
     if (!rfsrenderer)
         return NULL;
     return currentrendername;
+
 }
 
 void outputwindow_ForceNo3DAcc() {
     rfsforceno3d = 1;
 }
 
+
 SDL_Renderer *outputwindow_GetRenderer() {
     outputwindow_EnsureOpenWindow(0);
     return rfsrenderer;
 }
+
 
 void outputwindow_SetFullscreen() {
     openinfullscreen = 1;
@@ -59,6 +62,28 @@ void outputwindow_SetFullscreen() {
         SDL_SetWindowFullscreen(rfswindow, SDL_WINDOW_FULLSCREEN);
     }
 }
+
+
+void outputwindow_ToggleFullscreen() {
+    int is_fullscreen = outputwindow_GetIsFullscreen();
+    if (!is_fullscreen) {
+        openinfullscreen = 1;
+        if (rfswindow) {
+            SDL_SetWindowFullscreen(rfswindow, SDL_WINDOW_FULLSCREEN);
+        }
+    } else {
+        openinfullscreen = 0;
+        if (rfswindow) {
+            SDL_SetWindowFullscreen(rfswindow, 0);
+        }
+    }
+}
+
+
+int outputwindow_GetIsFullscreen() {
+    return (openinfullscreen != 0);
+}
+
 
 void outputwindow_EnsureOpenWindow(int forceno3d) {
     int fullscreen = openinfullscreen;
