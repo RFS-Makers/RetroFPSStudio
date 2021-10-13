@@ -109,7 +109,7 @@ int _h3daudio_loadsong(lua_State *l) {
         char buf[512];
         snprintf(buf, sizeof(buf) - 1,
             "failed to parse file contents "
-            "as midi: %s", p);
+            "as midi, or out of memory doing so: %s", p);
         lua_pushstring(l, buf);
         return lua_error(l);
     }

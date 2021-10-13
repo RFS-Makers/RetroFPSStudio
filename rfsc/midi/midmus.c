@@ -44,6 +44,7 @@ typedef struct midmussong_midiinfo {
 
     midmussong_midiinfotrack *songtrackinfo;
 
+    int midippq;  // Parts Per Quarter (=clock ticks per beat)
     int sourcetrackcount;
     midmussong_midiinfosourcetrack *sourcetrackinfo;
 } midmussong_midiinfo;
@@ -59,6 +60,106 @@ static void midmussong_FreeMidiInfoContents(
     free(minfo->songtrackinfo);
     free(minfo->sourcetrackinfo);
     memset(minfo, 0, sizeof(*minfo));
+}
+
+
+void midmussong_UpdateMeasureTiming(
+        midmusmeasure *measure) {  // Update measure length based on
+                                   // time signature and BPM.
+    assert(measure->signaturediv > 0);
+    measure->beatpermeasure = (
+        (double)measure->signaturenom /
+        (double)measure->signaturediv) * 4.0;
+    if (fabs(measure->beatpermeasure -
+            round(measure->beatpermeasure)) < 0.01 &&
+            round(measure->beatpermeasure) > 0) {
+        // Avoid rounding issues by erring towards whole numbers.
+        measure->beatpermeasure = round(
+            measure->beatpermeasure);
+    }
+    double beatsseconds = 1.0 / (
+        (double)measure->bpm / 60.0);
+    measure->samplelen = round(
+        ((double)MIDMUS_SAMPLERATE) * beatsseconds *
+        ((double)measure->beatpermeasure));
+}
+
+
+int midmussong_EnsureMeasureCount(
+        midmussong *song, int count) {
+    if (count >= song->measurecount) {
+        midmusmeasure *newmeasure = realloc(
+            song->measure, sizeof(*newmeasure) * (
+            count));
+        if (!newmeasure)
+            return 0;
+        song->measure = newmeasure;
+        memset(&song->measure[song->measurecount], 0,
+            sizeof(*newmeasure) *
+            (count - song->measurecount));
+        // If we got previous measures, keep tempo and signatures:
+        int k = song->measurecount;
+        while (k < count) {
+            if (k == 0) {
+                // If first measure, set defaults:
+                song->measure[0].signaturenom = 4;
+                song->measure[0].signaturediv = 4;
+                song->measure[0].bpm = 120;
+            } else {
+                song->measure[k].signaturenom =
+                    song->measure[k - 1].signaturenom;
+                song->measure[k].signaturediv =
+                    song->measure[k - 1].signaturediv;
+                song->measure[k].bpm =
+                    song->measure[k - 1].bpm;
+            }
+            midmussong_UpdateMeasureTiming(
+                &song->measure[k]);
+            k++;
+        }
+        // Done, set new count:
+        song->measurecount = count;
+    }
+    return 1;
+}
+
+
+void midmussong_UpdateBlockSamplePos(
+        midmusblock *bl) {
+
+}
+
+
+int midmussong_ExpandBlockToPoint(midmusblock *bl,
+        int32_t measure, double measurepos) {
+    if (bl->measurestart > measure) {
+        int32_t expandforward = (bl->measurestart - measure);
+        bl->measurestart -= expandforward;
+        bl->measurelen += expandforward;
+    }
+    assert(bl->measurestart <= measure);
+    assert(bl->measurestart >= 0);
+    if (bl->measurelen < 1)
+        bl->measurelen = 1;
+    if (measurepos > 0) {
+        if (bl->measurestart + bl->measurelen < measure + 1) {
+            bl->measurelen = (
+                measure - bl->measurestart + 1);
+        }
+    } else {
+        if (bl->measurestart + bl->measurelen < measure) {
+            bl->measurelen = (
+                measure - bl->measurestart);
+        }
+    }
+    assert(bl->measurestart >= 0);
+    assert(bl->measurelen > 0);
+    if (!midmussong_EnsureMeasureCount(
+            bl->parent->parent,
+            bl->measurestart + bl->measurelen + 1)) {
+        return 0;
+    }
+    return 1;
 }
 
 
@@ -78,10 +179,19 @@ static int midmussong_FeedMidiNoteOnToTrack(
             return 0;
         memset(minfo->song->track[track].block, 0,
             sizeof(*minfo->song->track[track].block));
+        minfo->song->track[track].block[0].no = 0;
         minfo->song->track[track].block[0].parent =
             &minfo->song->track[track];
         minfo->song->track[track].blockcount = 1;
     }
+    if (!midmussong_EnsureMeasureCount(
+            minfo->song, measure + 1)) {
+        return 0;
+    }
+    if (!midmussong_ExpandBlockToPoint(
+            &minfo->song->track[track].block[0],
+            measure, measurepos))
+        return 0;
     if (minfo->songtrackinfo[track].playingnotecount + 1 >
             minfo->songtrackinfo[track].playingnotealloc) {
         int newalloc = (
@@ -117,7 +227,7 @@ static int midmussong_FeedMidiNoteOnToTrack(
     minfo->songtrackinfo[track].playingnote[
         minfo->songtrackinfo[track].playingnotecount - 1].
             pan = pan;
-    return 0;
+    return 1;
 }
 
 
@@ -126,6 +236,19 @@ static int midmussong_FinalizeMidiNoteOnTrack(
         ATTR_UNUSED int srctrack,
         int noteidx, int endmeasure, double endmeasurepos) {
     assert(minfo->song->track[track].blockcount > 0);
+
+    // Ensure we got measure meta info up to this point:
+    if (!midmussong_EnsureMeasureCount(
+            minfo->song, endmeasure + 1)) {
+        return 0;
+    }
+    // Block must contain note:
+    if (!midmussong_ExpandBlockToPoint(
+            &minfo->song->track[track].block[0],
+            endmeasure, endmeasurepos))
+        return 0;
+
+    // Allocate new final note entry:
     midmusnote *newnote = realloc(
         minfo->song->track[track].block[0].note,
         sizeof(*newnote) * (
@@ -314,7 +437,21 @@ static int midmussong_FeedMidiNoteOn(
     minfo->song->track = newtrack;
     memset(&minfo->song->track[minfo->song->trackcount], 0,
         sizeof(*newtrack));
+    minfo->song->track[minfo->song->trackcount].parent =
+        minfo->song;
     minfo->song->trackcount++;
+    {  // All block parents need updating due to tracks realloc:
+        int k = 0;
+        while (k < minfo->song->trackcount) {
+            int k2 = 0;
+            while (k2 < minfo->song->track[k].blockcount) {
+                minfo->song->track[k].block[k2].parent =
+                    &minfo->song->track[k];
+                k2++;
+            }
+            k++;
+        }
+    }
 
     // Add note to newly allocated track:
     return midmussong_FeedMidiNoteOnToTrack(
@@ -341,6 +478,41 @@ static int midmussong_FeedMidiProgramChange(
 }
 
 
+static int32_t _miditicksofmeasure(
+        midmussong_midiinfo *minfo, int measure) {
+    assert(measure >= 0 && measure < minfo->song->measurecount);
+    assert(minfo->midippq > 0);
+    midmussong_UpdateMeasureTiming(&minfo->song->measure[measure]);
+    int32_t result = round(
+        (double)minfo->midippq *
+        minfo->song->measure[measure].beatpermeasure);
+    if (result < 1)
+        result = 1;
+    return result;
+}
+
+
+static int _miditimetomeasure(midmussong_midiinfo *minfo,
+        int32_t clock, int32_t *out_measure,
+        double *out_posinmeasure) {
+    int64_t tickoffset = 0;
+    int k = 0;
+    while (1) {
+        if (!midmussong_EnsureMeasureCount(minfo->song, k + 1))
+            return 0;
+        int64_t measurelen = _miditicksofmeasure(minfo, k);
+        if (tickoffset <= clock && tickoffset + measurelen > clock) {
+            *out_measure = k;
+            *out_posinmeasure = fmax(0, fmin(1,
+                (double)(clock - tickoffset) / (double)measurelen));
+            return 1;
+        }
+        k++;
+        tickoffset += measurelen;
+    }
+}
+
+
 midmussong *midmussong_Load(const char *bytes, int byteslen) {
     midmussong *song = malloc(sizeof(*song));
     if (!song)
@@ -353,7 +525,7 @@ midmussong *midmussong_Load(const char *bytes, int byteslen) {
     parser.state = MIDI_PARSER_INIT;
     parser.size = byteslen;
     parser.in = (uint8_t *)bytes;
-    #if defined(DEBUG_MIDIPARSER) || 1
+    #if defined(DEBUG_MIDIPARSER)
     printf("rfsc/midi/midimus.c: debug: "
         "parser init (%d bytes midi, song %p)...\n",
         byteslen, song);
@@ -381,16 +553,29 @@ midmussong *midmussong_Load(const char *bytes, int byteslen) {
         case MIDI_PARSER_INIT:
             break;
         case MIDI_PARSER_HEADER:
+            #ifdef DEBUG_MIDIPARSER_EXTRA
             printf("header\n");
             printf("  size: %d\n", parser.header.size);
             printf("  format: %d [%s]\n", parser.header.format,
                 midi_file_format_name(parser.header.format));
             printf("  tracks count: %d\n", parser.header.tracks_count);
             printf("  time division: %d\n", parser.header.time_division);
+            #endif
             if ((parser.header.time_division & 0x8000) != 0) {
                 #ifdef DEBUG_MIDIPARSER
                 printf("rfsc/midi/midimus.c: error: "
                     "SMPTE timing not supported\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            minfo.midippq = parser.header.time_division;
+            if (minfo.midippq <= 0) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "invalid midi clocks per beat in song "
+                    "header\n");
                 #endif
                 midmussong_FreeMidiInfoContents(&minfo);
                 midmussong_Free(song);
@@ -407,13 +592,19 @@ midmussong *midmussong_Load(const char *bytes, int byteslen) {
             break;
         case MIDI_PARSER_TRACK_MIDI:
             int abstime = current_time + (int)parser.vtime;
-            int measure = (abstime /
-                (parser.header.time_division * 4));
-            double place_in_measure = ((double)
-                (abstime % (parser.header.time_division * 4))) /
-                (double)(parser.header.time_division * 4);
+            int32_t measure;
+            double place_in_measure;
+            if (!_miditimetomeasure(&minfo, abstime,
+                    &measure, &place_in_measure)) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "failed to compute note on measure, oom?\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
             #ifdef DEBUG_MIDIPARSER_EXTRA
-            if (current_track == 8 || 1) {
             printf("track %d event\n", current_track);
             printf("  time: %d (%d)\n", abstime, (int)parser.vtime);
             printf("  status: %u [%s]\n",
@@ -424,8 +615,32 @@ midmussong *midmussong_Load(const char *bytes, int byteslen) {
             printf("  param2: %d\n", parser.midi.param2);
             printf("  measure: %d\n", measure);
             printf("  place in measure: %f\n", place_in_measure);
-            }
             #endif
+            if (parser.midi.status == 0x9) {  // Note On
+                if (!midmussong_FeedMidiNoteOn(
+                        &minfo, current_track, parser.midi.channel,
+                        measure, place_in_measure, parser.midi.param2)) {
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midimus.c: error: "
+                        "failed to process note on, oom?\n");
+                    #endif
+                    midmussong_FreeMidiInfoContents(&minfo);
+                    midmussong_Free(song);
+                    return NULL;
+                }
+            } else if (parser.midi.status == 0x8) {  // Note Off
+                if (!midmussong_FeedMidiNoteOff(
+                        &minfo, current_track, parser.midi.channel,
+                        measure, place_in_measure)) {
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midimus.c: error: "
+                        "failed to process note off, oom?\n");
+                    #endif
+                    midmussong_FreeMidiInfoContents(&minfo);
+                    midmussong_Free(song);
+                    return NULL;
+                }
+            }
             current_time += parser.vtime;
             break;
         case MIDI_PARSER_TRACK_META:
