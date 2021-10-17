@@ -6,6 +6,7 @@
 #include "compileconfig.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <math.h>
 #include <midi-parser.h>
 #include <stdint.h>
@@ -79,14 +80,14 @@ void midmussong_UpdateMeasureTiming(
     }
     double beatsseconds = 1.0 / (
         (double)measure->bpm / 60.0);
-    measure->samplelen = round(
+    measure->framelen = round(
         ((double)MIDMUS_SAMPLERATE) * beatsseconds *
         ((double)measure->beatpermeasure));
 }
 
 
 int midmussong_EnsureMeasureCount(
-        midmussong *song, int count) {
+        midmussong *song, int32_t count) {
     if (count >= song->measurecount) {
         midmusmeasure *newmeasure = realloc(
             song->measure, sizeof(*newmeasure) * (
@@ -121,12 +122,6 @@ int midmussong_EnsureMeasureCount(
         song->measurecount = count;
     }
     return 1;
-}
-
-
-void midmussong_UpdateBlockSamplePos(
-        midmusblock *bl) {
-
 }
 
 
@@ -284,16 +279,6 @@ static int midmussong_FinalizeMidiNoteOnTrack(
     insertnoteref->pan = ((int32_t)127 +
         (int32_t)minfo->songtrackinfo[track].
         playingnote[noteidx].pan);
-
-    // FIXME: factor in BPM here:
-    /*insertnoteref->sampleoffset = ((
-        insertnoteref->munitoffset * (int64_t)MIDMUS_SAMPLERATE)
-        / (int64_t)MIDMUS_MEASUREUNITS);
-    insertnoteref->samplelen = ((
-        insertnoteref->munitlen * (int64_t)MIDMUS_SAMPLERATE)
-        / (int64_t)MIDMUS_MEASUREUNITS);
-    if (insertnoteref->samplelen < 1)
-        insertnoteref->samplelen = 1;*/
 
     // Increase note count now that we're done adding one:
     minfo->song->track[track].block[0].notecount++;
@@ -492,6 +477,19 @@ static int32_t _miditicksofmeasure(
 }
 
 
+static int64_t _framestartofmeasure(
+        midmussong *song, int measure) {
+    assert(measure >= 0 && measure < song->measurecount);
+    int64_t offset = 0;
+    int k = 0;
+    while (k < song->measurecount && k < measure) {
+        midmussong_UpdateMeasureTiming(&song->measure[k]);
+        offset += song->measure[k].framelen;
+    }
+    return offset;
+}
+
+
 static int _miditimetomeasure(midmussong_midiinfo *minfo,
         int32_t clock, int32_t *out_measure,
         double *out_posinmeasure) {
@@ -513,7 +511,58 @@ static int _miditimetomeasure(midmussong_midiinfo *minfo,
 }
 
 
-midmussong *midmussong_Load(const char *bytes, int byteslen) {
+void midmussong_UpdateBlockSamplePos(
+        midmusblock *bl) {
+    if (bl->measurelen <= 0)
+        bl->measurelen = 1;
+    bl->frameoffset = _framestartofmeasure(
+        bl->parent->parent, bl->measurestart);
+    bl->framelen = _framestartofmeasure(
+        bl->parent->parent, bl->measurestart +
+        bl->measurelen);
+    int32_t i = 0;
+    while (i < bl->notecount) {
+        midmusnote *noteref = &(bl->note[i]);
+        int64_t note_measurestart = (
+            (int32_t)noteref->munitoffset
+            / (int32_t)MIDMUS_MEASUREUNITS) + bl->measurestart;
+        int64_t note_measureoffset = (
+            (int64_t)noteref->munitoffset - (
+            (int64_t)MIDMUS_MEASUREUNITS *
+            (note_measurestart - (int64_t)bl->measurestart)));
+        noteref->frameoffsetinblock = (
+            _framestartofmeasure(bl->parent->parent,
+            note_measurestart)) +
+            ((int64_t)
+            bl->parent->parent->measure[note_measurestart].
+            framelen * (int64_t)note_measureoffset /
+            (int64_t)MIDMUS_MEASUREUNITS);
+        int64_t note_measureend = (
+            (int32_t)(noteref->munitoffset +
+            noteref->munitlen)
+            / (int32_t)MIDMUS_MEASUREUNITS) + bl->measurestart;
+        int64_t note_measureoffsetend = (
+            (int64_t)(noteref->munitoffset +
+            noteref->munitlen) - (
+            (int64_t)MIDMUS_MEASUREUNITS *
+            (note_measureend - (int64_t)bl->measurestart)));
+        int64_t frameendoffsetinblock = (
+            _framestartofmeasure(bl->parent->parent,
+            note_measureend)) +
+            ((int64_t)
+            bl->parent->parent->measure[note_measureend].
+            framelen * (int64_t)note_measureoffsetend /
+            (int64_t)MIDMUS_MEASUREUNITS);
+        noteref->framelen = (
+            frameendoffsetinblock -
+            noteref->frameoffsetinblock);
+        i++;
+    }
+}
+
+
+midmussong *midmussong_Load(
+        const char *bytes, int64_t byteslen) {
     midmussong *song = malloc(sizeof(*song));
     if (!song)
         return NULL;
@@ -527,7 +576,8 @@ midmussong *midmussong_Load(const char *bytes, int byteslen) {
     parser.in = (uint8_t *)bytes;
     #if defined(DEBUG_MIDIPARSER)
     printf("rfsc/midi/midimus.c: debug: "
-        "parser init (%d bytes midi, song %p)...\n",
+        "parser init (%" PRId64
+        " bytes midi, song %p)...\n",
         byteslen, song);
     #endif
 
@@ -666,6 +716,19 @@ midmussong *midmussong_Load(const char *bytes, int byteslen) {
         }
     }
 
+    // Make sure timing is set on all final notes:
+    int k = 0;
+    while (k < song->trackcount) {
+        int j = 0;
+        while (j < song->track[k].blockcount) {
+            midmussong_UpdateBlockSamplePos(
+                &song->track[k].block[j]);
+            j++;
+        }
+        k++;
+    }
+
+    // Free extra midi tracking data we no longer need:
     midmussong_FreeMidiInfoContents(&minfo);
     return song;
 }

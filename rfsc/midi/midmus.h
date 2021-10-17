@@ -32,7 +32,7 @@ typedef struct midmusnotemodify {
 } midmusnotemodify;
 
 typedef struct midmusnote {
-    int32_t sampleoffsetinblock, samplelen;
+    int32_t frameoffsetinblock, framelen;
     uint8_t volume, pan;
     int32_t munitoffset, munitlen;
     int32_t modifiercount;
@@ -43,7 +43,7 @@ typedef struct midmusblock {
     midmustrack *parent;
     int no;
     int32_t measurestart, measurelen;
-    int32_t sampleoffset, samplelen;
+    int32_t frameoffset, framelen;
     int32_t notecount;
     midmusnote *note;
 } midmusblock;
@@ -53,7 +53,7 @@ typedef struct midmusmeasure {
     int32_t signaturenom, signaturediv;
 
     double bpm;
-    int32_t samplelen;
+    int32_t framelen;
 } midmusmeasure;
 
 typedef struct midmustrack {
@@ -75,7 +75,8 @@ typedef struct midmussong {
 } midmussong;
 
 
-midmussong *midmussong_Load(const char *bytes, int byteslen);
+midmussong *midmussong_Load(
+    const char *bytes, int64_t byteslen);
 
 void midmussong_Free(midmussong *song);
 
@@ -86,6 +87,6 @@ void midmussong_UpdateMeasureTiming(
     midmusmeasure *measure);
 
 int midmussong_EnsureMeasureCount(
-    midmussong *song, int count);
+    midmussong *song, int32_t count);
 
 #endif  // RFS2_MIDMUS_H_

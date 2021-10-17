@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 
+typedef struct h3daudiodevice h3daudiodevice;
 typedef struct midmussong midmussong;
 typedef struct midmusplayback midmusplayback;
 
@@ -19,5 +20,21 @@ typedef struct midmusplayback midmusplayback;
 midmusplayback *midmusplayback_Create(midmussong *song);
 
 void midmusplayback_Destroy(midmusplayback *playback);
+
+uint64_t midmusplayback_StartAndAddToMixer(
+    h3daudiodevice *dev,
+    midmusplayback *playback, double volume,
+    int loop,
+    int destroyafterwards);
+
+int _midmusplayback_ReadSamplesCallback(  // internal
+    midmusplayback *playback,
+    char *writebuf, int writebytes, int *haderror);
+
+int _midmusplayback_StartSamplesCallback(  // internal
+    void *userdata);
+
+void _callback_CloseAfterReadingSamplesCallback(  // internal
+    void *userdata);
 
 #endif  // RFS2_MIDMUSPLAYBACK_H_

@@ -61,7 +61,6 @@ static int _roomobj_newspritemovable(lua_State *l) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
     }
-    printf("path fixed: %s\n", pathfixed);
     int _exists = 0;
     if (!vfs_Exists(pathfixed, &_exists, 0) || !_exists) {
         free(pathfixed);
