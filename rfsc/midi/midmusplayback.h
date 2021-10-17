@@ -10,5 +10,14 @@
 
 #include <stdint.h>
 
+typedef struct midmussong midmussong;
+typedef struct midmusplayback midmusplayback;
+
+#define MIDI_DEFAULT_SF2 "rfslua/sf2/GeneralUserGSv1.471.sf2"
+
+
+midmusplayback *midmusplayback_Create(midmussong *song);
+
+void midmusplayback_Destroy(midmusplayback *playback);
 
 #endif  // RFS2_MIDMUSPLAYBACK_H_
