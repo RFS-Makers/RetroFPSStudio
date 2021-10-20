@@ -89,4 +89,6 @@ void midmussong_UpdateMeasureTiming(
 int midmussong_EnsureMeasureCount(
     midmussong *song, int32_t count);
 
+uint64_t midmussong_GetFramesLength(midmussong *s);
+
 #endif  // RFS2_MIDMUS_H_

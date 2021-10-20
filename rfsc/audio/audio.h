@@ -26,6 +26,10 @@ h3daudiodevice *h3daudio_OpenDeviceEx(
     char **error
 );
 
+void h3daudio_DoForAllDevices(
+    void (*callback)(h3daudiodevice *dev, void *userdata),
+    void *userdata);
+
 h3daudiodevice *h3daudio_OpenDevice(
     char **error
 );
@@ -64,6 +68,13 @@ uint64_t h3daudio_PlayCallbackSrcSound(
     double volume, double panning, int loop
 );
 
+void h3daudio_StopAllSoundsWithCallbackAndUserdata(
+    h3daudiodevice *dev,
+    int (*callback_read)(void *userdata,
+        void *buf, int bytes, int *haderror),
+    int (*callback_tostart)(void *userdata),
+    void (*callback_close)(void *userdata),
+    void *callback_userdata);
 
 int h3daudio_IsSoundPlaying(
     h3daudiodevice *dev, uint64_t id

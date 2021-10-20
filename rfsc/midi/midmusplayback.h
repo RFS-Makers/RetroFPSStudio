@@ -21,6 +21,12 @@ midmusplayback *midmusplayback_Create(midmussong *song);
 
 void midmusplayback_Destroy(midmusplayback *playback);
 
+void midmusplayback_StopAllBySong(
+    h3daudiodevice *dev, midmussong *song);
+
+void midmusplayback_StopAllBySongOnAllDevices(
+    midmussong *song);
+
 uint64_t midmusplayback_StartAndAddToMixer(
     h3daudiodevice *dev,
     midmusplayback *playback, double volume,
@@ -31,7 +37,7 @@ int _midmusplayback_ReadSamplesCallback(  // internal
     midmusplayback *playback,
     char *writebuf, int writebytes, int *haderror);
 
-int _midmusplayback_StartSamplesCallback(  // internal
+int _midmusplayback_RestartSamplesCallback(  // internal
     void *userdata);
 
 void _callback_CloseAfterReadingSamplesCallback(  // internal

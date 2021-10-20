@@ -485,6 +485,7 @@ static int64_t _framestartofmeasure(
     while (k < song->measurecount && k < measure) {
         midmussong_UpdateMeasureTiming(&song->measure[k]);
         offset += song->measure[k].framelen;
+        k++;
     }
     return offset;
 }
@@ -510,6 +511,24 @@ static int _miditimetomeasure(midmussong_midiinfo *minfo,
     }
 }
 
+
+uint64_t midmussong_GetFramesLength(midmussong *s) {
+    uint64_t longest_track_frames = 0;
+    int i = 0;
+    while (i < s->trackcount) {
+        int k = 0;
+        while (k < s->track[i].blockcount) {
+            uint64_t pastblockframe = (
+                s->track[i].block[k].frameoffset +
+                s->track[i].block[k].framelen);
+            if (pastblockframe > longest_track_frames)
+                longest_track_frames = pastblockframe;
+            k++;
+        }
+        i++;
+    }
+    return longest_track_frames;
+}
 
 void midmussong_UpdateBlockSamplePos(
         midmusblock *bl) {

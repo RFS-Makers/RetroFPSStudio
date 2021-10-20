@@ -346,6 +346,7 @@ function rfseditor.titlescene.on_enter()
         rfs.window.enable_fullscreen()
     end
     --local songtest = rfs.song.load("test.mid")
+    --songtest:play()
     rfseditor.titlescene._menu = nil
     rfseditor._democamts = nil
     if rfseditor._updatetask == nil then

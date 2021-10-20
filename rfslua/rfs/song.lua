@@ -9,11 +9,13 @@ if rfs.song == nil then
     rfs.song.classtable = {}
 end
 
+
 rfs.song.load = function(path)
     if type(path) ~= "string" then
         error("song path must be a string")
     end
     local song = _h3daudio_loadsong(path)
+    assert(type(song) == "userdata")
     debug.setmetatable(song, {
         __index = rfs.song.classtable,
         __gc = function(gcself)
@@ -26,3 +28,21 @@ rfs.song.load = function(path)
     return song
 end
 
+
+function rfs.song.classtable:play(volume, looped)
+    if rfs.audio.default_device == nil then
+        rfs.audio.default_device = rfs.audio.dev.open()
+    end
+    assert(type(rfs.audio.default_device) == "userdata")
+    if type(self) ~= "userdata" then
+        error("oops, self reference is wrong")
+    end
+    if type(volume) ~= "number" and volume ~= nil then
+        error("volume must be number or nil")
+    end
+    if type(looped) ~= "boolean" and looped ~= nil then
+        error("looped must be boolean or nil")
+    end
+    _h3daudio_playsong(rfs.audio.default_device, self,
+        volume, looped)
+end

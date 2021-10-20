@@ -17,6 +17,7 @@
 #include "audio/audio.h"
 #include "audio/audiodecodedfile.h"
 #include "midi/midmus.h"
+#include "midi/midmusplayback.h"
 #include "roomdefs.h"
 #include "scriptcore.h"
 #include "scriptcoreaudio.h"
@@ -127,6 +128,83 @@ int _h3daudio_loadsong(lua_State *l) {
 }
 
 
+int _h3daudio_playsong(lua_State *l) {
+    if (lua_gettop(l) < 2 ||
+            lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+            OBJREF_AUDIODEVICE ||
+            lua_type(l, 2) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 2))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 2))->type !=
+            OBJREF_MIDMUSSONG) {
+        lua_pushstring(
+            l, "expected args of types "
+            "audiodevice, midmussong");
+        return lua_error(l);
+    }
+    midmussong *s = (midmussong *)(
+        (uintptr_t)((scriptobjref *)
+        lua_touserdata(l, 2))->value);
+    if (!s) {
+        lua_pushstring(l, "couldn't access midmussong - "
+            "was it destroyed?");
+        return lua_error(l);
+    }
+    double volume = (
+        (lua_gettop(l) >= 3 && lua_type(l, 3) == LUA_TNUMBER) ?
+        lua_tonumber(l, 3) : 1.0
+    );
+    int loop = (
+        (lua_gettop(l) >= 4 && lua_type(l, 4) == LUA_TBOOLEAN) ?
+        lua_toboolean(l, 4) : 0
+    );
+    h3daudiodevice *dev = h3daudio_GetDeviceById(
+        (int)((scriptobjref*)lua_touserdata(l, 1))->value
+    );
+    if (!dev) {
+        lua_pushstring(l, "couldn't access device - "
+            "was it destroyed?");
+        return lua_error(l);
+    }
+    midmusplayback *mp = midmusplayback_Create(s);
+    if (!mp) {
+        lua_pushstring(l, "couldn't create playback "
+            "instance. soundfont access issue, or out "
+            "of memory?");
+        return lua_error(l);
+    }
+    uint64_t soundid = midmusplayback_StartAndAddToMixer(
+        dev, mp, volume, loop,
+        1 /* <- audio mixer will destroy playback instance for us */);
+    if (soundid == 0) {
+        char buf[512];
+        snprintf(buf, sizeof(buf) - 1,
+                 "failed to play song (%p)", s);
+        midmusplayback_Destroy(mp);
+        lua_pushstring(l, buf);
+        return lua_error(l);
+    }
+    // Note: reminder that the mp playback ptr is now owned
+    // by the audio mixer. We don't need to keep/destroy it.
+
+    scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
+    if (!ref) {
+        h3daudio_StopSound(dev, soundid);
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
+    memset(ref, 0, sizeof(*ref));
+    ref->magic = OBJREFMAGIC;
+    ref->type = OBJREF_PLAYINGSOUND;
+    ref->value = soundid;
+    ref->value2 = h3daudio_GetDeviceId(dev);
+    return 0;
+}
+
+
 int _h3daudio_destroysong(lua_State *l) {
     if (lua_gettop(l) < 1 ||
             lua_type(l, 1) != LUA_TUSERDATA ||
@@ -145,6 +223,7 @@ int _h3daudio_destroysong(lua_State *l) {
             "was it destroyed?");
         return lua_error(l);
     }
+    midmusplayback_StopAllBySongOnAllDevices(s);
     ((scriptobjref *)lua_touserdata(l, 1))->value = 0;
     midmussong_Free(s);
     return 0;
@@ -445,6 +524,11 @@ int _h3daudio_playsound(lua_State *l) {
         return lua_error(l);
     }
     scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
+    if (!ref) {
+        h3daudio_StopSound(dev, soundid);
+        lua_pushstring(l, "out of memory");
+        return lua_error(l);
+    }
     memset(ref, 0, sizeof(*ref));
     ref->magic = OBJREFMAGIC;
     ref->type = OBJREF_PLAYINGSOUND;
@@ -706,4 +790,6 @@ void scriptcoreaudio_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_h3daudio_destroysong");
     lua_pushcfunction(l, _h3daudio_loadsong);
     lua_setglobal(l, "_h3daudio_loadsong");
+    lua_pushcfunction(l, _h3daudio_playsong);
+    lua_setglobal(l, "_h3daudio_playsong");
 }
