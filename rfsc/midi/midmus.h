@@ -91,4 +91,13 @@ int midmussong_EnsureMeasureCount(
 
 uint64_t midmussong_GetFramesLength(midmussong *s);
 
+double midmussong_GetSecondsLength(midmussong *s);
+
+void midmussong_SetMeasureBPM(
+    midmussong *song, int measure, double bpm);
+
+void midmussong_SetMeasureTimeSig(
+    midmussong *song, int measure,
+    int32_t nom, int32_t div);
+
 #endif  // RFS2_MIDMUS_H_

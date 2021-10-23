@@ -46,3 +46,9 @@ function rfs.song.classtable:play(volume, looped)
     _h3daudio_playsong(rfs.audio.default_device, self,
         volume, looped)
 end
+
+
+function rfs.song.classtable:length()
+    return _h3daudio_songlength(self)
+end
+
