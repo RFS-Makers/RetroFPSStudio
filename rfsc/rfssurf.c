@@ -319,87 +319,73 @@ HOTSPOT void rfssurf_BlitSimple(
         uint8_t *writeptrend = (
             writeptr + (maxx - tgx) * targetstep
         );
-        const int readptrextraadvance = sourcestep - 3;
-        while (writeptr != writeptrend) {
-            // XXX: assumes little endian. format is BGR/ABGR
-            int alphar;
-            uint8_t salpha = 255;
-            if (likely(sourcehasalpha)) {
+        if (likely(sourcehasalpha && tghasalpha)) {
+            // Source HAS ALPHA and target HAS ALPHA loop.
+            while (writeptr != writeptrend) {
+                // XXX: assumes little endian. format is BGR/ABGR
+                int alphar;
+                uint8_t salpha = *(readptr + 3);
                 // See if we can skip zero pixels faster:
-                salpha = *(readptr + 3);
                 if (likely(salpha == 0)) {
                     while (likely(writeptr != writeptrend &&
                             *(readptr + 3) == 0
                             // ^ salpha is NOT updated.
                             )) {
-                        readptr += sourcestep;
-                        writeptr += targetstep;
+                        readptr += 4;
+                        writeptr += 4;
                         continue;
                     }
                     continue;
                 }
                 alphar = (((int)salpha
                     * INT_COLOR_SCALAR) / 255);
-                assert(alphar <= INT_COLOR_SCALAR);
-            } else {
-                alphar = INT_COLOR_SCALAR;
-            }
-            // Regular heavy duty blit:
-            int reverse_alphar = 0;
-            if (likely(alphar >= INT_COLOR_SCALAR)) {
-                while (1) {
-                    if (unlikely(writeptr == writeptrend))
-                        break;
-                    if (sourcehasalpha) {
+                //assert(alphar <= INT_COLOR_SCALAR);
+
+                // Regular heavy duty blit:
+                int reverse_alphar = 0;
+                if (likely(alphar == INT_COLOR_SCALAR)) {
+                    while (1) {
+                        if (unlikely(writeptr == writeptrend))
+                            break;
                         salpha = *(readptr + 3);
                         if (unlikely(salpha != 255))
                             break;
+                        memcpy(
+                            writeptr, readptr, 4
+                        );
+                        writeptr += 4;
+                        readptr += 4;
+                        continue;
                     }
-                    assert(writeptr < writeptrend);
-                    memcpy(
-                        writeptr, readptr, 3
-                    );
-                    writeptr += 3;
-                    if (tghasalpha) {
-                        *writeptr = salpha;
-                        writeptr++;
-                    }
-                    readptr += sourcestep;
                     continue;
-                }
-                continue;
-            } else {
-                reverse_alphar = (INT_COLOR_SCALAR - alphar);
-                assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
-                // Blend in rgb now:
-                *writeptr = _assert_pix256(
-                    ((int)(*writeptr) *
-                        reverse_alphar / INT_COLOR_SCALAR) +
-                    ((int)(*readptr) *
-                        alphar / INT_COLOR_SCALAR)
-                );
-                writeptr++;
-                readptr++;
-                *writeptr = _assert_pix256(
-                    ((int)(*writeptr) *
-                        reverse_alphar / INT_COLOR_SCALAR) +
-                    ((int)(*readptr) *
-                        alphar / INT_COLOR_SCALAR)
-                );
-                writeptr++;
-                readptr++;
-                *writeptr = _assert_pix256(
-                    ((int)(*writeptr) *
-                        reverse_alphar / INT_COLOR_SCALAR) +
-                    ((int)(*readptr) *
-                        alphar / INT_COLOR_SCALAR)
-                );
-                writeptr++;
-                readptr++;
-                if (tghasalpha) {
-                    // ^ possibly faster to branch for rgb-only
-                    // surfaces, since math_pixcliptop also
-                    // branches anyway.
+                } else {
+                    reverse_alphar = (INT_COLOR_SCALAR - alphar);
+                    assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
+                    // Blend in rgb now:
+                    *writeptr = _assert_pix256(
+                        ((int)(*writeptr) *
+                            reverse_alphar / INT_COLOR_SCALAR) +
+                        ((int)(*readptr) *
+                            alphar / INT_COLOR_SCALAR)
+                    );
+                    writeptr++;
+                    readptr++;
+                    *writeptr = _assert_pix256(
+                        ((int)(*writeptr) *
+                            reverse_alphar / INT_COLOR_SCALAR) +
+                        ((int)(*readptr) *
+                            alphar / INT_COLOR_SCALAR)
+                    );
+                    writeptr++;
+                    readptr++;
+                    *writeptr = _assert_pix256(
+                        ((int)(*writeptr) *
+                            reverse_alphar / INT_COLOR_SCALAR) +
+                        ((int)(*readptr) *
+                            alphar / INT_COLOR_SCALAR)
+                    );
+                    writeptr++;
+                    readptr++;
                     int a = (*writeptr) *
                         INT_COLOR_SCALAR;
                     a = (INT_COLOR_SCALAR * 255 - a) * reverse_alphar /
@@ -410,8 +396,97 @@ HOTSPOT void rfssurf_BlitSimple(
                     );
                     writeptr++;
                 }
+                readptr++;
             }
-            readptr += readptrextraadvance;
+        } else if (likely(sourcehasalpha && !tghasalpha)) {
+            // Source HAS ALPHA and target with NO ALPHA loop.
+            while (writeptr != writeptrend) {
+                // XXX: assumes little endian. format is BGR/ABGR
+                int alphar;
+                uint8_t salpha = *(readptr + 3);
+                // See if we can skip zero pixels faster:
+                if (likely(salpha == 0)) {
+                    while (likely(writeptr != writeptrend &&
+                            *(readptr + 3) == 0
+                            // ^ salpha is NOT updated.
+                            )) {
+                        readptr += 4;
+                        writeptr += 3;
+                        continue;
+                    }
+                    continue;
+                }
+                alphar = (((int)salpha
+                    * INT_COLOR_SCALAR) / 255);
+                //assert(alphar <= INT_COLOR_SCALAR);
+
+                // Regular heavy duty blit:
+                int reverse_alphar = 0;
+                if (likely(alphar == INT_COLOR_SCALAR)) {
+                    while (1) {
+                        if (unlikely(writeptr == writeptrend))
+                            break;
+                        salpha = *(readptr + 3);
+                        if (unlikely(salpha != 255))
+                            break;
+                        memcpy(
+                            writeptr, readptr, 3
+                        );
+                        writeptr += 3;
+                        readptr += 4;
+                        continue;
+                    }
+                    continue;
+                } else {
+                    reverse_alphar = (INT_COLOR_SCALAR - alphar);
+                    assert(alphar + reverse_alphar == INT_COLOR_SCALAR);
+                    // Blend in rgb now:
+                    *writeptr = _assert_pix256(
+                        ((int)(*writeptr) *
+                            reverse_alphar / INT_COLOR_SCALAR) +
+                        ((int)(*readptr) *
+                            alphar / INT_COLOR_SCALAR)
+                    );
+                    writeptr++;
+                    readptr++;
+                    *writeptr = _assert_pix256(
+                        ((int)(*writeptr) *
+                            reverse_alphar / INT_COLOR_SCALAR) +
+                        ((int)(*readptr) *
+                            alphar / INT_COLOR_SCALAR)
+                    );
+                    writeptr++;
+                    readptr++;
+                    *writeptr = _assert_pix256(
+                        ((int)(*writeptr) *
+                            reverse_alphar / INT_COLOR_SCALAR) +
+                        ((int)(*readptr) *
+                            alphar / INT_COLOR_SCALAR)
+                    );
+                    writeptr++;
+                    readptr++;
+                }
+                readptr++;
+            }
+       } else {
+            // Source with NO ALPHA loop.
+            if (likely(tghasalpha)) {
+                while (writeptr != writeptrend) {
+                    // XXX: assumes little endian. format is BGR/ABGR
+                    assert(writeptr < writeptrend);
+                    memcpy(
+                        writeptr, readptr, 3
+                    );
+                    writeptr += 3;
+                    *writeptr = 255;
+                    writeptr++;
+                    readptr += 3;
+                }
+            } else {
+                memcpy(
+                    writeptr, readptr, writeptrend - writeptr
+                );
+            }
         }
         y++;
     }
@@ -1206,7 +1281,7 @@ HOTSPOT void rfssurf_BlitScaledBeyond2X(
     // This allows skipping one branch for higher speed: while
     // that may seem ridiculous to near-duplicate the function
     // for, colored/alpha sprites with >2x scale are THE common
-    // per disaster case for ingame sprites.
+    // disaster case for ingame sprites.
     // So we desperately want to optimize this all we can.
 
     // Base sanity checks:
@@ -1267,6 +1342,7 @@ HOTSPOT void rfssurf_BlitScaledBeyond2X(
     const int scaledivx = round(scalex * SCALE_SCALAR);
     const int scaledivy = round(scaley * SCALE_SCALAR);
     const int scaleintx = floor(scalex);
+    assert(scaleintx >= 2);
     const int targetstep = (target->hasalpha ? 4 : 3);
     const int sourcestep = (source->hasalpha ? 4 : 3);
     const int scaleintx_times_tgstep = (

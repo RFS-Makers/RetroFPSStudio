@@ -385,7 +385,7 @@ end
 
 function rfseditor.titlescene.on_keydown(k)
     if rfseditor.state == "show_press_any_key" and
-            k ~= "f11" then
+            k ~= "f11" and k ~= "leftalt" and k ~= "rightalt" then
         rfseditor.state = "devwarning"
         rfs.ui.playsound(rfs.ui.confirmsound)
         _devversion_warning()

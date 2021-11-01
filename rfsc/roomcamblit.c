@@ -279,6 +279,8 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int writepointerplus = (
             targetw * rendertargetcopylen - 3
         );
+        const int writepointerplus_plus3 = (
+            writepointerplus + 3);
         int rednonwhite = 0;
         int greennonwhite = 0;
         int bluenonwhite = 0;
@@ -451,8 +453,7 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                         memcpy(writepointer,
                             writepointer - writepointerplus - 3,
                             3);
-                        writepointer += 3;
-                        writepointer += writepointerplus;
+                        writepointer += writepointerplus_plus3;
                         #ifndef NDEBUG
                         updatecolorcounter++;
                         #endif
@@ -566,8 +567,7 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                         memcpy(writepointer,
                             writepointer - writepointerplus - 3,
                             3);
-                        writepointer += 3;
-                        writepointer += writepointerplus;
+                        writepointer += writepointerplus_plus3;
                         #ifndef NDEBUG
                         updatecolorcounter++;
                         #endif

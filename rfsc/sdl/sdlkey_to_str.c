@@ -161,8 +161,8 @@ static __attribute__((constructor)) void _buildsdlkeys() {
     _add_sdlkey_entry(SDLK_PERIOD, ".");
     _add_sdlkey_entry(SDLK_PAGEDOWN, "pagedown");
     _add_sdlkey_entry(SDLK_PAGEUP, "pageup");
-    _add_sdlkey_entry(SDLK_LALT, "lalt");
-    _add_sdlkey_entry(SDLK_RALT, "ralt");
+    _add_sdlkey_entry(SDLK_LALT, "leftalt");
+    _add_sdlkey_entry(SDLK_RALT, "rightalt");
     _add_sdlkey_entry(SDLK_TAB, "tab");
     _add_sdlkey_entry(SDLK_PAUSE, "pause");
     _add_sdlkey_entry(SDLK_RETURN, "return");
