@@ -49,7 +49,8 @@ Here are some interesting locations:
   - `rfsc/scriptcore.c` sets up and launches the lua code.
 
   - `rfsc/roomcam.c` has the camera code, which includes perspective
-    calculation, and the entire 2.5D raycast renderer.
+    calculation, and calls to the 2.5D raycast renderer in
+    `rfsc/roomcamblit.c`.
 
   - `rfsc/room.h` holds the lowlevel map structure definitions
     of the [rooms](

@@ -16,7 +16,12 @@ function rfs.scene.on_keydown(t)
     end
     if rfs.scene._current ~= nil and
             rfs.scene._current.on_keydown ~= nil then
-        rfs.scene._current.on_keydown(t)
+        if rfs.scene._current.on_keydown(t) then
+            return
+        end
+    end
+    if t == "f11" then
+        rfs.window.toggle_fullscreen()
     end
 end
 

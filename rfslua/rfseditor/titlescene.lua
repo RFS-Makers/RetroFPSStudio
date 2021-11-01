@@ -389,12 +389,19 @@ function rfseditor.titlescene.on_keydown(k)
         rfseditor.state = "devwarning"
         rfs.ui.playsound(rfs.ui.confirmsound)
         _devversion_warning()
-        return
+        return true
     end
-    if rfseditor.titlescene._menu ~= nil then
+    if rfseditor.titlescene._menu ~= nil and k ~= "f11" then
         if rfseditor.titlescene._menu:on_keydown(k) == true then
-            return
+            return true
         end
+    end
+    if k == "f11" then
+        rfs.window.toggle_fullscreen()
+        rfseditor.settings.fullscreen = (
+            rfs.window.is_fullscreen())
+        rfseditor.settings.save()
+        return true
     end
 end
 
