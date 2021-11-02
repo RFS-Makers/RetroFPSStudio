@@ -31,14 +31,20 @@ typedef struct midmussong_midiinfotrackplayingnote {
 typedef struct midmussong_midiinfotrack {
     int midiinstrument;
     int midisourcetrack;
+    int midiorigfirstsourcechannel;
 
     int playingnotecount, playingnotealloc;
     midmussong_midiinfotrackplayingnote *playingnote;
 } midmussong_midiinfotrack;
 
+typedef struct midmussong_midiinfosourcechannel {
+    int32_t midiinstrument, pan;
+    int32_t modeventcount;
+    midmusmodify *modevent;
+} midmussong_midiinfosourcechannel;
+
 typedef struct midmussong_midiinfosourcetrack {
-    int midiinstrument[SMF_MAX_CHANNELS];
-    int pan[SMF_MAX_CHANNELS];
+    midmussong_midiinfosourcechannel channel[SMF_MAX_CHANNELS];
 } midmussong_midiinfosourcetrack;
 
 typedef struct midmussong_midiinfo {
@@ -59,8 +65,19 @@ static void midmussong_FreeMidiInfoContents(
         free(minfo->songtrackinfo[i].playingnote);
         i++;
     }
+    if (minfo->sourcetrackinfo) {
+        int i = 0;
+        while (i < minfo->song->trackcount) {
+            int k = 0;
+            while (k < 16) {
+                free(minfo->sourcetrackinfo[i].channel[k].modevent);
+                k++;
+            }
+            i++;
+        }
+        free(minfo->sourcetrackinfo);
+    }
     free(minfo->songtrackinfo);
-    free(minfo->sourcetrackinfo);
     memset(minfo, 0, sizeof(*minfo));
 }
 
@@ -167,7 +184,8 @@ static int midmussong_FeedMidiNoteOnToTrack(
     assert(velocity > 0);
     assert(pan >= -MIDMUS_PANRANGE && pan <= MIDMUS_PANRANGE);
     assert(minfo->songtrackinfo[track].midiinstrument ==
-        minfo->sourcetrackinfo[srctrack].midiinstrument[channel]);
+        minfo->sourcetrackinfo[srctrack].
+            channel[channel].midiinstrument);
     if (minfo->song->track[track].blockcount == 0) {
         minfo->song->track[track].block = malloc(
             sizeof(*minfo->song->track[track].block));
@@ -261,13 +279,13 @@ static int midmussong_FinalizeMidiNoteOnTrack(
         minfo->song->track[track].block[0].note[
         minfo->song->track[track].block[0].notecount]);
     memset(insertnoteref, 0, sizeof(*insertnoteref));
-    insertnoteref->munitoffset = roundl(
+    insertnoteref->munitoffset = (int64_t)roundl(
         (double)MIDMUS_MEASUREUNITS *
-        ((double)
-        minfo->songtrackinfo[track].
-            playingnote[noteidx].startmeasure +
         (double)minfo->songtrackinfo[track].
-            playingnote[noteidx].startmeasurepos));
+            playingnote[noteidx].startmeasurepos) +
+        (int64_t)(MIDMUS_MEASUREUNITS) *
+        (int64_t)minfo->songtrackinfo[track].
+            playingnote[noteidx].startmeasure;
     int64_t endoffset = roundl(
         (double)MIDMUS_MEASUREUNITS *
         ((double)endmeasure + (double)endmeasurepos));
@@ -420,7 +438,7 @@ static int midmussong_FeedMidiNoteOff(
                 (minfo->songtrackinfo[i].midiinstrument == -1 ||
                 minfo->songtrackinfo[i].midiinstrument ==
                 minfo->sourcetrackinfo[srctrack].
-                    midiinstrument[channel])) {
+                    channel[channel].midiinstrument)) {
             return midmussong_FeedMidiNoteOffToTrack(
                 minfo, i, srctrack,
                 channel, measure, measurepos);
@@ -434,6 +452,37 @@ static int midmussong_FeedMidiNoteOff(
 }
 
 
+static int _midmussong_CanMergeMidiChannels(
+        midmussong_midiinfo *minfo, int srctrack, int chan1, int chan2
+        ) {
+    if (chan1 == chan2)
+        return 1;
+    assert(chan1 >= 0 && chan1 < 16 && chan2 >= 0 && chan2 < 16);
+    if (minfo->sourcetrackinfo[srctrack].channel[chan1].modeventcount !=
+            minfo->sourcetrackinfo[srctrack].channel[chan2].modeventcount)
+        return 0;
+    int i = 0;
+    while (i < minfo->sourcetrackinfo[srctrack].
+            channel[chan1].modeventcount) {
+        if (minfo->sourcetrackinfo[srctrack].channel[chan1].
+                modevent[i].type !=
+                minfo->sourcetrackinfo[srctrack].channel[chan2].
+                modevent[i].type ||
+                minfo->sourcetrackinfo[srctrack].channel[chan1].
+                modevent[i].value !=
+                minfo->sourcetrackinfo[srctrack].channel[chan2].
+                modevent[i].value ||
+                minfo->sourcetrackinfo[srctrack].channel[chan1].
+                modevent[i].munitoffset !=
+                minfo->sourcetrackinfo[srctrack].channel[chan2].
+                modevent[i].munitoffset)
+            return 0;
+        i++;
+    }
+    return 1;
+}
+
+
 static int midmussong_FeedMidiNoteOn(
         midmussong_midiinfo *minfo, int srctrack,
         int channel, int measure, double measurepos,
@@ -443,7 +492,7 @@ static int midmussong_FeedMidiNoteOn(
     if (velocity > 127) velocity = 127;
     if (velocity <= 0 ||
             minfo->sourcetrackinfo[srctrack].
-            midiinstrument[channel] == -1)
+            channel[channel].midiinstrument == -1)
         return midmussong_FeedMidiNoteOff(minfo, srctrack,
             channel, measure, measurepos);
 
@@ -460,11 +509,17 @@ static int midmussong_FeedMidiNoteOn(
                 (minfo->songtrackinfo[i].midiinstrument == -1 ||
                 minfo->songtrackinfo[i].midiinstrument ==
                 minfo->sourcetrackinfo[srctrack].
-                    midiinstrument[channel])) {
+                    channel[channel].midiinstrument) &&
+                _midmussong_CanMergeMidiChannels(
+                    minfo, srctrack,
+                    minfo->songtrackinfo[i].midiorigfirstsourcechannel,
+                    channel
+                    )) {
             return midmussong_FeedMidiNoteOnToTrack(
                 minfo, i, srctrack,
                 channel, measure, measurepos, key, velocity,
-                minfo->sourcetrackinfo[srctrack].pan[channel]);
+                minfo->sourcetrackinfo[srctrack].
+                channel[channel].pan);
         }
         i++;
     }
@@ -480,8 +535,10 @@ static int midmussong_FeedMidiNoteOn(
     memset(&minfo->songtrackinfo[minfo->song->trackcount], 0,
         sizeof(*newtinfo));
     minfo->songtrackinfo[minfo->song->trackcount].
+        midiorigfirstsourcechannel = channel;
+    minfo->songtrackinfo[minfo->song->trackcount].
         midiinstrument = minfo->sourcetrackinfo[srctrack].
-            midiinstrument[channel];
+            channel[channel].midiinstrument;
     minfo->songtrackinfo[i].midisourcetrack = srctrack;
     midmustrack *newtrack = realloc(
         minfo->song->track, sizeof(*newtrack) * (
@@ -494,6 +551,7 @@ static int midmussong_FeedMidiNoteOn(
     minfo->song->track[minfo->song->trackcount].instrument =
         minfo->songtrackinfo[minfo->song->trackcount].
         midiinstrument;
+    minfo->song->track[minfo->song->trackcount].volume = 127;
     minfo->song->track[minfo->song->trackcount].parent =
         minfo->song;
     minfo->song->trackcount++;
@@ -514,24 +572,8 @@ static int midmussong_FeedMidiNoteOn(
     return midmussong_FeedMidiNoteOnToTrack(
         minfo, minfo->song->trackcount - 1, srctrack,
         channel, measure, measurepos, key, velocity,
-        minfo->sourcetrackinfo[srctrack].pan[channel]);
-}
-
-
-static int midmussong_FeedMidiProgramChange(
-        midmussong_midiinfo *minfo, int srctrack,
-        int channel, int program) {
-    // Ensure allocation of info struct holding info on SOURCE track:
-    // (The source is a simple midi file/official midi standard track)
-    if (!midmussong_EnsureSourceTrackInfo(minfo, srctrack))
-        return 0;
-
-    if (program < 0) program = 0;
-    if (program > 127) program = 127;
-
-    minfo->sourcetrackinfo[srctrack].midiinstrument[channel] =
-        program;
-    return 1;
+        minfo->sourcetrackinfo[srctrack].channel[channel].
+            pan);
 }
 
 
@@ -697,6 +739,63 @@ void midmussong_UpdateBlockSamplePos(
 }
 
 
+void midmussong_UpdateModifierNextMUnitAndTime(
+        midmusblock *bl) {
+    int k = 0;
+    while (k < bl->modifiercount) {
+        int32_t startmeasure = (bl->modifier[k].munitoffset /
+            (int64_t)MIDMUS_MEASUREUNITS) +
+            (int64_t)bl->measurestart;
+        bl->modifier[k].frameoffsetinblock = (
+            _framestartofmeasure(bl->parent->parent,
+            startmeasure));
+        int64_t offset_in_measure = (
+            bl->modifier[k].munitoffset -
+            (int64_t)(startmeasure - bl->measurestart) *
+            (int64_t)MIDMUS_MEASUREUNITS);
+        assert(offset_in_measure >= 0);
+        assert(offset_in_measure < MIDMUS_MEASUREUNITS);
+        bl->modifier[k].frameoffsetinblock += (
+            bl->parent->parent->measure[startmeasure].
+            framelen *
+            offset_in_measure / (int64_t)MIDMUS_MEASUREUNITS);
+        assert(bl->modifier[k].frameoffsetinblock <=
+            _framestartofmeasure(bl->parent->parent,
+            startmeasure) +
+            bl->parent->parent->measure[startmeasure].
+            framelen);
+        k++;
+    }
+    k = 0;
+    while (k < bl->modifiercount) {
+        int type = bl->modifier[k].type;
+        bl->modifier[k].nextsametypemunitoffset = -1;
+        bl->modifier[k].nextsametypeframeoffset = -1;
+        int k2 = k + 1;
+        while (k2 < bl->modifiercount) {
+            if (bl->modifier[k2].type == type) {
+                assert(bl->modifier[k2].munitoffset >=
+                    bl->modifier[k].munitoffset);
+                assert(bl->modifier[k2].frameoffsetinblock >=
+                    bl->modifier[k].frameoffsetinblock);
+                bl->modifier[k].nextsametypemunitoffset =
+                    bl->modifier[k2].munitoffset;
+                bl->modifier[k].nextsametypeframeoffset =
+                    bl->modifier[k2].frameoffsetinblock;
+                break;
+            }
+            k2++;
+        }
+        assert(bl->modifier[k].nextsametypemunitoffset == -1 ||
+               bl->modifier[k].nextsametypemunitoffset >=
+               bl->modifier[k].munitoffset);
+        assert(bl->modifier[k].nextsametypeframeoffset == -1 ||
+               bl->modifier[k].nextsametypeframeoffset >=
+               bl->modifier[k].frameoffsetinblock);
+        k++;
+    }
+}
+
 midmussong *midmussong_Load(
         const char *bytes, int64_t byteslen) {
     midmussong *song = malloc(sizeof(*song));
@@ -719,9 +818,141 @@ midmussong *midmussong_Load(
 
     enum midi_parser_status status;
 
+    // First, pre-parse all modifier events:
     int current_track = -1;
     int current_time = 0;
     int eof = 0;
+    while (!eof) {
+        status = midi_parse(&parser);
+        switch (status) {
+        case MIDI_PARSER_EOB:
+            eof = 1;
+            break;
+        case MIDI_PARSER_INIT:
+            break;
+        case MIDI_PARSER_HEADER: {
+            if ((parser.header.time_division & 0x8000) != 0) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "SMPTE timing not supported\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            minfo.midippq = parser.header.time_division;
+            if (minfo.midippq <= 0) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "invalid midi clocks per beat in song "
+                    "header\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            break;
+        }
+        case MIDI_PARSER_TRACK: {
+            current_time = 0;
+            current_track++;
+            break;
+        }
+        case MIDI_PARSER_TRACK_MIDI: {
+            if (current_track < 0) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "invalid midi event outside of track\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            int abstime = current_time + (int)parser.vtime;
+            int32_t measure;
+            double place_in_measure;
+            if (!_miditimetomeasure(&minfo, abstime,
+                    &measure, &place_in_measure)) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "failed to compute note on measure, oom?\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            if (parser.midi.channel < 0 || parser.midi.channel >= 16) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "midi event with invalid channel %d\n",
+                    parser.midi.channel);
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            int channel = parser.midi.channel;
+            if (parser.midi.status == MIDI_STATUS_CC &&
+                    parser.midi.param1 == 7) {
+                if (!midmussong_EnsureSourceTrackInfo(&minfo,
+                        current_track)) {
+                    oommodevent: ;
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midimus.c: error: "
+                        "out of memory handling modifier event "
+                        "on source track %d, channel %d\n",
+                        current_track, parser.midi.channel);
+                    #endif
+                    midmussong_FreeMidiInfoContents(&minfo);
+                    midmussong_Free(song);
+                    return NULL;
+                }
+                int oldmodcount = (
+                    minfo.sourcetrackinfo[current_track].
+                        channel[channel].modeventcount);
+                midmusmodify *modeventnew = realloc(
+                    minfo.sourcetrackinfo[current_track].
+                    channel[channel].modevent,
+                    sizeof(*modeventnew) * (oldmodcount + 1));
+                if (!modeventnew)
+                    goto oommodevent;
+                memset(&modeventnew[oldmodcount], 0,
+                    sizeof(*modeventnew));
+                modeventnew[oldmodcount].type =
+                    MIDMUSMODIFY_VOL;
+                int v = parser.midi.param2;
+                v = (v >= 0 ? (v <= 127 ? v : 127) : 0);
+                modeventnew[oldmodcount].value = v;
+                modeventnew[oldmodcount].munitoffset =
+                    (int64_t)measure * (int64_t)MIDMUS_MEASUREUNITS +
+                    (int64_t)roundl((double)MIDMUS_MEASUREUNITS *
+                        fmin(1, place_in_measure));
+                assert(oldmodcount <= 0 ||
+                    modeventnew[oldmodcount - 1].munitoffset <=
+                    modeventnew[oldmodcount].munitoffset);
+                minfo.sourcetrackinfo
+                    [current_track].channel[channel].
+                    modeventcount++;
+                minfo.sourcetrackinfo
+                    [current_track].channel[channel].modevent =
+                    modeventnew;
+            }
+            current_time += parser.vtime;
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    // Actual main parse run for notes, times, etc.:
+    memset(&parser, 0, sizeof(parser));
+    parser.state = MIDI_PARSER_INIT;
+    parser.size = byteslen;
+    parser.in = (uint8_t *)bytes;
+    current_track = -1;
+    current_time = 0;
+    eof = 0;
     while (!eof) {
         status = midi_parse(&parser);
         switch (status) {
@@ -747,26 +978,6 @@ midmussong *midmussong_Load(
             printf("  tracks count: %d\n", parser.header.tracks_count);
             printf("  time division: %d\n", parser.header.time_division);
             #endif
-            if ((parser.header.time_division & 0x8000) != 0) {
-                #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
-                    "SMPTE timing not supported\n");
-                #endif
-                midmussong_FreeMidiInfoContents(&minfo);
-                midmussong_Free(song);
-                return NULL;
-            }
-            minfo.midippq = parser.header.time_division;
-            if (minfo.midippq <= 0) {
-                #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
-                    "invalid midi clocks per beat in song "
-                    "header\n");
-                #endif
-                midmussong_FreeMidiInfoContents(&minfo);
-                midmussong_Free(song);
-                return NULL;
-            }
             break;
         case MIDI_PARSER_TRACK:
             current_time = 0;
@@ -866,7 +1077,7 @@ midmussong *midmussong_Load(
                     inst = -1;
                 }
                 minfo.sourcetrackinfo[current_track].
-                    midiinstrument[parser.midi.channel] =
+                    channel[parser.midi.channel].midiinstrument =
                     inst;
             }
             current_time += parser.vtime;
@@ -1016,6 +1227,42 @@ midmussong *midmussong_Load(
         k++;
     }
 
+    // Move over the modifiers for volume, pan, etc:
+    k = 0;
+    while (k < song->trackcount) {
+        int srctrack = minfo.songtrackinfo[k].midisourcetrack;
+        int chan = minfo.songtrackinfo[k].
+            midiorigfirstsourcechannel;
+        if (song->track[k].blockcount < 1 ||
+                song->track[k].block[0].modifiercount > 0) {
+            k++;
+            continue;
+        }
+        song->track[k].block[0].modifiercount =
+            minfo.sourcetrackinfo[srctrack].
+            channel[chan].modeventcount;
+        song->track[k].block[0].modifier =
+            minfo.sourcetrackinfo[srctrack].
+            channel[chan].modevent;
+        minfo.sourcetrackinfo[srctrack].
+            channel[chan].modevent = NULL;
+        minfo.sourcetrackinfo[srctrack].
+            channel[chan].modeventcount = 0;
+        k++;
+    }
+
+    // Update modifiers referencing their follow-up ones:
+    k = 0;
+    while (k < song->trackcount) {
+        int j = 0;
+        while (j < song->track[k].blockcount) {
+            midmussong_UpdateModifierNextMUnitAndTime(
+                &song->track[k].block[j]);
+            j++;
+        }
+        k++;
+    }
+
     // Free extra midi tracking data we no longer need:
     midmussong_FreeMidiInfoContents(&minfo);
     return song;
@@ -1026,5 +1273,18 @@ void midmussong_Free(midmussong *song) {
     if (!song)
         return;
 
+    int k = 0;
+    while (k < song->trackcount) {
+        int j = 0;
+        while (j < song->track[k].blockcount) {
+            free(song->track[k].block[j].modifier);
+            free(song->track[k].block[j].note);
+            j++;
+        }
+        free(song->track[k].block);
+        k++;
+    }
+    free(song->track);
+    free(song->measure);
     free(song);
 }

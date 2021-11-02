@@ -20,24 +20,26 @@ typedef struct midmussong midmussong;
 #define MIDMUS_MEASUREUNITS (4096 * 10)
 
 
-enum midnusnotemodifier {
+enum midnusmodifier {
     MIDMUSMODIFY_UNKNOWN = 0,
     MIDMUSMODIFY_VOL = 1,
     MIDMUSMODIFY_PAN = 2
 };
 
-typedef struct midmusnotemodify {
+typedef struct midmusmodify {
     uint8_t type;
     uint8_t value;
-} midmusnotemodify;
+    int64_t munitoffset, frameoffsetinblock;
+    int64_t nextsametypemunitoffset,
+        nextsametypeframeoffset;
+} midmusmodify;
 
 typedef struct midmusnote {
     int32_t frameoffsetinblock, framelen;
     uint8_t volume, pan, key;
-    int32_t munitoffset, munitlen;
-    int32_t modifiercount;
+    int64_t munitoffset;
+    int32_t munitlen;
     int32_t overlapindex;
-    midmusnotemodify *modifiers;
 } midmusnote;
 
 typedef struct midmusblock {
@@ -46,7 +48,11 @@ typedef struct midmusblock {
     int32_t measurestart, measurelen;
     int32_t frameoffset, framelen;
     int32_t notecount, maxoverlappingnotes;
+    uint8_t volume;
     midmusnote *note;
+
+    int32_t modifiercount;
+    midmusmodify *modifier;
 } midmusblock;
 
 typedef struct midmusmeasure {
