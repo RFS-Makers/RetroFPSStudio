@@ -33,9 +33,10 @@ typedef struct midmusnotemodify {
 
 typedef struct midmusnote {
     int32_t frameoffsetinblock, framelen;
-    uint8_t volume, pan;
+    uint8_t volume, pan, key;
     int32_t munitoffset, munitlen;
     int32_t modifiercount;
+    int32_t overlapindex;
     midmusnotemodify *modifiers;
 } midmusnote;
 
@@ -44,7 +45,7 @@ typedef struct midmusblock {
     int no;
     int32_t measurestart, measurelen;
     int32_t frameoffset, framelen;
-    int32_t notecount;
+    int32_t notecount, maxoverlappingnotes;
     midmusnote *note;
 } midmusblock;
 
@@ -62,6 +63,7 @@ typedef struct midmustrack {
 
     int32_t blockcount;
     midmusblock *block;
+    int32_t maxoverlappingnotes;
 
     midmussong *parent;
 } midmustrack;

@@ -23,6 +23,7 @@ typedef struct midmussong_midiinfotrackplayingnote {
     int srcchannel;
     int velocity;
     int pan;
+    int key;
     int startmeasure;
     double startmeasurepos;
 } midmussong_midiinfotrackplayingnote;
@@ -162,7 +163,7 @@ static int midmussong_FeedMidiNoteOnToTrack(
         midmussong_midiinfo *minfo, int track,
         ATTR_UNUSED int srctrack,
         int channel, int measure, double measurepos,
-        int velocity, int pan) {
+        int key, int velocity, int pan) {
     assert(velocity > 0);
     assert(pan >= -MIDMUS_PANRANGE && pan <= MIDMUS_PANRANGE);
     assert(minfo->songtrackinfo[track].midiinstrument ==
@@ -222,6 +223,9 @@ static int midmussong_FeedMidiNoteOnToTrack(
     minfo->songtrackinfo[track].playingnote[
         minfo->songtrackinfo[track].playingnotecount - 1].
             pan = pan;
+    minfo->songtrackinfo[track].playingnote[
+        minfo->songtrackinfo[track].playingnotecount - 1].
+            key = key;
     return 1;
 }
 
@@ -273,8 +277,12 @@ static int midmussong_FinalizeMidiNoteOnTrack(
         insertnoteref->munitlen = 1;
     int vel = minfo->songtrackinfo[track].
         playingnote[noteidx].velocity;
+    int key = minfo->songtrackinfo[track].
+        playingnote[noteidx].key;
     insertnoteref->volume = (vel <= 127 ?
         (vel >= 0 ? vel : 0) : 127);
+    insertnoteref->key = (key <= 127 ?
+        (key >= 0 ? key : 0) : 127);
     assert(MIDMUS_PANRANGE * 2 < 127);
     insertnoteref->pan = ((int32_t)127 +
         (int32_t)minfo->songtrackinfo[track].
@@ -293,7 +301,64 @@ static int midmussong_FinalizeMidiNoteOnTrack(
     }
     minfo->songtrackinfo[track].playingnotecount--;
 
+    // Now, see if we overlap with other notes and how many:
     return 1;
+}
+
+
+static void midmussong_RecalculateBlockNoteOverlaps(
+        midmusblock *bl) {
+    bl->maxoverlappingnotes = 0;
+    int notecount = bl->notecount;
+    int k = 0;
+    while (k < notecount) {
+        int overlapcount = 0;
+        int i = 0;
+        while (i < notecount && i < k) {
+            if (bl->note[i].key !=
+                    bl->note[k].key) {
+                i++;
+                continue;
+            }
+            if ((bl->note[i].
+                        munitoffset >=
+                    bl->note[k].munitoffset &&
+                    bl->note[i].
+                        munitoffset <
+                    bl->note[k].munitoffset +
+                        bl->note[k].munitlen
+                    ) || (
+                    bl->note[i].
+                        munitoffset + bl->note[i].
+                        munitlen >=
+                    bl->note[k].munitoffset &&
+                    bl->note[i].
+                        munitoffset + bl->note[i].
+                        munitlen <
+                    bl->note[k].munitoffset +
+                        bl->note[k].munitlen
+                    ) || (
+                    bl->note[i].munitoffset <=
+                    bl->note[k].munitoffset &&
+                    bl->note[i].munitoffset +
+                        bl->note[i].munitlen >=
+                    bl->note[k].munitoffset +
+                        bl->note[k].munitlen
+                    )) {
+                overlapcount++;
+            }
+            i++;
+        }
+        bl->note[k].overlapindex = overlapcount;
+        if (overlapcount + 1 > bl->maxoverlappingnotes)
+            bl->maxoverlappingnotes = (
+                overlapcount + 1);
+        if (bl->maxoverlappingnotes >
+                bl->parent->maxoverlappingnotes)
+            bl->parent->maxoverlappingnotes = (
+                bl->maxoverlappingnotes);
+        k++;
+    }
 }
 
 
@@ -319,6 +384,7 @@ static int midmussong_FeedMidiNoteOffToTrack(
 
 static int midmussong_EnsureSourceTrackInfo(
         midmussong_midiinfo *minfo, int srctrack) {
+    assert(srctrack >= 0);
     if (srctrack >= minfo->sourcetrackcount) {
         midmussong_midiinfosourcetrack *newsourcetinfo = realloc(
             minfo->sourcetrackinfo, sizeof(*newsourcetinfo) * (
@@ -330,6 +396,8 @@ static int midmussong_EnsureSourceTrackInfo(
             sizeof(*newsourcetinfo) *
             (srctrack + 1 - minfo->sourcetrackcount));
         minfo->sourcetrackcount = srctrack + 1;
+    } else {
+        assert(minfo->sourcetrackinfo != NULL);
     }
     return 1;
 }
@@ -369,12 +437,13 @@ static int midmussong_FeedMidiNoteOff(
 static int midmussong_FeedMidiNoteOn(
         midmussong_midiinfo *minfo, int srctrack,
         int channel, int measure, double measurepos,
-        int velocity) {
+        int key, int velocity) {
     assert(srctrack >= 0);
     assert(channel >= 0 && channel < SMF_MAX_CHANNELS);
-    assert(velocity >= 0);
     if (velocity > 127) velocity = 127;
-    if (velocity == 0)
+    if (velocity <= 0 ||
+            minfo->sourcetrackinfo[srctrack].
+            midiinstrument[channel] == -1)
         return midmussong_FeedMidiNoteOff(minfo, srctrack,
             channel, measure, measurepos);
 
@@ -394,7 +463,7 @@ static int midmussong_FeedMidiNoteOn(
                     midiinstrument[channel])) {
             return midmussong_FeedMidiNoteOnToTrack(
                 minfo, i, srctrack,
-                channel, measure, measurepos, velocity,
+                channel, measure, measurepos, key, velocity,
                 minfo->sourcetrackinfo[srctrack].pan[channel]);
         }
         i++;
@@ -422,6 +491,9 @@ static int midmussong_FeedMidiNoteOn(
     minfo->song->track = newtrack;
     memset(&minfo->song->track[minfo->song->trackcount], 0,
         sizeof(*newtrack));
+    minfo->song->track[minfo->song->trackcount].instrument =
+        minfo->songtrackinfo[minfo->song->trackcount].
+        midiinstrument;
     minfo->song->track[minfo->song->trackcount].parent =
         minfo->song;
     minfo->song->trackcount++;
@@ -441,7 +513,7 @@ static int midmussong_FeedMidiNoteOn(
     // Add note to newly allocated track:
     return midmussong_FeedMidiNoteOnToTrack(
         minfo, minfo->song->trackcount - 1, srctrack,
-        channel, measure, measurepos, velocity,
+        channel, measure, measurepos, key, velocity,
         minfo->sourcetrackinfo[srctrack].pan[channel]);
 }
 
@@ -705,6 +777,15 @@ midmussong *midmussong_Load(
             #endif
             break;
         case MIDI_PARSER_TRACK_MIDI: {
+            if (current_track < 0) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "invalid midi event outside of track\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
             int abstime = current_time + (int)parser.vtime;
             int32_t measure;
             double place_in_measure;
@@ -730,10 +811,21 @@ midmussong *midmussong_Load(
             printf("  measure: %d\n", measure);
             printf("  place in measure: %f\n", place_in_measure);
             #endif
-            if (parser.midi.status == 0x9) {  // Note On
+            if (parser.midi.channel < 0 || parser.midi.channel >= 16) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midimus.c: error: "
+                    "midi event with invalid channel %d\n",
+                    parser.midi.channel);
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            if (parser.midi.status == MIDI_STATUS_NOTE_ON) {
                 if (!midmussong_FeedMidiNoteOn(
                         &minfo, current_track, parser.midi.channel,
-                        measure, place_in_measure, parser.midi.param2)) {
+                        measure, place_in_measure,
+                        parser.midi.param1, parser.midi.param2)) {
                     #ifdef DEBUG_MIDIPARSER
                     printf("rfsc/midi/midimus.c: error: "
                         "failed to process note on, oom?\n");
@@ -742,7 +834,7 @@ midmussong *midmussong_Load(
                     midmussong_Free(song);
                     return NULL;
                 }
-            } else if (parser.midi.status == 0x8) {  // Note Off
+            } else if (parser.midi.status == MIDI_STATUS_NOTE_OFF) {
                 if (!midmussong_FeedMidiNoteOff(
                         &minfo, current_track, parser.midi.channel,
                         measure, place_in_measure)) {
@@ -754,6 +846,28 @@ midmussong *midmussong_Load(
                     midmussong_Free(song);
                     return NULL;
                 }
+            } else if (parser.midi.status == MIDI_STATUS_PGM_CHANGE) {
+                assert(current_track >= 0);
+                if (!midmussong_EnsureSourceTrackInfo(
+                        &minfo, current_track)) {
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midimus.c: error: "
+                        "oom processing program change\n");
+                    #endif
+                    midmussong_FreeMidiInfoContents(&minfo);
+                    midmussong_Free(song);
+                    return NULL;
+                }
+                assert(minfo.sourcetrackcount >= current_track + 1);
+                assert(minfo.sourcetrackinfo != NULL);
+                int inst = parser.midi.param1;
+                if (inst == 0) {
+                    // No instrument...?
+                    inst = -1;
+                }
+                minfo.sourcetrackinfo[current_track].
+                    midiinstrument[parser.midi.channel] =
+                    inst;
             }
             current_time += parser.vtime;
             break;
@@ -793,12 +907,12 @@ midmussong *midmussong_Load(
                 int len = parser.meta.length;
                 uint32_t microseconds = (
                     ((uint8_t *)parser.meta.bytes)[len - 1]);
-                if (parser.meta.length >= 2)
+                if (len >= 2)
                     microseconds += ((uint32_t)(
-                        ((uint8_t *)parser.meta.bytes)[len - 1])) << 1;
-                if (parser.meta.length >= 3)
+                        ((uint8_t *)parser.meta.bytes)[len - 2])) << 8;
+                if (len >= 3)
                     microseconds += ((uint32_t)(
-                        ((uint8_t *)parser.meta.bytes)[len - 2])) << 2;
+                        ((uint8_t *)parser.meta.bytes)[len - 3])) << 16;
                 double bpm = 60000000.0 / (double)microseconds;
                 if (!midmussong_EnsureMeasureCount(
                         minfo.song, measure)) {
@@ -884,6 +998,18 @@ midmussong *midmussong_Load(
         int j = 0;
         while (j < song->track[k].blockcount) {
             midmussong_UpdateBlockSamplePos(
+                &song->track[k].block[j]);
+            j++;
+        }
+        k++;
+    }
+
+    // Calculate all the overlap indexes for playback:
+    k = 0;
+    while (k < song->trackcount) {
+        int j = 0;
+        while (j < song->track[k].blockcount) {
+            midmussong_RecalculateBlockNoteOverlaps(
                 &song->track[k].block[j]);
             j++;
         }
