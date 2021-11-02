@@ -64,7 +64,7 @@ typedef struct midmusmeasure {
 } midmusmeasure;
 
 typedef struct midmustrack {
-    int32_t instrument;
+    int16_t instrument;
     uint8_t volume, pan;
 
     int32_t blockcount;
@@ -107,5 +107,9 @@ void midmussong_SetMeasureBPM(
 void midmussong_SetMeasureTimeSig(
     midmussong *song, int measure,
     int32_t nom, int32_t div);
+
+const char *midmussong_InstrumentNoToName(int instrno);
+
+const char *midmussong_DrumKeyToName(int keyno);
 
 #endif  // RFS2_MIDMUS_H_
