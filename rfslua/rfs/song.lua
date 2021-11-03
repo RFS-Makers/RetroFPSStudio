@@ -38,7 +38,12 @@ function rfs.song.classtable:play(volume, looped)
         error("oops, self reference is wrong")
     end
     if type(volume) ~= "number" and volume ~= nil then
-        error("volume must be number or nil")
+        if type(volume) == "boolean" and type(looped) == "nil" then
+            looped = volume
+            volume = nil
+        else
+            error("volume must be number or nil")
+        end
     end
     if type(looped) ~= "boolean" and looped ~= nil then
         error("looped must be boolean or nil")
