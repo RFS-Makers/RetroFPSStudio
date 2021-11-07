@@ -383,14 +383,15 @@ static void midmussong_RecalculateBlockNoteOverlaps(
 
 static int midmussong_FeedMidiNoteOffToTrack(
         midmussong_midiinfo *minfo, int track, int srctrack,
-        int channel, int measure, double measurepos) {
+        int channel, int key, int measure, double measurepos) {
     if (minfo->song->track[track].blockcount == 0)
         return 1;  // nothing to do with this
 
     int i = 0;
     while (i < minfo->songtrackinfo[track].playingnotecount) {
         if (minfo->songtrackinfo[track].playingnote[i].
-                srcchannel == channel) {
+                srcchannel == channel &&
+                minfo->songtrackinfo[track].playingnote[i].key == key) {
             return midmussong_FinalizeMidiNoteOnTrack(
                 minfo, track, srctrack, i, measure, measurepos);
         }
@@ -398,6 +399,38 @@ static int midmussong_FeedMidiNoteOffToTrack(
     }
 
     return 0;
+}
+
+
+static int midmussong_FeedMidiAllNotesOffToTrack(
+        midmussong_midiinfo *minfo, int track, int srctrack,
+        int channel, int measure, double measurepos) {
+    if (minfo->song->track[track].blockcount == 0)
+        return 1;  // nothing to do with this
+
+    int count = 0;
+    int i = 0;
+    while (i < minfo->songtrackinfo[track].playingnotecount) {
+        if (minfo->songtrackinfo[track].playingnote[i].
+                srcchannel == channel) {
+            count++;
+            if (!midmussong_FinalizeMidiNoteOnTrack(
+                    minfo, track, srctrack, i,
+                    measure, measurepos))
+                return 0;
+        }
+        i++;
+    }
+    if (count > 0) {
+        #if defined(DEBUG_MIDIPARSER)
+        printf("rfsc/midi/midimus.c: debug: "
+            "all notes off on src track %d channel %d "
+            "stopped %d notes at measure %d, measure pos %f\n",
+            srctrack, channel, count, measure, measurepos);
+        #endif
+    }
+
+    return 1;
 }
 
 
@@ -422,9 +455,36 @@ static int midmussong_EnsureSourceTrackInfo(
 }
 
 
-static int midmussong_FeedMidiNoteOff(
+static int midmussong_FeedMidiAllNotesOff(
         midmussong_midiinfo *minfo, int srctrack,
         int channel, int measure, double measurepos
+        ) {
+    // Ensure allocation of info struct holding info on SOURCE track:
+    // (The source is a simple midi file/official midi standard track)
+    if (!midmussong_EnsureSourceTrackInfo(minfo, srctrack))
+        return 0;
+
+    // Find the TARGET track to assign the event to:
+    // (The target is a track in our own midmus song format.)
+    int i = 0;
+    while (i < minfo->song->trackcount) {
+        if (minfo->songtrackinfo[i].midisourcetrack == srctrack) {
+            return midmussong_FeedMidiAllNotesOffToTrack(
+                minfo, i, srctrack,
+                channel, measure, measurepos);
+        }
+        i++;
+    }
+
+    // Since we have no corresponding track, this is a bogus event.
+    // Just ignore it.
+    return 1;
+}
+
+
+static int midmussong_FeedMidiNoteOff(
+        midmussong_midiinfo *minfo, int srctrack,
+        int channel, int key, int measure, double measurepos
         ) {
     // Ensure allocation of info struct holding info on SOURCE track:
     // (The source is a simple midi file/official midi standard track)
@@ -442,7 +502,7 @@ static int midmussong_FeedMidiNoteOff(
                     channel[channel].midiinstrument)) {
             return midmussong_FeedMidiNoteOffToTrack(
                 minfo, i, srctrack,
-                channel, measure, measurepos);
+                channel, key, measure, measurepos);
         }
         i++;
     }
@@ -495,7 +555,7 @@ static int midmussong_FeedMidiNoteOn(
             minfo->sourcetrackinfo[srctrack].
             channel[channel].midiinstrument == -1)
         return midmussong_FeedMidiNoteOff(minfo, srctrack,
-            channel, measure, measurepos);
+            channel, key, measure, measurepos);
 
     // Ensure allocation of info struct holding info on SOURCE track:
     // (The source is a simple midi file/official midi standard track)
@@ -866,6 +926,15 @@ midmussong *midmussong_Load(
         case MIDI_PARSER_EOB:
             eof = 1;
             break;
+        case MIDI_PARSER_ERROR: {
+            #ifdef DEBUG_MIDIPARSER
+            printf("rfsc/midi/midimus.c: error: "
+                "file parse error\n");
+            #endif
+            midmussong_FreeMidiInfoContents(&minfo);
+            midmussong_Free(song);
+            return NULL;
+        }
         case MIDI_PARSER_INIT:
             break;
         case MIDI_PARSER_HEADER: {
@@ -1099,7 +1168,7 @@ midmussong *midmussong_Load(
             } else if (parser.midi.status == MIDI_STATUS_NOTE_OFF) {
                 if (!midmussong_FeedMidiNoteOff(
                         &minfo, current_track, parser.midi.channel,
-                        measure, place_in_measure)) {
+                        parser.midi.param1, measure, place_in_measure)) {
                     #ifdef DEBUG_MIDIPARSER
                     printf("rfsc/midi/midimus.c: error: "
                         "failed to process note off, oom?\n");
@@ -1131,6 +1200,18 @@ midmussong *midmussong_Load(
                     minfo.sourcetrackinfo[current_track].
                         channel[parser.midi.channel].midiinstrument =
                         inst;
+                if (!midmussong_FeedMidiAllNotesOff(
+                        &minfo, current_track, parser.midi.channel,
+                        measure, place_in_measure
+                        )) {
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midimus.c: error: "
+                        "oom processing all notes off for program change\n");
+                    #endif
+                    midmussong_FreeMidiInfoContents(&minfo);
+                    midmussong_Free(song);
+                    return NULL;
+                }
             }
             current_time += parser.vtime;
             break;

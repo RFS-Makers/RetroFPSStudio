@@ -7,6 +7,7 @@
 
 #ifdef HAVE_SDL
 
+#include <assert.h>
 #include <math.h>
 #include <SDL2/SDL.h>
 #include <stdint.h>
@@ -73,12 +74,14 @@ static void _add_sdlkey_entry_ex(
     ) % sdlkey_to_str_slot_count;
 
     int kcount = sdlkey_to_str_slot[slot].keycount;
-    sdlkey_to_str_slot[slot].key = realloc(
+    assert(kcount >= 0);
+    sdlkey_to_str *new_keys = realloc(
         sdlkey_to_str_slot[slot].key,
         sizeof(*sdlkey_to_str_slot[slot].key) *
         (kcount + 1)
     );
-    if (!sdlkey_to_str_slot[slot].key) goto oom;
+    if (!new_keys) goto oom;
+    sdlkey_to_str_slot[slot].key = new_keys;
     sdlkey_to_str_slot[slot].key[kcount].sdlkey = sym;
     sdlkey_to_str_slot[slot].key[kcount].str = strdup(str);
     if (!sdlkey_to_str_slot[slot].key[kcount].str)
@@ -90,12 +93,14 @@ static void _add_sdlkey_entry_ex(
 
     if (addreverse) {
         kcount = str_to_sdlkey_slot[slotreverse].keycount;
-        str_to_sdlkey_slot[slotreverse].key = realloc(
+
+        sdlkey_to_str *new_keys = realloc(
             str_to_sdlkey_slot[slotreverse].key,
             sizeof(*str_to_sdlkey_slot[slotreverse].key) *
             (kcount + 1)
         );
-        if (!str_to_sdlkey_slot[slotreverse].key) goto oom;
+        if (!new_keys) goto oom;
+        str_to_sdlkey_slot[slotreverse].key = new_keys;
         str_to_sdlkey_slot[slotreverse].key[kcount].sdlkey = sym;
         str_to_sdlkey_slot[slotreverse].key[kcount].str = strdup(str);
         if (!str_to_sdlkey_slot[slotreverse].key[kcount].str)
@@ -103,7 +108,7 @@ static void _add_sdlkey_entry_ex(
         str_to_sdlkey_slot[slotreverse].key[kcount].strlen = strlen(
             str_to_sdlkey_slot[slotreverse].key[kcount].str
         );
-        str_to_sdlkey_slot[slot].keycount++;
+        str_to_sdlkey_slot[slotreverse].keycount++;
     }
 }
 

@@ -36,7 +36,7 @@ function rfs.ui.playsound(sfx, vol)
         vol = 1
     end
     vol = math.max(0.0, math.min(1.0, vol))
-    rfs.audio.play(sfx, vol * 0.8)
+    rfs.audio.play(sfx, vol * 0.6)
 end
 
 function rfs.ui.draw()
