@@ -30,6 +30,7 @@ rfs.audio.play = function(path, volume, pan, looped)
         volume, pan, looped)
 end
 
+
 rfs.audio.preloadsfx = function(path, dev)
     if rfs.audio.default_device == nil then
         rfs.audio.default_device = rfs.audio.dev.open()
@@ -46,11 +47,12 @@ rfs.audio.preloadsfx = function(path, dev)
             local f = function(_gcself)
                 _h3daudio_destroypreloadedsound(_gcself)
             end
-            pcall(f, _gcself)
+            pcall(f, gcself)
         end
     })
     return sound
 end
+
 
 rfs.audio.dev.open = function(name)
     if type(name) ~= "string" and type(name) ~= "nil" then
@@ -63,7 +65,7 @@ rfs.audio.dev.open = function(name)
             local f = function(_gcself)
                 _h3daudio_destroydevice(_gcself)
             end
-            pcall(f, _gcself)
+            pcall(f, gcself)
         end
     })
     return self

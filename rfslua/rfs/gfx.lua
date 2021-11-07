@@ -20,7 +20,7 @@ rfs.gfx.create_target = function(w, h, crisp)
             local f = function(_gcself)
                 _graphics_deletetex(_gcself)
             end
-            pcall(f, _gcself)
+            pcall(f, gcself)
         end
     })
     return result

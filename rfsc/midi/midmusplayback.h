@@ -33,6 +33,9 @@ uint64_t midmusplayback_StartAndAddToMixer(
     int loop,
     int destroyafterwards);
 
+int midmusplayback_IsSongPlayingOnAnyDevice(
+    midmussong *song);
+
 int _midmusplayback_ReadSamplesCallback(  // internal
     midmusplayback *playback,
     char *writebuf, int writebytes, int *haderror);

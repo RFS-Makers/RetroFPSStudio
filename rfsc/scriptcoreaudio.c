@@ -114,6 +114,10 @@ int _h3daudio_loadsong(lua_State *l) {
         lua_pushstring(l, buf);
         return lua_error(l);
     }
+    #if defined(DEBUG_MIDISONGLIFETIME)
+    fprintf(stderr, "rfsc/scriptcoreaudio.c: debug: "
+        "created song %p from source: %s\n", song, p);
+    #endif
     scriptobjref *ref = lua_newuserdata(l, sizeof(*ref));
     if (!ref) {
         midmussong_Free(song);
@@ -230,6 +234,36 @@ int _h3daudio_playsong(lua_State *l) {
 }
 
 
+int _destroysongqueuelen = 0;
+midmussong **_destroysongqueue = NULL;
+
+
+int _h3daudio_checkdestroysongsdelayed(ATTR_UNUSED lua_State *l) {
+    int i = 0;
+    while (i < _destroysongqueuelen) {
+        midmussong *s = _destroysongqueue[i];
+        if (midmusplayback_IsSongPlayingOnAnyDevice(s)) {
+            i++;
+            continue;
+        }
+        #if defined(DEBUG_MIDISONGLIFETIME)
+        fprintf(stderr, "rfsc/scriptcoreaudio.c: debug: "
+            "disposing of song %p permanently (delayed "
+            "destruct)\n", s);
+        #endif
+        midmussong_Free(s);
+        if (i + 1 < _destroysongqueuelen)
+            memmove(
+                &_destroysongqueue[i],
+                &_destroysongqueue[i + 1],
+                sizeof(*_destroysongqueue) *
+                    (_destroysongqueuelen - i - 1));
+        _destroysongqueuelen--;
+    }
+    return 0;
+}
+
+
 int _h3daudio_destroysong(lua_State *l) {
     if (lua_gettop(l) < 1 ||
             lua_type(l, 1) != LUA_TUSERDATA ||
@@ -248,6 +282,37 @@ int _h3daudio_destroysong(lua_State *l) {
             "was it destroyed?");
         return lua_error(l);
     }
+    ((scriptobjref *)lua_touserdata(l, 1))->value = 0;
+    if (midmusplayback_IsSongPlayingOnAnyDevice(s)) {
+        int i = 0;
+        while (i < _destroysongqueuelen) {
+            if (_destroysongqueue[i] == s) {
+                return 0;
+            }
+            i++;
+        }
+        int newlen = _destroysongqueuelen + 1;
+        midmussong **newdestroysongqueue = realloc(
+            _destroysongqueue,
+            sizeof(*_destroysongqueue) * newlen);
+        if (newdestroysongqueue) {
+            // Schedule this for later destruction.
+            #if defined(DEBUG_MIDISONGLIFETIME)
+            fprintf(stderr, "rfsc/scriptcoreaudio.c: debug: "
+                "song %p deletion delayed since still playing\n", s);
+            #endif
+            _destroysongqueue = newdestroysongqueue;
+            _destroysongqueue[_destroysongqueuelen] = s;
+            _destroysongqueuelen++;
+            return 0;
+        }
+        // Ooops, out of memory. Best fallback behavior
+        // is to just continue the normal path of force stop:
+    }
+    #if defined(DEBUG_MIDISONGLIFETIME)
+    fprintf(stderr, "rfsc/scriptcoreaudio.c: debug: "
+        "disposing of song %p permanently (direct destruct)\n", s);
+    #endif
     midmusplayback_StopAllBySongOnAllDevices(s);
     ((scriptobjref *)lua_touserdata(l, 1))->value = 0;
     midmussong_Free(s);
@@ -819,4 +884,6 @@ void scriptcoreaudio_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_h3daudio_playsong");
     lua_pushcfunction(l, _h3daudio_songlength);
     lua_setglobal(l, "_h3daudio_songlength");
+    lua_pushcfunction(l, _h3daudio_checkdestroysongsdelayed);
+    lua_setglobal(l, "_h3daudio_checkdestroysongsdelayed");
 }

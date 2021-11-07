@@ -76,6 +76,14 @@ void h3daudio_StopAllSoundsWithCallbackAndUserdata(
     void (*callback_close)(void *userdata),
     void *callback_userdata);
 
+int h3daudio_HasSoundsWithCallbackAndUserdata(
+    h3daudiodevice *dev,
+    int (*callback_read)(void *userdata,
+        void *buf, int bytes, int *haderror),
+    int (*callback_tostart)(void *userdata),
+    void (*callback_close)(void *userdata),
+    void *callback_userdata);
+
 int h3daudio_IsSoundPlaying(
     h3daudiodevice *dev, uint64_t id
 );

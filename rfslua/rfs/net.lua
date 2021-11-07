@@ -8,20 +8,24 @@ if rfs.net == nil then rfs.net = {} end
 
 rfs.net.dlclass = {}
 
+
 rfs.net.dlclass.size = function(self)
     local f = self
     return _http_getdownloadbytecount(f)
 end
+
 
 rfs.net.dlclass.done = function(self)
     local f = self
     return _http_isdownloaddone(f)
 end
 
+
 rfs.net.dlclass.contents = function(self)
     local f = self
     return _http_getdownloadcontents(f)
 end
+
 
 rfs.net.escape_plus = function(t)
     if type(t) ~= "string" then
@@ -54,6 +58,7 @@ rfs.net.escape_plus = function(t)
     end
     return tresult
 end
+
 
 rfs.net.download = function(url, options)
     if type(options) ~= "table" and

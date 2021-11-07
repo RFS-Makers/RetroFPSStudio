@@ -22,7 +22,7 @@ rfs.song.load = function(path)
             local f = function(_gcself)
                 _h3daudio_destroysong(_gcself)
             end
-            pcall(f, _gcself)
+            pcall(f, gcself)
         end
     })
     return song
@@ -55,5 +55,15 @@ end
 
 function rfs.song.classtable:length()
     return _h3daudio_songlength(self)
+end
+
+
+function rfs.song.housekeeping()
+    local now = rfs.time.ticks()
+    if rfs.song._last_housekeeping == nil or
+            rfs.song._last_housekeeping + 5000 < now then
+        rfs.song._last_housekeeping = now
+        _h3daudio_checkdestroysongsdelayed()
+    end
 end
 
