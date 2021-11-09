@@ -23,7 +23,8 @@ while argno + 1 <= #pargs do
     local v = pargs[argno]
     local optionknown = false
 
-    if v == "--version" then
+    if v == "--version" or v == "-version" or v == "-v" or
+            string.lower(v) == "/version" then
         optionknown = true
         print("RFS2 v" .. rfs.version)
         os.exit(0)

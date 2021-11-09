@@ -466,7 +466,7 @@ int hash_STSMapSet(
     if (!_hash_MapSet(
             map, key, strlen(key), number
             )) {
-        free((char*)number);
+        free((char*)(uintptr_t)number);
         return 0;
     }
     return 1;

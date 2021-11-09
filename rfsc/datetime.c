@@ -16,10 +16,32 @@
 
 #include "threading.h"
 
+mutex *_winticksmutex = NULL;
+uint64_t lastwinticks = 0;
+uint64_t winticksoffset = 0;
+
+static __attribute__((constructor)) void _create_winticksmutex() {
+    if (!_winticksmutex)
+        _winticksmutex = mutex_Create();
+}
+
 
 uint64_t datetime_TicksWithSuspendJump() {
     #if defined(_WIN32) || defined(_WIN64)
-    return GetTickCount64();
+    if (!_winticksmutex)
+        _winticksmutex = mutex_Create();
+    if (!_winticksmutex)
+        return 0;
+    mutex_Lock(_winticksmutex);
+    uint64_t newticks = GetTickCount() + winticksoffset;
+    if (newticks < lastwinticks) {
+        winticksoffset += (lastwinticks - newticks);
+        mutex_Release(_winticksmutex);
+        return lastwinticks;
+    }
+    lastwinticks = newticks;
+    mutex_Release(_winticksmutex);
+    return newticks;
     #else
     struct timespec spec;
     clock_gettime(CLOCK_BOOTTIME, &spec);

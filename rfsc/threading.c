@@ -3,10 +3,14 @@
 // Reading this code for personal education and curiosity is ENCOURAGED!
 // See LICENSE.md for details
 
+#include "compileconfig.h"
+
 #ifndef WINDOWS
 #if defined(WIN32) || defined(_WIN32) || defined(_WIN64) || defined(__WIN32__)
 #define WINDOWS
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501
+#endif
 #if defined __MINGW_H
 #define _WIN32_IE 0x0400
 #endif

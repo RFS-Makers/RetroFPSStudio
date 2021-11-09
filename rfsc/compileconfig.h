@@ -23,6 +23,10 @@
 #define ARCH_ARMV7
 #endif
 
+#if defined(_WIN32) || defined(_WIN64)
+#define _WIN32_WINNT 0x0502
+#endif
+
 //#define DEBUG_VFS
 //#define DEBUG_3DRENDERER
 //#define DEBUG_3DRENDERER_EXTRA
@@ -39,7 +43,10 @@
 //#define DEBUG_MIDIPLAYBACK_EXTRA
 //#define DEBUG_MIDIPLAYBACK_BUFFERS
 
+#define NOMINIAUDIO
 #define HAVE_SDL
 #define HAVE_TSF_COPY
+#define USE_CURL
+#define USE_CURL_STATIC
 
 #endif  // RFS2_COMPILECONFIG_H_

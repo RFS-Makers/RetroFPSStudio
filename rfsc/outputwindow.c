@@ -121,7 +121,10 @@ void outputwindow_EnsureOpenWindow(int forceno3d) {
                 SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE |
                 (fullscreen ? SDL_WINDOW_FULLSCREEN : 0)
             );
+            #if !defined(_WIN32) && !defined(_WIN64)
+            // On Unix, this means we can't use OpenGL:
             forceno3d = 1;
+            #endif
         }
         if (!rfswindow) {
             #ifdef DEBUG_RENDERER

@@ -7,6 +7,7 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#define STBI_NO_STDIO
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 

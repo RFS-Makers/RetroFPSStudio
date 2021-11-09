@@ -140,7 +140,7 @@ roomlayer *roomlayer_Create(uint64_t id) {
         return NULL;
     memset(lr, 0, sizeof(*lr));
     lr->id = id;
-    lr->colmap = roomcolmap_Create();
+    lr->colmap = roomcolmap_Create(lr);
     if (!lr->colmap) {
         free(lr);
         return NULL;

@@ -6,6 +6,8 @@
 #ifndef RFS2_SCRIPTCORE_H_
 #define RFS2_SCRIPTCORE_H_
 
+#include "compileconfig.h"
+
 #include <lua.h>
 #include <stdint.h>
 

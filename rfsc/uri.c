@@ -3,6 +3,8 @@
 // Reading this code for personal education and curiosity is ENCOURAGED!
 // See LICENSE.md for details
 
+#include "compileconfig.h"
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>

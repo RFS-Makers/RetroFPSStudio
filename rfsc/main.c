@@ -6,6 +6,7 @@
 #include <SDL2/SDL.h>
 #endif
 #include <stdio.h>
+#include <string.h>
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #endif
@@ -83,9 +84,20 @@ int main(int argc, char **argv) {
     // Initialize essentials:
     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|
                  SDL_INIT_EVENTS|SDL_INIT_TIMER) != 0) {
-        fprintf(stderr, "rfsc/main.c: error: SDL "
-                "initialization failed: %s\n", SDL_GetError());
-        return 1;
+        int recovered = 0;
+        if (!strstr(SDL_GetError(), "No available video device")) {
+            SDL_SetHintWithPriority(
+                "SDL_VIDEODRIVER", "dummy", SDL_HINT_OVERRIDE
+            );
+            if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|
+                    SDL_INIT_EVENTS|SDL_INIT_TIMER) == 0)
+                recovered = 1;
+        }
+        if (!recovered) {
+            fprintf(stderr, "rfsc/main.c: error: SDL "
+                    "initialization failed: %s\n", SDL_GetError());
+            return 1;
+        }
     }
     // Initialize non-essentials:
     if (SDL_InitSubSystem(SDL_INIT_JOYSTICK) == 0)

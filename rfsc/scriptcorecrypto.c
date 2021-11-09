@@ -15,11 +15,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "md5.h"
+#include "crypto.h"
 #include "scriptcore.h"
 #include "scriptcorecrypto.h"
-#include "sha2/sha2.h"
-#include "sha512crypt/sha512crypt.h"
 
 
 static int _crypto_hashmd5(lua_State *l) {
@@ -33,23 +31,10 @@ static int _crypto_hashmd5(lua_State *l) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
     }
-    MD5_CTX c = {0};
-    MD5_Init(&c);
-    MD5_Update(&c, p, plen);
-    char hashdata[16];
-    MD5_Final((uint8_t *)hashdata, &c);
-    char dighex[16 * 2 + 1];
-    int i = 0;
-    while (i < 16) {
-        char c[3];
-        snprintf(c, 3, "%x", hashdata[i]);
-        dighex[i * 2] = tolower(c[0]);
-        dighex[i * 2 + 1] = tolower(c[1]);
-        i++;
-    }
-    dighex[16 * 2] = '\0';
-    lua_pushstring(l, dighex);
-    return 0;
+    char result[16 * 2 + 1];
+    crypto_hashmd5(p, plen, result);
+    lua_pushstring(l, result);
+    return 1;
 }
 
 
@@ -98,46 +83,10 @@ static int _crypto_sha512crypt(lua_State *l) {
         lua_pushstring(l, "rounds must be positive");
         return lua_error(l);
     }
-    char rounds_str[64];
-    snprintf(rounds_str, sizeof(rounds_str) - 1,
-        "$6$rounds=%" PRId64 "$", rounds);
-    char *keynullterminated = malloc(keylen + 1);
-    char *saltnullterminated_rounds = malloc(
-        strlen(rounds_str) + saltlen + 1);
-    if (!keynullterminated || !saltnullterminated_rounds) {
-        free(keynullterminated);
-        free(saltnullterminated_rounds);
-        lua_pushstring(l, "out of memory");
-        return lua_error(l);
-    }
-    memcpy(keynullterminated, key, keylen);
-    keynullterminated[keylen] = '\0';
-    memcpy(saltnullterminated_rounds,
-           rounds_str, strlen(rounds_str));
-    memcpy(saltnullterminated_rounds + strlen(rounds_str),
-           salt, saltlen);
-    saltnullterminated_rounds[
-        strlen(rounds_str) + saltlen] = '\0';
-    char *result = sha512_crypt(
-        keynullterminated, saltnullterminated_rounds);
-    free(keynullterminated);
-    free(saltnullterminated_rounds);
+    char *result = crypto_sha512crypt(key, salt, rounds);
     if (!result) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
-    }
-    int dollars_seen = 0;
-    i = 0;
-    while (i < (int)strlen(result)) {
-        if (result[i] == '$') {
-            dollars_seen++;
-            if (dollars_seen == 4) {
-                memmove(result, result + i + 1,
-                        strlen(result) - (i + 1) + 1);
-                break;
-            }
-        }
-        i++;
     }
     lua_pushstring(l, result);
     free(result);
@@ -156,20 +105,10 @@ static int _crypto_hashsha512(lua_State *l) {
         lua_pushstring(l, "out of memory");
         return lua_error(l);
     }
-    uint8_t dig[SHA512_DIGEST_LENGTH];
-    SHA512((void *)p, plen, dig);
-    char dighex[SHA512_DIGEST_LENGTH * 2 + 1];
-    int i = 0;
-    while (i < SHA512_DIGEST_LENGTH) {
-        char c[3];
-        snprintf(c, 3, "%x", dig[i]);
-        dighex[i * 2] = tolower(c[0]);
-        dighex[i * 2 + 1] = tolower(c[1]);
-        i++;
-    }
-    dighex[SHA512_DIGEST_LENGTH * 2] = '\0';
-    lua_pushstring(l, dighex);
-    return 0;
+    char result[64 * 2 + 1];
+    crypto_hashsha512(p, plen, result);
+    lua_pushstring(l, result);
+    return 1;
 }
 
 

@@ -3,6 +3,8 @@
 // Reading this code for personal education and curiosity is ENCOURAGED!
 // See LICENSE.md for details
 
+#include "compileconfig.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <lua.h>
@@ -981,10 +983,10 @@ static int _vfs_readvfsfile(lua_State *l) {
         lua_pushstring(l, "alloc failure");
         return lua_error(l);
     }
-    int result;
-    if (!result || (vfs_IsDirectory(
+    int result = 0;
+    if (vfs_IsDirectory(
             path, &result, VFSFLAG_NO_REALDISK_ACCESS
-            ) && result)) {
+            ) && result) {
         free(path);
         return 0;
     }
