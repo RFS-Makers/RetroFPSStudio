@@ -389,6 +389,7 @@ int thread_InMainThread() {
 void thread_Join(thread *t) {
 #ifdef WINDOWS
     WaitForMultipleObjects(1, &t->t, TRUE, INFINITE);
+    CloseHandle(t->t);
 #else
     pthread_join(t->t, NULL);
 #endif

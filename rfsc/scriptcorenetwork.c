@@ -63,6 +63,7 @@ static int _http_newdownload(lua_State *l) {
     return 1;
 }
 
+
 static int _http_getdownloadbytecount(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
@@ -82,6 +83,7 @@ static int _http_getdownloadbytecount(lua_State *l) {
     lua_pushinteger(l, http_DownloadedByteCount(h));
     return 1;
 }
+
 
 static int _http_getdownloadcontents(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
@@ -139,6 +141,28 @@ static int _http_isdownloaddone(lua_State *l) {
     return 1;
 }
 
+
+static int _http_isdownloadfailure(lua_State *l) {
+    if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+                OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+                OBJREF_DOWNLOAD) {
+        lua_pushstring(l, "expected 1 arg of type download");
+        return lua_error(l);
+    }
+    httpdownload *h = ((httpdownload *)
+        (uintptr_t)((scriptobjref *)lua_touserdata(l, 1))->value
+    );
+    if (!h) {
+        lua_pushstring(l, "expected 1 arg of type download");
+        return lua_error(l);
+    }
+    lua_pushboolean(l, http_IsDownloadFailure(h));
+    return 1;
+}
+
+
 static int _http_freedownload(lua_State *l) {
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
@@ -160,6 +184,7 @@ static int _http_freedownload(lua_State *l) {
     return 1;
 }
 
+
 void scriptcorenetwork_AddFunctions(lua_State *l) {
     lua_pushcfunction(l, _http_newdownload);
     lua_setglobal(l, "_http_newdownload");
@@ -167,6 +192,8 @@ void scriptcorenetwork_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_http_freedownload");
     lua_pushcfunction(l, _http_isdownloaddone);
     lua_setglobal(l, "_http_isdownloaddone");
+    lua_pushcfunction(l, _http_isdownloadfailure);
+    lua_setglobal(l, "_http_isdownloadfailure");
     lua_pushcfunction(l, _http_getdownloadbytecount);
     lua_setglobal(l, "_http_getdownloadbytecount");
     lua_pushcfunction(l, _http_getdownloadcontents);

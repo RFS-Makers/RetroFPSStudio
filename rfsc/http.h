@@ -1,6 +1,12 @@
+// This is PROPRIETARY CODE, do not modify, reuse, or share.
+// All Rights Reserved.
+// Reading this code for personal education and curiosity is ENCOURAGED!
+// See LICENSE.md for details
 
-#ifndef OLDSCHOOLC_HTTP_H_
-#define OLDSCHOOLC_HTTP_H_
+#ifndef RFS2_HTTP_H_
+#define RFS2_HTTP_H_
+
+#include "compileconfig.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -31,4 +37,4 @@ int http_EnsureLibsLoaded();
 
 int http_IsDownloadFailure(httpdownload *hp);
 
-#endif  // OLDSCHOOLC_HTTP_H_
+#endif  // RFS2_HTTP_H_

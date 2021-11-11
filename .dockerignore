@@ -1,0 +1,5 @@
+/*.rfspak
+/*.rfspak_unencrypted
+/vgcore.*
+/docker-rfs2-build/
+/perf.data

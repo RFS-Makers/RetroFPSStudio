@@ -364,6 +364,14 @@ function rfs.ui.dlg.update_buttons_size()
     end
 end
 
+
+function rfs.ui.dlg.set_text(text)
+    rfs.ui.dlg.__rt_w = 0
+    rfs.ui.dlg.__rt_h = 0
+    rfs.ui.dlg.text = text
+end
+
+
 function rfs.ui.dlg.show(text, buttons, widget, icon)
     if type(buttons) ~= "table" then
         if type(buttons) ~= "nil" then

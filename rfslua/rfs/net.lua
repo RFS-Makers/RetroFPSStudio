@@ -21,6 +21,12 @@ rfs.net.dlclass.done = function(self)
 end
 
 
+rfs.net.dlclass.had_failure = function(self)
+    local f = self
+    return _http_isdownloadfailure(f)
+end
+
+
 rfs.net.dlclass.contents = function(self)
     local f = self
     return _http_getdownloadcontents(f)
@@ -70,11 +76,11 @@ rfs.net.download = function(url, options)
     )
     debug.setmetatable(result, {
         __index = rfs.net.dlclass,
-        __gc = function(self)
+        __gc = function(_self)
             local f = function(gcself)
                 _http_freedownload(f, gcself)
             end
-            pcall(f, self)
+            pcall(f, _self)
         end
     })
     return result
