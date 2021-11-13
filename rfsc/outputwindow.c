@@ -13,6 +13,7 @@
 
 #include "graphics.h"
 #include "outputwindow.h"
+#include "sdl/sdlinit.h"
 #include "settings.h"
 
 
@@ -86,6 +87,23 @@ int outputwindow_GetIsFullscreen() {
 
 
 void outputwindow_EnsureOpenWindow(int forceno3d) {
+    #if defined(HAVE_SDL)
+    if (!sdlinit_WasDone()) {
+        #if defined(DEBUG_STARTUP)
+        printf("rfsc/outputwindow.c: debug: "
+            "requesting SDL2 initialization "
+            "(outputwindow_EnsureOpenWindow)\n");
+        #endif
+        if (!sdlinit_Do()) {
+            #if defined(DEBUG_STARTUP)
+            printf("rfsc/outputwindow.c: debug: "
+                "SDL2 init failed\n");
+            #endif 
+            return;
+        }
+    }
+    #endif
+
     int fullscreen = openinfullscreen;
     if (rfsforceno3d) forceno3d = 1;
     if (!rfswindow) {

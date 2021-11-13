@@ -14,6 +14,7 @@
 
 #include "datetime.h"
 #include "outputwindow.h"
+#include "sdl/sdlinit.h"
 #include "sdl/sdlkey_to_str.h"
 #include "sdl/sdlkeyboard.h"
 #include "settings.h"
@@ -37,6 +38,22 @@ void scriptcoreevents_SetRelativeMouse(int relative) {
 
 
 int CountFingers() {
+    #if defined(HAVE_SDL)
+    if (!sdlinit_WasDone()) {
+        #if defined(DEBUG_STARTUP)
+        printf("rfsc/scriptcoreevents.c: debug: "
+            "requesting SDL2 initialization "
+            "(CountFingers)\n");
+        #endif
+        if (!sdlinit_Do()) {
+            #if defined(DEBUG_STARTUP)
+            printf("rfsc/scriptcoreevents.c: debug: "
+                "SDL2 init failed\n");
+            #endif
+            return 0;
+        }
+    }
+    #endif
     int num = 0;
     int i = 0;
     while (i < SDL_GetNumTouchDevices()) {
@@ -49,6 +66,22 @@ int CountFingers() {
 
 
 static void _updatemousemode() {
+    #if defined(HAVE_SDL)
+    if (!sdlinit_WasDone()) {
+        #if defined(DEBUG_STARTUP)
+        printf("rfsc/scriptcoreevents.c: debug: "
+            "requesting SDL2 initialization "
+            "(_updatemousemode)\n");
+        #endif
+        if (!sdlinit_Do()) {
+            #if defined(DEBUG_STARTUP)
+            printf("rfsc/scriptcoreevents.c: debug: "
+                "SDL2 init failed\n");
+            #endif 
+            return;
+        }
+    }
+    #endif
     if (relativemousemove && windowhasfocus &&
             !relativemousemovetemporarilydisabled &&
             !SDL_GetRelativeMouseMode()) {
@@ -75,6 +108,23 @@ static const int64_t single_finger_maxleftclickms = 1300;
 
 
 static int scriptcoreevents_iskeydown(lua_State *l) {
+    #if defined(HAVE_SDL)
+    if (!sdlinit_WasDone()) {
+        #if defined(DEBUG_STARTUP)
+        printf("rfsc/scriptcoreevents.c: debug: "
+            "requesting SDL2 initialization "
+            "(scriptcoreevents_iskeydown)\n");
+        #endif
+        if (!sdlinit_Do()) {
+            #if defined(DEBUG_STARTUP)
+            printf("rfsc/scriptcoreevents.c: debug: "
+                "SDL2 init failed\n");
+            #endif 
+            return 0;
+        }
+    }
+    #endif
+
     if (lua_gettop(l) < 1 || lua_type(l, 1) != LUA_TSTRING) {
         lua_pushstring(l, "expected arg of type string");
         return lua_error(l);
@@ -101,6 +151,23 @@ static int scriptcoreevents_iskeydown(lua_State *l) {
 int scriptcoreevents_Process(lua_State *l) {
     if (!l)
         return 0;
+
+    #if defined(HAVE_SDL)
+    if (!sdlinit_WasDone()) {
+        #if defined(DEBUG_STARTUP)
+        printf("rfsc/scriptcoreevents.c: debug: "
+            "requesting SDL2 initialization "
+            "(scriptcoreevents_Process)\n");
+        #endif
+        if (!sdlinit_Do()) {
+            #if defined(DEBUG_STARTUP)
+            printf("rfsc/scriptcoreevents.c: debug: "
+                "SDL2 init failed\n");
+            #endif 
+            return 0;
+        }
+    }
+    #endif
 
     lua_newtable(l);
     int tbl_index = lua_gettop(l);
@@ -311,7 +378,7 @@ int scriptcoreevents_Process(lua_State *l) {
         } else if (e.type == SDL_FINGERUP) {
             #ifdef DEBUG_TOUCH
             fprintf(stderr,
-                "rfsc/scriptcoreevents.c: debug: "
+                "rfsc/scriptcoreevents.c.c: debug: "
                 "SDL_FINGERUP fingerid=%d "
                 "windowID=%d x=%f y=%f "
                 "fingercount=%d "
@@ -387,7 +454,7 @@ int scriptcoreevents_Process(lua_State *l) {
         } else if (e.type == SDL_FINGERDOWN) {
             #ifdef DEBUG_TOUCH
             fprintf(stderr,
-                "rfsc/scriptcoreevents.c: debug: "
+                "rfsc/scriptcoreevents.c.c: debug: "
                 "SDL_FINGERDOWN fingerid=%d "
                 "windowID=%d x=%f y=%f "
                 "fingercount=%d\n",
@@ -590,6 +657,7 @@ int scriptcoreevents_Process(lua_State *l) {
     return 1;
 }
 
+
 static int _getevents(lua_State *l) {
     if (lua_gettop(l) != 0) {
         lua_pushstring(l, "expected 0 args");
@@ -599,18 +667,38 @@ static int _getevents(lua_State *l) {
     return count;
 }
 
+
 static int _disablehwmouse(ATTR_UNUSED lua_State *l) {
     global_mouse_disable = 1;
     return 0;
 }
 
+
 static int _events_starttextinput(ATTR_UNUSED lua_State *l) {
+    #if defined(HAVE_SDL)
+    if (!sdlinit_WasDone()) {
+        #if defined(DEBUG_STARTUP)
+        printf("rfsc/scriptcoreevents.c: debug: "
+            "requesting SDL2 initialization "
+            "(_events_starttextinput)\n");
+        #endif
+        if (!sdlinit_Do()) {
+            #if defined(DEBUG_STARTUP)
+            printf("rfsc/scriptcoreevents.c: debug: "
+                "SDL2 init failed\n");
+            #endif 
+            return 0;
+        }
+    }
+    #endif
+
     if (textinputactive)
         return 0;
     textinputactive = 1;
     SDL_StartTextInput();
     return 0;
 }
+
 
 static int _events_stoptextinput(ATTR_UNUSED lua_State *l) {
     if (!textinputactive)
@@ -620,10 +708,12 @@ static int _events_stoptextinput(ATTR_UNUSED lua_State *l) {
     return 0;
 }
 
+
 static int _events_ctrlpressed(lua_State *l) {
     lua_pushboolean(l, (lctrlpressed || rctrlpressed));
     return 1;
 }
+
 
 static int _os_clipboardpaste(lua_State *l) {
     char *p = SDL_GetClipboardText();
@@ -635,6 +725,7 @@ static int _os_clipboardpaste(lua_State *l) {
     lua_pushstring(l, "");
     return 1;
 }
+
 
 void scriptcoreevents_AddFunctions(lua_State *l) {
     lua_pushcfunction(l, _getevents);

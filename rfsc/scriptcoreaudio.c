@@ -347,23 +347,27 @@ int _h3daudio_destroypreloadedsound(lua_State *l) {
 int _h3daudio_preloadsound(lua_State *l) {
     if (lua_gettop(l) < 2 ||
             lua_type(l, 2) != LUA_TSTRING ||
-            lua_type(l, 1) != LUA_TUSERDATA ||
+            ((lua_type(l, 1) != LUA_TUSERDATA ||
             ((scriptobjref*)lua_touserdata(l, 1))->magic !=
             OBJREFMAGIC ||
             ((scriptobjref*)lua_touserdata(l, 1))->type !=
-            OBJREF_AUDIODEVICE) {
+            OBJREF_AUDIODEVICE) &&
+            lua_type(l, 1) != LUA_TNIL)) {
         lua_pushstring(
             l, "expected 2-5 arguments of types "
             "audiodevice, string"
         );
         return lua_error(l);
     }
-    h3daudiodevice *dev = h3daudio_GetDeviceById(
-        (int)((scriptobjref*)lua_touserdata(l, 1))->value
-    );
-    if (!dev) {
-        lua_pushstring(l, "couldn't access device - was it closed?");
-        return lua_error(l);
+    h3daudiodevice *dev = NULL;
+    if (lua_type(l, 1) != LUA_TNIL) {
+        dev = h3daudio_GetDeviceById(
+            (int)((scriptobjref*)lua_touserdata(l, 1))->value
+        );
+        if (!dev) {
+            lua_pushstring(l, "couldn't access device - was it closed?");
+            return lua_error(l);
+        }
     }
     const char *soundpath = lua_tostring(l, 2);
     if (!soundpath) {
@@ -372,7 +376,8 @@ int _h3daudio_preloadsound(lua_State *l) {
     }
     char *errmsg = NULL;
     h3daudiodecodedfile *f = audiodecodedfile_LoadEx(
-        soundpath, 0, h3daudio_GetDeviceSampleRate(dev),
+        soundpath, 0, (dev ? h3daudio_GetDeviceSampleRate(dev) :
+            48000),
         MAX_SOUND_SECONDS + 0.5, &errmsg);
     if (!f) {
         char buf[512];
@@ -460,17 +465,16 @@ int _h3daudio_opendevice(lua_State *l) {
     );
     if (!dev) {
         if (error) {
-            char buf[512];
-            snprintf(
-                buf, sizeof(buf) - 1,
+            fprintf(stderr, "rfsc/scriptcoreaudio.c: warning: "
                 "failed to open device: %s", error
             );
-            lua_pushstring(l, buf);
             free(error);
         } else {
-            lua_pushstring(l, "failed to open device: unknown error");
+            fprintf(stderr, "rfsc/scriptcoreaudio.c: warning: "
+                "failed to open device: unknown error");
         }
-        return lua_error(l);
+        lua_pushnil(l);
+        return 1;
     }
     _opendevices[_opendevicescount] = dev;
     _opendevicescount++;

@@ -29,11 +29,17 @@ rfs.song.load = function(path)
 end
 
 
-function rfs.song.classtable:play(volume, looped)
-    if rfs.audio.default_device == nil then
+function rfs.song.classtable:play(volume, looped, dev)
+    if dev == nil and rfs.audio.default_device == nil then
         rfs.audio.default_device = rfs.audio.dev.open()
+        if rfs.audio.default_device == nil then
+            return
+        end
     end
-    assert(type(rfs.audio.default_device) == "userdata")
+    if dev == nil then
+        dev = rfs.audio.default_device
+    end
+    assert(type(dev) == "userdata")
     if type(self) ~= "userdata" then
         error("oops, self reference is wrong")
     end
@@ -48,7 +54,7 @@ function rfs.song.classtable:play(volume, looped)
     if type(looped) ~= "boolean" and looped ~= nil then
         error("looped must be boolean or nil")
     end
-    _h3daudio_playsong(rfs.audio.default_device, self,
+    _h3daudio_playsong(dev, self,
         volume, looped)
 end
 

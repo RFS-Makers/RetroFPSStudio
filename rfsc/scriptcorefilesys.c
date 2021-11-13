@@ -880,7 +880,7 @@ static int _vfs_lua_loadordofile(lua_State *l, int runthecode) {
         lua_pushstring(l, "alloc failure");
         return lua_error(l);
     }
-    #if defined(DEBUG_VFS) && !defined(NDEBUG)
+    #if defined(DEBUG_VFS)
     fprintf(stderr,
         "rfsc/scriptcorefilesys.c: _vfs_lua_loadfile(\"%s\")\n",
         path
@@ -1020,7 +1020,7 @@ static int _vfs_readvfsfile(lua_State *l) {
 
 
 void scriptcorefilesys_RegisterVFS(lua_State *l) {
-    #if defined(DEBUG_VFS) && !defined(NDEBUG)
+    #if defined(DEBUG_VFS)
     printf("rfsc/scriptcorefilsys.c: debug: "
            "registering package loader for VFS\n");
     #endif

@@ -157,6 +157,10 @@ static int _lua_pcall(lua_State *l) {
 }
 
 int scriptcore_Run(int argc, const char **argv) {
+    #if (defined(DEBUG_STARTUP) || \
+            defined(DEBUG_LUA))
+    printf("rfsc/scriptcore.c: debug: calling luaL_newState()\n");
+    #endif
     lua_State *l = luaL_newstate();
     _mainstate = l;
 
@@ -166,6 +170,10 @@ int scriptcore_Run(int argc, const char **argv) {
     const char *loaderror = "generic I/O failure";
         
     // Set up script environment for RFS2:
+    #if (defined(DEBUG_LUA))
+    printf("rfsc/scriptcore.c: debug: installing entirety "
+        "of RFS2 lua wrapper API\n");
+    #endif
     lua_pushcfunction(l, _lua_pcall);
     lua_setglobal(l, "pcall");
     scriptcoreplatform_AddFunctions(l);
@@ -186,6 +194,9 @@ int scriptcore_Run(int argc, const char **argv) {
     scriptcoreroom_AddFunctions(l);
     scriptcorewidechar_AddFunctions(l);
 
+    #if (defined(DEBUG_LUA))
+    printf("rfsc/scriptcore.c: debug: adding '_debugtableref'\n");
+    #endif
     int prev_stack = lua_gettop(l);
     lua_getglobal(l, "debug");
     if (lua_type(l, -1) == LUA_TTABLE) {
@@ -197,12 +208,20 @@ int scriptcore_Run(int argc, const char **argv) {
     }
     lua_settop(l, prev_stack);
 
+    #if (defined(DEBUG_STARTUP) || \
+            defined(DEBUG_LUA))
+    printf("rfsc/scriptcore.c: debug: adding traceback handler\n");
+    #endif
     lua_pushtracebackfunc(l);
     int errorhandlerindex = lua_gettop(l);
     assert(errorhandlerindex > 0);
     assert(lua_type(l, errorhandlerindex) == LUA_TFUNCTION);
 
     // Set up os.arg:
+    #if (defined(DEBUG_LUA))
+    printf("rfsc/scriptcore.c: debug: "
+        "injecting os.args into Lua\n");
+    #endif
     lua_getglobal(l, "os");
     lua_pushstring(l, "args");
     lua_newtable(l);
@@ -216,6 +235,10 @@ int scriptcore_Run(int argc, const char **argv) {
     lua_settable(l, -3);
 
     // Load up main.lua:
+    #if (defined(DEBUG_LUA))
+    printf("rfsc/scriptcore.c: debug: calling Lua VFS loader "
+        "to load up main.lua\n");
+    #endif
     lua_settop(l, errorhandlerindex);
     lua_getglobal(l, "_vfs_lua_loadfile");
     assert(lua_type(l, -1) == LUA_TFUNCTION);
@@ -224,8 +247,18 @@ int scriptcore_Run(int argc, const char **argv) {
     assert(lua_type(l, errorhandlerindex) == LUA_TFUNCTION);
     int result = lua_pcall(l, 1, 1, errorhandlerindex);
     int result2 = 0;
-    if (result == 0)
+    if (result == 0) {
+        #if (defined(DEBUG_STARTUP) || \
+            defined(DEBUG_LUA))
+        printf("rfsc/scriptcore.c: debug: handing off flow "
+            "to main.lua code\n");
+        #endif
         result2 = lua_pcall(l, 0, 1, errorhandlerindex);
+        #if (defined(DEBUG_LUA))
+        printf("rfsc/scriptcore.c: debug: execution "
+            "returned from main.lua to C\n");
+        #endif
+    }
     if (result || result2) {
         char buf[1024];
         snprintf(

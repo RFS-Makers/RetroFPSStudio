@@ -401,6 +401,10 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
     if (cam->cache->cachedfov != cam->fov ||
             cam->cache->cachedw != w ||
             cam->cache->cachedh != h) {
+        #if defined(DEBUG_3DRENDERER)
+        printf("rfsc/roomcam.c: debug: "
+            "recalculating FOV and horizontal ray vectors\n");
+        #endif
         force_recalculate_rotated_vecs = 1;
         assert(cam->fov > 0);
         int32_t aspectscalar = (
@@ -502,6 +506,11 @@ int roomcam_CalculateViewPlane(roomcam *cam, int w, int h) {
     }
     if (force_recalculate_vertivecs ||
             cam->cache->cachedvangle != cam->vangle) {
+        #if defined(DEBUG_3DRENDERER) && \
+            defined(DEBUG_3DRENDERER_EXTRA)
+        printf("rfsc/roomcam.c: debug: "
+            "recalculating vertical ray vectors\n");
+        #endif
         const int64_t plane_height = cam->cache->planeheight;
         const int64_t plane_distance = cam->cache->planedist;
         int64_t _vertishift_x = plane_distance;
@@ -613,7 +622,7 @@ int roomcam_RenderRoom(
     // Collect some important info first:
     renderstatistics *stats = &cam->cache->stats;
     stats->base_geometry_rooms_recursed++;
-    #if defined(DEBUG_3DRENDERER)
+    #if defined(DEBUG_3DRENDERER) && defined(DEBUG_3DRENDERER_EXTRA)
     fprintf(stderr,
         "rfsc/roomcam.c: roomcam_RenderRoom cam_id=%" PRId64
         ", RECURSE into room_id=%" PRId64 " "
@@ -666,7 +675,7 @@ int roomcam_RenderRoom(
         if (!intersect || wallno < 0) {
             // Special super noisy debug of weird collision events:
             #if (defined(DEBUG_3DRENDERER) && \
-                defined(DEBUG_3DRENDERER_EXTRA) && !defined(NDEBUG))
+                defined(DEBUG_3DRENDERER_EXTRA))
             if (cam->obj->parentroom != NULL) {
                 fprintf(stderr,
                     "rfsc/roomcam.c: warning: roomcam_RenderRoom "
@@ -748,7 +757,7 @@ int roomcam_RenderRoom(
             // and carry on:
             endcol = col;
         }
-        #if defined(DEBUG_3DRENDERER)
+        #if defined(DEBUG_3DRENDERER) && defined(DEBUG_3DRENDERER_EXTRA)
         fprintf(stderr,
             "rfsc/roomcam.c: roomcam_RenderRoom cam_id=%" PRId64
             ", room_id=%" PRId64 " -> slice col=%d<->%d\n",
@@ -836,20 +845,6 @@ int roomcam_RenderRoom(
                 ignorewall, &tex,
                 r->floor_z, r->height
             );
-
-            // Draw debug indicators for drawn walls:
-            #if defined(DEBUG_3DRENDERER)
-            int j = col;
-            while (j <= endcol) {
-                 graphics_DrawRectangle(
-                    0, fmax(0, 1.0 - fmod(((double)r->id) * 0.2,
-                    1.0)), 0, 1,
-                    j, y + 65 + fmod(((double)r->id) * 0.05,
-                    1.0) * 50, 1, 5
-                );
-                j++;
-            }
-            #endif
         }
 
         // Draw floor/ceiling:
@@ -903,7 +898,7 @@ int roomcam_Render(
     }
 
     // Ok, we're ready to render now:
-    #if defined(DEBUG_3DRENDERER)
+    #if defined(DEBUG_3DRENDERER) && defined(DEBUG_3DRENDERER_EXTRA)
     fprintf(stderr,
         "rfsc/roomcam.c: roomcam_Render cam_id=%" PRId64
         " START, w=%d,h=%d\n",

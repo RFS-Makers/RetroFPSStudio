@@ -31,10 +31,13 @@
 //#define DEBUG_3DRENDERER
 //#define DEBUG_3DRENDERER_EXTRA
 //#define DEBUG_TEXTURES
+//#define DEBUG_STARTUP
 //#define DEBUG_RENDERER
 //#define DEBUG_TOUCH
 //#define DEBUG_DOWNLOADS
 //#define DEBUG_FS
+//#define DEBUG_AUDIO
+//#define DEBUG_LUA
 //#define DEBUG_AUDIODECODE
 //#define DEBUG_MIDISONGLIFETIME
 //#define DEBUG_MIDIPARSER

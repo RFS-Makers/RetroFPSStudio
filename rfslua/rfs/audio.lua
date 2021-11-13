@@ -9,9 +9,12 @@ if rfs.audio == nil then
 end
 
 
-rfs.audio.play = function(path, volume, pan, looped)
+rfs.audio.play = function(path, volume, pan, looped, dev)
     if type(path) ~= "string" and type(path) ~= "userdata" then
         error("sound path must be string or predecodedsound")
+    end
+    if type(dev) ~= "nil" and type(dev) ~= "userdata" then
+        error("device if specified must be a sound device")
     end
     if rfs.audio.default_device == nil then
         rfs.audio.default_device = rfs.audio.dev.open()
@@ -25,18 +28,25 @@ rfs.audio.play = function(path, volume, pan, looped)
     if type(looped) ~= "boolean" and looped ~= nil then
         error("looped must be boolean or nil")
     end
-    assert(rfs.audio.default_device ~= nil)
-    _h3daudio_playsound(rfs.audio.default_device, path,
+    if dev == nil and rfs.audio.default_device == nil then
+        rfs.audio.default_device = rfs.audio.dev.open()
+        if rfs.audio.default_device == nil then
+            return
+        end
+    end
+    if dev == nil then
+        dev = rfs.audio.default_device
+    end
+    _h3daudio_playsound(dev, path,
         volume, pan, looped)
 end
 
 
 rfs.audio.preloadsfx = function(path, dev)
-    if rfs.audio.default_device == nil then
+    if dev == nil and rfs.audio.default_device == nil then
         rfs.audio.default_device = rfs.audio.dev.open()
-        if rfs.audio.default_device == nil then
-            error("failed to open audio")
-        end
+        -- We don't bail here even if opening the device fails.
+        -- This way, we can still quietly preload the sound.
     end
     if dev == nil then
         dev = rfs.audio.default_device

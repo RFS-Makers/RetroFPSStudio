@@ -137,7 +137,7 @@ while argno + 1 <= #pargs do
     end
     if v == "--help" then
         optionknown = true
-        print("Retro FPS Studio. Authentic 2.5d fps magic! " ..
+        print("Retro FPS Studio. Authentic 2.5D FPS magic! " ..
               "All Rights Reserved.")
         print("Copyright (C) 2021, E.J.T. Version v" .. rfs.version ..
               ".")

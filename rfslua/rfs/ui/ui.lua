@@ -19,15 +19,15 @@ function rfs.ui.loadsounds()
     end
     if rfs.ui.focussound == nil then
         rfs.ui.focussound = rfs.audio.preloadsfx(
-            "rfslua/res/default-game-res/sfx/click02.wav")
+            "rfslua/res/default-game-res/sfx/click02")
     end
     if rfs.ui.oksound == nil then
         rfs.ui.oksound = rfs.audio.preloadsfx(
-            "rfslua/res/default-game-res/sfx/click03.wav")
+            "rfslua/res/default-game-res/sfx/click03")
     end
     if rfs.ui.cancelsound == nil then
         rfs.ui.cancelsound = rfs.audio.preloadsfx(
-            "rfslua/res/default-game-res/sfx/click01.wav")
+            "rfslua/res/default-game-res/sfx/click01")
     end
 end
 
