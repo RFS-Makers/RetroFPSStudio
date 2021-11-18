@@ -6,6 +6,9 @@
 #include "compileconfig.h"
 
 #include <assert.h>
+#if defined(_WIN32) || defined(_WIN64)
+#include <conio.h>
+#endif
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -15,6 +18,7 @@
 #endif
 
 #include "filesys.h"
+#include "main.h"
 #include "outputwindow.h"
 #include "scriptcore.h"
 #include "scriptcorearchive.h"
@@ -82,6 +86,7 @@ char *stringescape(const char *value) {
     return escaped;
 }
 
+
 char *_prefix__file__(
         const char *contents, const char *filepath
         ) {
@@ -111,6 +116,7 @@ char *_prefix__file__(
     free(escapedpath);
     return buf;
 }
+
 
 static int _lua_pcall(lua_State *l) {
     if (lua_gettop(l) < 1) {
@@ -155,6 +161,38 @@ static int _lua_pcall(lua_State *l) {
         return returned_values + 1;
     }
 }
+
+
+int scriptcore_hadendsignal(lua_State *l) {
+    lua_pushboolean(l, main_gotsigintsigterm);
+    return 1;
+}
+
+
+int scriptcore_consolewasspawned(lua_State *l) {
+    lua_pushboolean(l, main_ConsoleWasSpawned());
+    return 1;
+}
+
+
+int scriptcore_anykeytocontinue(ATTR_UNUSED lua_State *l) {
+    #if defined(WIN32) || defined(_WIN64)
+    printf("Press any key to continue...\n");
+    fflush(stdout);
+    char c = getch();
+    return 0;
+    #else
+    lua_pushstring(l, "not implemented");
+    return lua_error(l);
+    #endif
+}
+
+
+int scriptcore_ensureconsole(lua_State *l) {
+    lua_pushboolean(l, main_EnsureConsole());
+    return 1;
+}
+
 
 int scriptcore_Run(int argc, const char **argv) {
     #if (defined(DEBUG_STARTUP) || \
@@ -233,6 +271,23 @@ int scriptcore_Run(int argc, const char **argv) {
         i++;
     }
     lua_settable(l, -3);
+    lua_pop(l, 1);
+
+    // Set up os.hadendsignal:
+    lua_getglobal(l, "os");
+    lua_pushstring(l, "hadendsignal");
+    lua_pushcfunction(l, scriptcore_hadendsignal);
+    lua_settable(l, -3);
+    lua_pushstring(l, "ensureconsole");
+    lua_pushcfunction(l, scriptcore_ensureconsole);
+    lua_settable(l, -3);
+    lua_pushstring(l, "consolewasspawned");
+    lua_pushcfunction(l, scriptcore_consolewasspawned);
+    lua_settable(l, -3);
+    lua_pushstring(l, "anykeytocontinue");
+    lua_pushcfunction(l, scriptcore_anykeytocontinue);
+    lua_settable(l, -3);
+    lua_pop(l, 1);  // remove "os" table
 
     // Load up main.lua:
     #if (defined(DEBUG_LUA))

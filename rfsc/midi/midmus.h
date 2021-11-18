@@ -56,7 +56,7 @@ typedef struct midmusblock {
 } midmusblock;
 
 typedef struct midmusmeasure {
-    double beatpermeasure;
+    double beatspermeasure;
     int32_t signaturenom, signaturediv;
 
     double bpm;
@@ -108,8 +108,20 @@ void midmussong_SetMeasureTimeSig(
     midmussong *song, int measure,
     int32_t nom, int32_t div);
 
+void midmussong_GetMeasureStartLen(
+    midmussong *song, int measure,
+    int64_t *out_framestart, int64_t *out_framelen);
+
 const char *midmussong_InstrumentNoToName(int instrno);
 
 const char *midmussong_DrumKeyToName(int keyno);
+
+int32_t midmussong_FrameOffsetToMeasure(
+    midmussong *song, int64_t frameoffset);
+
+void midmussong_MeasureTimeSig(
+    midmussong *song, int measure,
+    int32_t *out_signom, int32_t *out_sigdiv,
+    double *out_beatspermeasure);
 
 #endif  // RFS2_MIDMUS_H_

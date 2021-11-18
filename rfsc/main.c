@@ -6,6 +6,9 @@
 #include "compileconfig.h"
 
 #include <assert.h>
+#if !defined(_WIN32) && !defined(_WIN64)
+#include <signal.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #if defined(_WIN32) || defined(_WIN64)
@@ -20,13 +23,66 @@
 #include "widechar.h"
 
 
+int main_consolewasspawned = 0;
+_Atomic volatile int main_gotsigintsigterm = 0;
+#if !defined(_WIN32) && !defined(_WIN64)
+void sigint_handler(int signo) {
+    assert(signo == SIGINT);
+    main_gotsigintsigterm = 1;
+}
+
+
+void sigterm_handler(int signo) {
+    assert(signo == SIGTERM);
+    main_gotsigintsigterm = 1;
+}
+
+
+int main_EnsureConsole() {
+    return 1;
+}
+
+
+int main_ConsoleWasSpawned() {return 0;}
+#else
+static int main_havewinconsole = 0;
+static int main_triedconsolealloc = 0;
+
+int main_EnsureConsole() {
+    if (main_havewinconsole)
+        return 1;
+    if (main_triedconsolealloc)
+        return 0;
+    main_triedconsolealloc();
+    if (AllocConsole()) {
+        main_consolewasspawned = 1;
+        main_havewinconsole = 1;
+    }
+    return main_havewinconsole;
+}
+
+
+int main_ConsoleWasSpawned() {
+    return main_consolewasspawned;
+}
+#endif
+
+
 int main_IsEditorExecutable() {
     return 1;
 }
 
+
 int main(int argc, char **argv) {
     #if defined(DEBUG_STARTUP)
     printf("rfsc/main.c: debug: entering main(), let's go!\n");
+    #endif
+    #if !defined(_WIN32) && !defined(_WIN64)
+    #if defined(DEBUG_STARTUP)
+    printf("rfsc/main.c: debug: installing signal handlers...\n");
+    #endif
+    signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigterm_handler);
     #endif
     #if (defined(DEBUG_VFS) || defined(DEBUG_STARTUP))
     printf("rfsc/main.c: debug: calling vfs_Init()\n");
@@ -60,6 +116,8 @@ static int str_is_spaces(const char *s) {
 int WINAPI WinMain(
         ATTR_UNUSED HINSTANCE hInst, ATTR_UNUSED HINSTANCE hPrev,
         ATTR_UNUSED LPSTR szCmdLine, ATTR_UNUSED int sw) {
+    if (AttachConsole(ATTACH_PARENT_PROCESS))
+        main_havewinconsole = 1;
     #if defined(DEBUG_STARTUP)
     printf("rfsc/main.c: debug: WinMain() entered, "
         "doing argument reformatting...\n");

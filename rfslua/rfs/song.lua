@@ -59,6 +59,11 @@ function rfs.song.classtable:play(volume, looped, dev)
 end
 
 
+function rfs.song.classtable:isplaying()
+    return _h3daudio_songisplaying(self)
+end
+
+
 function rfs.song.classtable:length()
     return _h3daudio_songlength(self)
 end

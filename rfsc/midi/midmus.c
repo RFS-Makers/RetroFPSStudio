@@ -48,10 +48,18 @@ typedef struct midmussong_midiinfosourcetrack {
     midmussong_midiinfosourcechannel channel[SMF_MAX_CHANNELS];
 } midmussong_midiinfosourcetrack;
 
+typedef struct midmussong_midiinfotimesig {
+    int32_t midiclock;
+    int32_t signom, sigdiv;
+} midmussong_midiinfotimesig;
+
 typedef struct midmussong_midiinfo {
     midmussong *song;
 
     midmussong_midiinfotrack *songtrackinfo;
+
+    int32_t timesigchangecount;
+    midmussong_midiinfotimesig *timesigchange;
 
     int midippq;  // Parts Per Quarter (=clock ticks per beat)
     int sourcetrackcount;
@@ -59,8 +67,31 @@ typedef struct midmussong_midiinfo {
 } midmussong_midiinfo;
 
 
+static int _midmussong_KeepMidiTimeSigChange(
+        midmussong_midiinfo *minfo,
+        int32_t clock, int32_t signom, int32_t sigdiv) {
+    int32_t newcount = minfo->timesigchangecount + 1;
+    midmussong_midiinfotimesig *newtimesigchange = (
+        realloc(minfo->timesigchange,
+            newcount * sizeof(*minfo->timesigchange)));
+    if (!newtimesigchange)
+        return 0;
+    memset(&newtimesigchange[newcount - 1],
+        0, sizeof(*newtimesigchange));
+    newtimesigchange[newcount - 1].midiclock = clock;
+    newtimesigchange[newcount - 1].signom = signom;
+    newtimesigchange[newcount - 1].sigdiv = sigdiv;
+    minfo->timesigchange = newtimesigchange;
+    minfo->timesigchangecount = newcount;
+    return 1;
+}
+
+
 static void midmussong_FreeMidiInfoContents(
         midmussong_midiinfo *minfo) {
+    if (!minfo)
+        return;
+    free(minfo->timesigchange);
     int i = 0;
     while (i < minfo->song->trackcount) {
         free(minfo->songtrackinfo[i].playingnote);
@@ -87,21 +118,21 @@ void midmussong_UpdateMeasureTiming(
         midmusmeasure *measure) {  // Update measure length based on
                                    // time signature and BPM.
     assert(measure->signaturediv > 0);
-    measure->beatpermeasure = (
+    measure->beatspermeasure = (
         (double)measure->signaturenom /
         (double)measure->signaturediv) * 4.0;
-    if (fabs(measure->beatpermeasure -
-            round(measure->beatpermeasure)) < 0.01 &&
-            round(measure->beatpermeasure) > 0) {
+    if (fabs(measure->beatspermeasure -
+            round(measure->beatspermeasure)) < 0.01 &&
+            round(measure->beatspermeasure) > 0) {
         // Avoid rounding issues by erring towards whole numbers.
-        measure->beatpermeasure = round(
-            measure->beatpermeasure);
+        measure->beatspermeasure = round(
+            measure->beatspermeasure);
     }
     double beatsseconds = 1.0 / (
         (double)measure->bpm / 60.0);
     measure->framelen = round(
         ((double)MIDMUS_SAMPLERATE) * beatsseconds *
-        ((double)measure->beatpermeasure));
+        ((double)measure->beatspermeasure));
 }
 
 
@@ -398,7 +429,11 @@ static int midmussong_FeedMidiNoteOffToTrack(
         i++;
     }
 
-    return 0;
+    #if defined(DEBUG_MIDIPARSER)
+    printf("rfsc/midi/midmus.c: warning: "
+        "ignoring bogus midi note off event\n");
+    #endif
+    return 1;
 }
 
 
@@ -423,7 +458,7 @@ static int midmussong_FeedMidiAllNotesOffToTrack(
     }
     if (count > 0) {
         #if defined(DEBUG_MIDIPARSER)
-        printf("rfsc/midi/midimus.c: debug: "
+        printf("rfsc/midi/midmus.c: debug: "
             "all notes off on src track %d channel %d "
             "stopped %d notes at measure %d, measure pos %f\n",
             srctrack, channel, count, measure, measurepos);
@@ -645,7 +680,7 @@ static int32_t _miditicksofmeasure(
     midmussong_UpdateMeasureTiming(&minfo->song->measure[measure]);
     int32_t result = round(
         (double)minfo->midippq *
-        minfo->song->measure[measure].beatpermeasure);
+        minfo->song->measure[measure].beatspermeasure);
     if (result < 1)
         result = 1;
     return result;
@@ -663,6 +698,23 @@ static int64_t _framestartofmeasure(
         k++;
     }
     return offset;
+}
+
+
+int32_t midmussong_FrameOffsetToMeasure(
+        midmussong *song, int64_t frameoffset) {
+    if (frameoffset < 0)
+        return 0;
+    int64_t offset = 0;
+    int32_t i = 0;
+    while (i < song->measurecount) {
+        if (song->measure[i].framelen + offset > frameoffset &&
+                offset <= frameoffset)
+            return i;
+        offset += song->measure[i].framelen;
+        i++;
+    }
+    return song->measurecount;
 }
 
 
@@ -684,6 +736,7 @@ void midmussong_SetMeasureBPM(midmussong *song,
 void midmussong_SetMeasureTimeSig(
         midmussong *song,
         int measure, int32_t nom, int32_t div) {
+    if (measure < 0) measure = 0;
     if (measure >= song->measurecount)
         return;
     int32_t foundnom = song->measure[measure].signaturenom;
@@ -750,6 +803,30 @@ double midmussong_GetSecondsLength(midmussong *s) {
 }
 
 
+void midmussong_GetMeasureStartLen(
+        midmussong *song, int measure,
+        int64_t *out_framestart, int64_t *out_framelen) {
+    if (measure < 0) {
+        *out_framestart = 0;
+        *out_framelen = 1;
+    }
+    int64_t startoffset = 0;
+    int k = 0;
+    while (k < song->measurecount && k < measure) {
+        startoffset += song->measure[k].framelen;
+        k++;
+    }
+    *out_framestart = startoffset;
+    if (k < song->measurecount) {
+        *out_framelen = song->measure[k].framelen;
+    } else if (k > 0) {
+        *out_framelen = song->measure[k - 1].framelen;
+    } else {
+        *out_framelen = 1;
+    }
+}
+
+
 void midmussong_UpdateBlockSamplePos(
         midmusblock *bl) {
     if (bl->measurelen <= 0)
@@ -758,7 +835,7 @@ void midmussong_UpdateBlockSamplePos(
         bl->parent->parent, bl->measurestart);
     bl->framelen = _framestartofmeasure(
         bl->parent->parent, bl->measurestart +
-        bl->measurelen);
+        bl->measurelen) - bl->frameoffset;
     int32_t i = 0;
     while (i < bl->notecount) {
         midmusnote *noteref = &(bl->note[i]);
@@ -894,6 +971,28 @@ int midmussong_TransferModifierToBlock(
 }
 
 
+void midmussong_MeasureTimeSig(
+        midmussong *song, int measure,
+        int32_t *out_signom, int32_t *out_sigdiv,
+        double *out_beatspermeasure) {
+    if (song->measurecount <= 0) {
+        *out_signom = 4;
+        *out_sigdiv = 4;
+        *out_beatspermeasure = 4;
+        return;
+    }
+    if (measure < 0) measure = 0;
+    if (measure >= song->measurecount) measure = song->measurecount - 1;
+    if (out_signom)
+        *out_signom = song->measure[measure].signaturenom;
+    if (out_sigdiv)
+        *out_sigdiv = song->measure[measure].signaturediv;
+    if (out_beatspermeasure)
+        *out_beatspermeasure = (
+            song->measure[measure].beatspermeasure);
+}
+
+
 midmussong *midmussong_Load(
         const char *bytes, int64_t byteslen) {
     midmussong *song = malloc(sizeof(*song));
@@ -908,7 +1007,7 @@ midmussong *midmussong_Load(
     parser.size = byteslen;
     parser.in = (uint8_t *)bytes;
     #if defined(DEBUG_MIDIPARSER)
-    printf("rfsc/midi/midimus.c: debug: "
+    printf("rfsc/midi/midmus.c: debug: "
         "parser init (%" PRId64
         " bytes midi, song %p)...\n",
         byteslen, song);
@@ -916,7 +1015,11 @@ midmussong *midmussong_Load(
 
     enum midi_parser_status status;
 
-    // First, pre-parse all modifier events:
+    // Before anything else, go through song to extract
+    // time signature changes (otherwise things will break
+    // if they aren't on the very first track):
+    int seen_note_on = 0;
+    int seen_note_off_past_on = 0;
     int current_track = -1;
     int current_time = 0;
     int eof = 0;
@@ -927,9 +1030,19 @@ midmussong *midmussong_Load(
             eof = 1;
             break;
         case MIDI_PARSER_ERROR: {
+            if (seen_note_on && seen_note_off_past_on) {
+                // Treat this as EOF and play what we have.
+                eof = 1;
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midmus.c: warning: "
+                    "ignoring corrupt file ending\n");
+                #endif
+                break;
+            }
             #ifdef DEBUG_MIDIPARSER
-            printf("rfsc/midi/midimus.c: error: "
-                "file parse error\n");
+            printf("rfsc/midi/midmus.c: error: "
+                "file parse error (in time signature "
+                "pre-parse)\n");
             #endif
             midmussong_FreeMidiInfoContents(&minfo);
             midmussong_Free(song);
@@ -940,7 +1053,7 @@ midmussong *midmussong_Load(
         case MIDI_PARSER_HEADER: {
             if ((parser.header.time_division & 0x8000) != 0) {
                 #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
+                printf("rfsc/midi/midmus.c: error: "
                     "SMPTE timing not supported\n");
                 #endif
                 midmussong_FreeMidiInfoContents(&minfo);
@@ -950,7 +1063,7 @@ midmussong *midmussong_Load(
             minfo.midippq = parser.header.time_division;
             if (minfo.midippq <= 0) {
                 #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
+                printf("rfsc/midi/midmus.c: error: "
                     "invalid midi clocks per beat in song "
                     "header\n");
                 #endif
@@ -968,7 +1081,7 @@ midmussong *midmussong_Load(
         case MIDI_PARSER_TRACK_MIDI: {
             if (current_track < 0) {
                 #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
+                printf("rfsc/midi/midmus.c: error: "
                     "invalid midi event outside of track\n");
                 #endif
                 midmussong_FreeMidiInfoContents(&minfo);
@@ -976,21 +1089,9 @@ midmussong *midmussong_Load(
                 return NULL;
             }
             int abstime = current_time + (int)parser.vtime;
-            int32_t measure;
-            double place_in_measure;
-            if (!_miditimetomeasure(&minfo, abstime,
-                    &measure, &place_in_measure)) {
-                #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
-                    "failed to compute note on measure, oom?\n");
-                #endif
-                midmussong_FreeMidiInfoContents(&minfo);
-                midmussong_Free(song);
-                return NULL;
-            }
             if (parser.midi.channel < 0 || parser.midi.channel >= 16) {
                 #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
+                printf("rfsc/midi/midmus.c: error: "
                     "midi event with invalid channel %d\n",
                     parser.midi.channel);
                 #endif
@@ -999,13 +1100,177 @@ midmussong *midmussong_Load(
                 return NULL;
             }
             int channel = parser.midi.channel;
+            if (parser.midi.status == MIDI_STATUS_NOTE_ON) {
+                if (parser.midi.param2 == 0) {
+                    if (seen_note_on)
+                        seen_note_off_past_on = 1;
+                } else {
+                    seen_note_on = 1;
+                }
+            } else if (parser.midi.status == MIDI_STATUS_NOTE_OFF) {
+                if (seen_note_on)
+                    seen_note_off_past_on = 1;
+            }
+            current_time += parser.vtime;
+            break;
+        }
+        case MIDI_PARSER_TRACK_META: {
+            current_time += parser.vtime;
+            if (parser.meta.type ==
+                    MIDI_META_TIME_SIGNATURE) {
+                if (parser.meta.length < 2) {
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midmus.c: error: "
+                        "time signature event with "
+                        "invalid length\n");
+                    #endif
+                    midmussong_FreeMidiInfoContents(&minfo);
+                    midmussong_Free(song);
+                    return NULL;
+                }
+                int nominator = (
+                    (uint8_t *)parser.meta.bytes)[0];
+                int divisor_pow2 = (
+                    (uint8_t *)parser.meta.bytes)[1];
+                int divisor = 1;
+                if (divisor_pow2 >= 1) {
+                    divisor = 2;
+                    int i = 2;
+                    while (i <= divisor_pow2) {
+                        divisor *= 2;
+                        i++;
+                    }
+                }
+                if (nominator <= 0 || divisor > 256) {
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midmus.c: warning: "
+                        "time signature event with "
+                        "invalid signature values\n");
+                    #endif
+                    nominator = 4;
+                    divisor = 4;
+                }
+                if (!_midmussong_KeepMidiTimeSigChange(
+                        &minfo,
+                        current_time - parser.vtime,
+                        nominator, divisor)) {
+                    #ifdef DEBUG_MIDIPARSER
+                    printf("rfsc/midi/midmus.c: warning: "
+                        "failed to store time signature event, "
+                        "out of memory?\n");
+                    #endif
+                    midmussong_FreeMidiInfoContents(&minfo);
+                    midmussong_Free(song);
+                    return NULL;
+                }
+            }
+            break;
+        }
+        case MIDI_PARSER_TRACK_SYSEX: {
+            current_time += parser.vtime;
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    // Feed time signature changes so midi clock times will be
+    // correctly translated to measure position in next parse
+    // loops:
+    int i = 0;
+    while (i < minfo.timesigchangecount) {
+        int32_t measure;
+        double place_in_measure;
+        if (!_miditimetomeasure(&minfo,
+                minfo.timesigchange[i].midiclock,
+                &measure, &place_in_measure)) {
+            #ifdef DEBUG_MIDIPARSER
+            printf("rfsc/midi/midmus.c: error: "
+                "failed to compute time sig change measure, oom?\n");
+            #endif
+            midmussong_FreeMidiInfoContents(&minfo);
+            midmussong_Free(song);
+            return NULL;
+        }
+        midmussong_SetMeasureTimeSig(
+            minfo.song, measure,
+            minfo.timesigchange[i].signom,
+            minfo.timesigchange[i].sigdiv);
+        i++;
+    }
+
+    #ifdef DEBUG_MIDIPARSER_TIMESIG
+    i = 0;
+    while (i < minfo.song->measurecount) {
+        printf("rfsc/midi/midmus.c: debug: "
+            "measure %d/%d timesig %d/%d midi ticks len %d "
+            "beatspermeasure %f\n",
+            i, minfo.song->measurecount,
+            minfo.song->measure[i].signaturenom,
+            minfo.song->measure[i].signaturediv,
+            (int)_miditicksofmeasure(&minfo, i),
+            minfo.song->measure[i].beatspermeasure);
+        i++;
+    }
+    #endif
+
+    // Then, pre-parse all modifier events:
+    memset(&parser, 0, sizeof(parser));
+    parser.state = MIDI_PARSER_INIT;
+    parser.size = byteslen;
+    parser.in = (uint8_t *)bytes;
+    seen_note_on = 0;
+    seen_note_off_past_on = 0;
+    current_track = -1;
+    current_time = 0;
+    eof = 0;
+    while (!eof) {
+        status = midi_parse(&parser);
+        switch (status) {
+        case MIDI_PARSER_EOB:
+            eof = 1;
+            break;
+        case MIDI_PARSER_ERROR: {
+            assert(seen_note_on && seen_note_off_past_on);
+            eof = 1;
+            break;
+        }
+        case MIDI_PARSER_INIT:
+            break;
+        case MIDI_PARSER_HEADER: {
+            break;
+        }
+        case MIDI_PARSER_TRACK: {
+            current_time = 0;
+            current_track++;
+            break;
+        }
+        case MIDI_PARSER_TRACK_MIDI: {
+            assert(current_track >= 0);  // verified in time sig loop
+            int abstime = current_time + (int)parser.vtime;
+            int32_t measure;
+            double place_in_measure;
+            if (!_miditimetomeasure(&minfo, abstime,
+                    &measure, &place_in_measure)) {
+                #ifdef DEBUG_MIDIPARSER
+                printf("rfsc/midi/midmus.c: error: "
+                    "failed to compute note on measure, oom?\n");
+                #endif
+                midmussong_FreeMidiInfoContents(&minfo);
+                midmussong_Free(song);
+                return NULL;
+            }
+            assert(parser.midi.channel >= 0 &&
+                parser.midi.channel < 16);  // verified in time sig loop
+            int channel = parser.midi.channel;
             if (parser.midi.status == MIDI_STATUS_CC &&
                     parser.midi.param1 == 7) {
                 if (!midmussong_EnsureSourceTrackInfo(&minfo,
                         current_track)) {
                     oommodevent: ;
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "out of memory handling modifier event "
                         "on source track %d, channel %d\n",
                         current_track, parser.midi.channel);
@@ -1043,6 +1308,16 @@ midmussong *midmussong_Load(
                 minfo.sourcetrackinfo
                     [current_track].channel[channel].modevent =
                     modeventnew;
+            } else if (parser.midi.status == MIDI_STATUS_NOTE_ON) {
+                if (parser.midi.param2 == 0) {
+                    if (seen_note_on)
+                        seen_note_off_past_on = 1;
+                } else {
+                    seen_note_on = 1;
+                }
+            } else if (parser.midi.status == MIDI_STATUS_NOTE_OFF) {
+                if (seen_note_on)
+                    seen_note_off_past_on = 1;
             }
             current_time += parser.vtime;
             break;
@@ -1060,13 +1335,15 @@ midmussong *midmussong_Load(
         }
     }
 
-    // Actual main parse run for notes, times, etc.:
+    // Actual main parse run for everything else (notes, etc.):
     memset(&parser, 0, sizeof(parser));
     parser.state = MIDI_PARSER_INIT;
     parser.size = byteslen;
     parser.in = (uint8_t *)bytes;
     current_track = -1;
     current_time = 0;
+    seen_note_on = 0;
+    seen_note_off_past_on = 0;
     eof = 0;
     while (!eof) {
         status = midi_parse(&parser);
@@ -1075,13 +1352,9 @@ midmussong *midmussong_Load(
             eof = 1;
             break;
         case MIDI_PARSER_ERROR:
-            #ifdef DEBUG_MIDIPARSER
-            printf("rfsc/midi/midimus.c: error: "
-                "file parse error\n");
-            #endif
-            midmussong_FreeMidiInfoContents(&minfo);
-            midmussong_Free(song);
-            return NULL;
+            assert(seen_note_on && seen_note_off_past_on);
+            eof = 1;
+            break;
         case MIDI_PARSER_INIT:
             break;
         case MIDI_PARSER_HEADER:
@@ -1103,22 +1376,16 @@ midmussong *midmussong_Load(
             #endif
             break;
         case MIDI_PARSER_TRACK_MIDI: {
-            if (current_track < 0) {
-                #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
-                    "invalid midi event outside of track\n");
-                #endif
-                midmussong_FreeMidiInfoContents(&minfo);
-                midmussong_Free(song);
-                return NULL;
-            }
+            assert(current_track >= 0);  // verified in time sig loop
+            assert(parser.midi.channel >= 0 &&
+                parser.midi.channel < 16);  // verified in time sig loop
             int abstime = current_time + (int)parser.vtime;
             int32_t measure;
             double place_in_measure;
             if (!_miditimetomeasure(&minfo, abstime,
                     &measure, &place_in_measure)) {
                 #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
+                printf("rfsc/midi/midmus.c: error: "
                     "failed to compute note on measure, oom?\n");
                 #endif
                 midmussong_FreeMidiInfoContents(&minfo);
@@ -1137,28 +1404,24 @@ midmussong *midmussong_Load(
             printf("  measure: %d\n", measure);
             printf("  place in measure: %f\n", place_in_measure);
             #endif
-            if (parser.midi.channel < 0 || parser.midi.channel >= 16) {
-                #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
-                    "midi event with invalid channel %d\n",
-                    parser.midi.channel);
-                #endif
-                midmussong_FreeMidiInfoContents(&minfo);
-                midmussong_Free(song);
-                return NULL;
-            }
             if (parser.midi.channel == 9) {
                 minfo.sourcetrackinfo[current_track].
                     channel[parser.midi.channel].
                     midiinstrument = 129;  // drums
             }
             if (parser.midi.status == MIDI_STATUS_NOTE_ON) {
+                if (parser.midi.param2 == 0) {
+                    if (seen_note_on)
+                        seen_note_off_past_on = 1;
+                } else {
+                    seen_note_on = 1;
+                }
                 if (!midmussong_FeedMidiNoteOn(
                         &minfo, current_track, parser.midi.channel,
                         measure, place_in_measure,
                         parser.midi.param1, parser.midi.param2)) {
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "failed to process note on, oom?\n");
                     #endif
                     midmussong_FreeMidiInfoContents(&minfo);
@@ -1166,11 +1429,13 @@ midmussong *midmussong_Load(
                     return NULL;
                 }
             } else if (parser.midi.status == MIDI_STATUS_NOTE_OFF) {
+                if (seen_note_on)
+                    seen_note_off_past_on = 1;
                 if (!midmussong_FeedMidiNoteOff(
                         &minfo, current_track, parser.midi.channel,
                         parser.midi.param1, measure, place_in_measure)) {
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "failed to process note off, oom?\n");
                     #endif
                     midmussong_FreeMidiInfoContents(&minfo);
@@ -1182,7 +1447,7 @@ midmussong *midmussong_Load(
                 if (!midmussong_EnsureSourceTrackInfo(
                         &minfo, current_track)) {
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "oom processing program change\n");
                     #endif
                     midmussong_FreeMidiInfoContents(&minfo);
@@ -1205,7 +1470,7 @@ midmussong *midmussong_Load(
                         measure, place_in_measure
                         )) {
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "oom processing all notes off for program change\n");
                     #endif
                     midmussong_FreeMidiInfoContents(&minfo);
@@ -1230,7 +1495,7 @@ midmussong *midmussong_Load(
             if (!_miditimetomeasure(&minfo, abstime,
                     &measure, &place_in_measure)) {
                 #ifdef DEBUG_MIDIPARSER
-                printf("rfsc/midi/midimus.c: error: "
+                printf("rfsc/midi/midmus.c: error: "
                     "failed to compute note on measure, oom?\n");
                 #endif
                 midmussong_FreeMidiInfoContents(&minfo);
@@ -1241,7 +1506,7 @@ midmussong *midmussong_Load(
                     MIDI_META_SET_TEMPO) {
                 if (parser.meta.length < 1) {
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "set tempo event with invalid length\n");
                     #endif
                     midmussong_FreeMidiInfoContents(&minfo);
@@ -1261,7 +1526,7 @@ midmussong *midmussong_Load(
                 if (!midmussong_EnsureMeasureCount(
                         minfo.song, measure)) {
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "failed to set bpm on measure, oom?\n");
                     #endif
                     midmussong_FreeMidiInfoContents(&minfo);
@@ -1270,53 +1535,6 @@ midmussong *midmussong_Load(
                 }
                 midmussong_SetMeasureBPM(
                     minfo.song, measure, bpm);
-            } else if (parser.meta.type ==
-                    MIDI_META_TIME_SIGNATURE) {
-                if (parser.meta.length < 2) {
-                    #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
-                        "time signature event with "
-                        "invalid length\n");
-                    #endif
-                    midmussong_FreeMidiInfoContents(&minfo);
-                    midmussong_Free(song);
-                    return NULL;
-                }
-                if (!midmussong_EnsureMeasureCount(
-                        minfo.song, measure)) {
-                    #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
-                        "failed to set time signature on "
-                        "measure, oom?\n");
-                    #endif
-                    midmussong_FreeMidiInfoContents(&minfo);
-                    midmussong_Free(song);
-                    return NULL;
-                }
-                int nominator = (
-                    (uint8_t *)parser.meta.bytes)[0];
-                int divisor_pow2 = (
-                    (uint8_t *)parser.meta.bytes)[1];
-                int divisor = 1;
-                if (divisor_pow2 >= 1) {
-                    divisor = 2;
-                    int i = 2;
-                    while (i <= divisor_pow2) {
-                        divisor *= 2;
-                        i++;
-                    }
-                }
-                if (nominator <= 0 || divisor > 256) {
-                    #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: warning: "
-                        "time signature event with "
-                        "invalid signature values\n");
-                    #endif
-                    nominator = 4;
-                    divisor = 4;
-                }
-                midmussong_SetMeasureTimeSig(
-                    minfo.song, measure, nominator, divisor);
             }
             current_time += parser.vtime;
             break;
@@ -1386,7 +1604,7 @@ midmussong *midmussong_Load(
                     break;
                 if (hadoom) {
                     #ifdef DEBUG_MIDIPARSER
-                    printf("rfsc/midi/midimus.c: error: "
+                    printf("rfsc/midi/midmus.c: error: "
                         "out of memory transfering "
                         "modifiers\n");
                     #endif
@@ -1421,7 +1639,7 @@ midmussong *midmussong_Load(
     }
 
     #ifdef DEBUG_MIDIPARSER
-    printf("rfsc/midi/midimus.c: debug: "
+    printf("rfsc/midi/midmus.c: debug: "
         "finished parsing song with %d tracks", song->trackcount);
     if (song->trackcount > 0) {
         printf(" (");

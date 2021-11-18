@@ -23,10 +23,35 @@ while argno + 1 <= #pargs do
     local v = pargs[argno]
     local optionknown = false
 
+    if v == "--miditest" then
+        if argno + 1 > #pargs then
+            error("--miditest needs midi file argument")
+        end
+        local path = os.normpath(pargs[argno + 1])
+        if not os.exists(path) then
+            error("no such file: " .. path)
+        end
+        os.ensureconsole()
+        local song = rfs.song.load(path)
+        print("Playing song of " .. song:length() ..
+            " seconds length...")
+        song:play()
+        while song:isplaying() and not os.hadendsignal() do
+            rfs.time.sleepms(50)
+        end
+        if os.consolewasspawned() then
+            os.anykeytocontinue()
+        end
+        os.exit(0)
+    end
     if v == "--version" or v == "-version" or v == "-v" or
             string.lower(v) == "/version" then
         optionknown = true
+        os.ensureconsole()
         print("RFS2 v" .. rfs.version)
+        if os.consolewasspawned() then
+            os.anykeytocontinue()
+        end
         os.exit(0)
     end
     if v == "--sha512crypt" then
@@ -37,7 +62,11 @@ while argno + 1 <= #pargs do
         local key = tostring(pargs[argno + 1])
         local salt = tostring(pargs[argno + 2])
         local rounds = tonumber(pargs[argno + 3])
+        os.ensureconsole()
         print(_crypto_sha512crypt(key, salt, rounds))
+        if os.consolewasspawned() then
+            os.anykeytocontinue()
+        end
         os.exit(0)
     end
     if v == "--internal-do-update-to" and argno + 1 <= #pargs then
@@ -136,6 +165,7 @@ while argno + 1 <= #pargs do
         argno = argno + 1
     end
     if v == "--help" then
+        os.ensureconsole()
         optionknown = true
         print("Retro FPS Studio. Authentic 2.5D FPS magic! " ..
               "All Rights Reserved.")
@@ -145,19 +175,29 @@ while argno + 1 <= #pargs do
         print("Usage: RFS2 [..options..]")
         print("")
         print("Available options:")
-        print("  --aspect-ratio Enforce a fixed output aspect ratio.")
-        print("  --help         Print this help text.")
-        print("  --no-mouse     Disable physical mice. Useful")
-        print("                 when touch input bugs out.")
-        print("  --render-stats Print out render statistics.")
-        print("  --resolution   Enforce a fixed output resolution.")
-        print("  --software     Force-disable any 3d acceleration.")
-        print("  --version      Print out the program version.")
+        print("  --aspect-ratio ...  Enforce a fixed output aspect ")
+        print("                      ratio.")
+        print("  --help              Print this help text.")
+        print("  --miditest ...      Play back given .midi file for ")
+        print("                      testing.")
+        print("  --no-mouse          Disable physical mice. Useful")
+        print("                      when touch input bugs out.")
+        print("  --render-stats      Print out render statistics.")
+        print("  --resolution ...    Enforce a fixed output resolution.")
+        print("  --software          Force-disable any 3d acceleration.")
+        print("  --version           Print out the program version.")
+        if os.consolewasspawned() then
+            os.anykeytocontinue()
+        end
         os.exit(0)
     end
 
     if not optionknown then
+        os.ensureconsole()
         print("RFS2: error: unknown option: " .. v)
+        if os.consolewasspawned() then
+            os.anykeytocontinue()
+        end
         os.exit(1)
     end
 end

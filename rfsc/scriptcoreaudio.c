@@ -132,6 +132,32 @@ int _h3daudio_loadsong(lua_State *l) {
 }
 
 
+int _h3daudio_songisplaying(lua_State* l) {
+    if (lua_gettop(l) < 1 ||
+            lua_type(l, 1) != LUA_TUSERDATA ||
+            ((scriptobjref*)lua_touserdata(l, 1))->magic !=
+            OBJREFMAGIC ||
+            ((scriptobjref*)lua_touserdata(l, 1))->type !=
+            OBJREF_MIDMUSSONG) {
+        lua_pushstring(
+            l, "expected arg of type "
+            "midmussong");
+        return lua_error(l);
+    }
+    midmussong *s = (midmussong *)(
+        (uintptr_t)((scriptobjref *)
+        lua_touserdata(l, 1))->value);
+    if (!s) {
+        lua_pushstring(l, "couldn't access midmussong - "
+            "was it destroyed?");
+        return lua_error(l);
+    }
+    lua_pushboolean(l,
+        midmusplayback_IsSongPlayingOnAnyDevice(s));
+    return 1;
+}
+
+
 int _h3daudio_songlength(lua_State *l) {
     if (lua_gettop(l) < 1 ||
             lua_type(l, 1) != LUA_TUSERDATA ||
@@ -884,6 +910,8 @@ void scriptcoreaudio_AddFunctions(lua_State *l) {
     lua_setglobal(l, "_h3daudio_destroysong");
     lua_pushcfunction(l, _h3daudio_loadsong);
     lua_setglobal(l, "_h3daudio_loadsong");
+    lua_pushcfunction(l, _h3daudio_songisplaying);
+    lua_setglobal(l, "_h3daudio_songisplaying");
     lua_pushcfunction(l, _h3daudio_playsong);
     lua_setglobal(l, "_h3daudio_playsong");
     lua_pushcfunction(l, _h3daudio_songlength);
