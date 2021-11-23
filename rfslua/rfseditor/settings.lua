@@ -28,8 +28,9 @@ function rfseditor.settings.load()
             end
         end
     end
-    if rfseditor.settings.gamma == nil then
-        rfseditor.settings.gamma = 128
+    if rfseditor.settings.gamma == nil or
+            rfseditor.settings.gamma > 100 then
+        rfseditor.settings.gamma = 8
     end
     if rfseditor.settings.fullscreen == nil then
         rfseditor.settings.fullscreen = false

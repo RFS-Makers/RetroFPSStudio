@@ -216,7 +216,7 @@ roomcam *roomcam_Create() {
     rc->cache->cachedangle = -99999;
     rc->cache->cachedvangle = -99999;
     rc->fovf = 70.0;
-    rc->gamma = 128;
+    rc->gamma = 8;
     rc->fov = round(
         rc->fovf * ANGLE_SCALAR
     );

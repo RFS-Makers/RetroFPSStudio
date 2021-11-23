@@ -60,12 +60,20 @@ void rfssurf_Free(rfssurf *surf);
 
 #if defined(HAVE_SDL)
 #include <SDL2/SDL.h>
-HOTSPOT SDL_Surface *rfssurf_AsSrf(rfssurf *srf, int withalpha);
-SDL_Texture *rfssurf_AsTex(
+HOTSPOT SDL_Surface *rfssurf_AsSrf16(rfssurf *srf, int withalpha);
+HOTSPOT SDL_Surface *rfssurf_AsSrf32(rfssurf *srf, int withalpha);
+SDL_Texture *rfssurf_AsTex32(
     SDL_Renderer *r, rfssurf *srf, int withalpha);
-SDL_Texture *rfssurf_AsTex_Update(
+SDL_Texture *rfssurf_AsTex32_Update(
     SDL_Renderer *r, rfssurf *srf, int withalpha,
     SDL_Texture *updateto);
+SDL_Texture *rfssurf_AsTex16(
+    SDL_Renderer *r, rfssurf *srf, int withalpha
+    );
+SDL_Texture *rfssurf_AsTex16_Update(
+    SDL_Renderer *r, rfssurf *srf, int withalpha,
+    SDL_Texture *updateto
+    );
 #endif
 
 #endif  // RFS2_RFSSURF_H_

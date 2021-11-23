@@ -109,8 +109,8 @@ function rfseditor.titlescene.show_titlegammasettings()
         "BRIGHTNESS")
     rfseditor.titlescene._menu:add_entry(
         "Brighter", nil, function()
-            rfseditor.settings.gamma = math.min(255,
-                rfseditor.settings.gamma + 15
+            rfseditor.settings.gamma = math.min(15,
+                rfseditor.settings.gamma + 1
             )
             if rfseditor._democam ~= nil then
                 rfseditor._democam:set_gamma(
@@ -122,7 +122,7 @@ function rfseditor.titlescene.show_titlegammasettings()
     rfseditor.titlescene._menu:add_entry(
         "Darker", nil, function()
             rfseditor.settings.gamma = math.max(0,
-                rfseditor.settings.gamma - 15
+                rfseditor.settings.gamma - 1
             )
             if rfseditor._democam ~= nil then
                 rfseditor._democam:set_gamma(
@@ -133,7 +133,7 @@ function rfseditor.titlescene.show_titlegammasettings()
     )
     rfseditor.titlescene._menu:add_entry(
         "Reset", nil, function()
-            rfseditor.settings.gamma = 128
+            rfseditor.settings.gamma = 8
             if rfseditor._democam ~= nil then
                 rfseditor._democam:set_gamma(
                     rfseditor.settings.gamma)

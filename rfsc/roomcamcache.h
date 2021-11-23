@@ -16,7 +16,7 @@ typedef struct roomcamcache {
     int cachedangle, cachedvangle, cachedfov, cachedw, cachedh,
         cachedgamma;
 
-    uint8_t gammamap[256];
+    uint8_t gammamap[16];
     int32_t cachedfovh, cachedfovv;
     int64_t planedist, planeheight, planezshift, planew, planeh;
     int64_t unrotatedplanevecs_left_x;

@@ -216,7 +216,7 @@ static int _roomcam_setgamma(lua_State *l) {
         lua_isinteger(l, 2) ? lua_tointeger(l, 2) :
         ((int64_t)round(lua_tonumber(l, 2))));
     if (gamma < 0LL) gamma = 0;
-    if (gamma > 255LL) gamma = 255LL;
+    if (gamma > 15LL) gamma = 15LL;
     cam->gamma = gamma;
     return 0;
 }

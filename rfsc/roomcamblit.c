@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "16bithelp.h"
 #include "datetime.h"
 #include "drawgeom.h"
 #include "graphics.h"
@@ -57,6 +58,10 @@ int32_t _roomcam_XYToViewplaneX_NoRecalc(
 #ifndef NDEBUG
 static int _assert_pix256(int v) {
     assert(v >= 0 && v < 256);
+    return v;
+}
+static int _assert_pix16(int v) {
+    assert(v >= 0 && v < 16);
     return v;
 }
 #else
@@ -259,12 +264,6 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         const int targetw = rendertarget->w;
         uint8_t *tgpixels = rendertarget->pixels;
         const uint8_t *srcpixels = srf->pixels;
-        const int rendertargetcopylen = (
-            rendertarget->hasalpha ? 4 : 3
-        );
-        const int srccopylen = (
-            srf->hasalpha ? 4 : 3
-        );
         const int startrow = row;
         const int cr1to2diff = (cr2 - cr);
         const int cg1to2diff = (cg2 - cg);
@@ -274,19 +273,16 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         assert(fullslicelen >= 1);
         uint8_t *writepointer = (
             tgpixels + (x + xoffset +
-            (y + row) * targetw) * rendertargetcopylen
+            (y + row) * targetw) * 2
         );
         const int writepointerplus = (
-            targetw * rendertargetcopylen - 3
+            targetw * 2 - 1
         );
-        const int writepointerplus_plus3 = (
-            writepointerplus + 3);
-        int rednonwhite = 0;
-        int greennonwhite = 0;
-        int bluenonwhite = 0;
-        int redwhite = 0;
-        int greenwhite = 0;
-        int bluewhite = 0;
+        const int writepointerplus_plus1 = (
+            writepointerplus + 1);
+        uint16_t rednonwhite = 0;
+        uint16_t greennonwhite = 0;
+        uint16_t bluenonwhite = 0;
         int updatecolorcounter = 0;
         const int srfw = srf->w;
         const int srfh = srf->h;
@@ -305,7 +301,6 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
         #else
         const int extradups = 0;
         #endif
-        const int alphapixoffset = (tghasalpha ? 3 : 0);
 
         int32_t ty1_positive = topty;
         int32_t ty2_positive = bottomty;
@@ -378,15 +373,15 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
                 greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
                 bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
-                int redwhite = imin(imax(0, fullred -
+                uint16_t redwhite = imin(imax(0, fullred -
                     LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
                 rednonwhite = imin(rednonwhite,
                     LIGHT_COLOR_SCALAR - redwhite);
-                int greenwhite = imin(imax(0, fullgreen -
+                uint16_t greenwhite = imin(imax(0, fullgreen -
                     LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
                 greennonwhite = imin(greennonwhite,
                     LIGHT_COLOR_SCALAR - greenwhite);
-                int bluewhite = imin(imax(0, fullblue -
+                uint16_t bluewhite = imin(imax(0, fullblue -
                     LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
                 bluenonwhite = imin(bluenonwhite,
                     LIGHT_COLOR_SCALAR - bluewhite);
@@ -410,35 +405,30 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                     int64_t ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                     // Here, we're using the non-sideways regular tex.
                     const int srcoffset = (
-                        (tx / coorddiv) * srccopylen
+                        (tx / coorddiv) * 2
                     ) + (
-                        (ty / coorddiv) * srccopylen * FIXED_ROOMTEX_SIZE
+                        (ty / coorddiv) * 2 * FIXED_ROOMTEX_SIZE
                     );
                     const uint8_t *readptr = &srcpixels[srcoffset];
                     assert(srcoffset >= 0 &&
-                        srcoffset < srfw * srfh * srccopylen);
-                    *(writepointer + alphapixoffset) = 255;
-                    *writepointer = gammat[_assert_pix256(
-                        (*readptr) * rednonwhite /
+                        srcoffset < srfw * srfh * 2);
+                    *writepointer = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * rednonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * redwhite /
-                        LIGHT_COLOR_SCALAR)];
+                        15 * redwhite /
+                        LIGHT_COLOR_SCALAR)] + (
+                        gammat[_assert_pix16(
+                        (uint16_t)leftc(*readptr) * greennonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        15 * greenwhite /
+                        LIGHT_COLOR_SCALAR)] << 4);
                     readptr++;
                     writepointer++;
                     *writepointer = gammat[_assert_pix256(
-                        (*readptr) * greennonwhite /
+                        (uint16_t)rightc(*readptr) * bluenonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * greenwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    readptr++;
-                    writepointer++;
-                    *writepointer = gammat[_assert_pix256(
-                        (*readptr) * bluenonwhite /
-                        LIGHT_COLOR_SCALAR +
-                        255 * bluewhite /
-                        LIGHT_COLOR_SCALAR)];
-                    readptr++;
-                    writepointer++;
+                        15 * bluewhite /
+                        LIGHT_COLOR_SCALAR)] + (15 << 4);
                     #ifndef NDEBUG
                     updatecolorcounter++;
                     #endif
@@ -449,11 +439,10 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                     const int extratarget_past = imin(
                         innerrowoffset + extradups - 1, next_to) + 1;
                     while (likely(innerrowoffset != extratarget_past)) {
-                        *(writepointer + alphapixoffset) = 255;
                         memcpy(writepointer,
-                            writepointer - writepointerplus - 3,
-                            3);
-                        writepointer += writepointerplus_plus3;
+                            writepointer - writepointerplus - 1,
+                            2);
+                        writepointer += writepointerplus_plus1;
                         #ifndef NDEBUG
                         updatecolorcounter++;
                         #endif
@@ -492,15 +481,15 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                 rednonwhite = imin(fullred, LIGHT_COLOR_SCALAR);
                 greennonwhite = imin(fullgreen, LIGHT_COLOR_SCALAR);
                 bluenonwhite = imin(fullblue, LIGHT_COLOR_SCALAR);
-                int redwhite = imin(imax(0, fullred -
+                uint16_t redwhite = imin(imax(0, fullred -
                     LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
                 rednonwhite = imin(rednonwhite,
                     LIGHT_COLOR_SCALAR - redwhite);
-                int greenwhite = imin(imax(0, fullgreen -
+                uint16_t greenwhite = imin(imax(0, fullgreen -
                     LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
                 greennonwhite = imin(greennonwhite,
                     LIGHT_COLOR_SCALAR - greenwhite);
-                int bluewhite = imin(imax(0, fullblue -
+                uint16_t bluewhite = imin(imax(0, fullblue -
                     LIGHT_COLOR_SCALAR), LIGHT_COLOR_SCALAR);
                 bluenonwhite = imin(bluenonwhite,
                     LIGHT_COLOR_SCALAR - bluewhite);
@@ -524,35 +513,30 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                     int64_t ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                     // Here, we're using the non-sideways regular tex.
                     const int srcoffset = (
-                        (tx / coorddiv) * srccopylen
+                        (tx / coorddiv) * 2
                     ) + (
-                        (ty / coorddiv) * srccopylen * FIXED_ROOMTEX_SIZE_2
+                        (ty / coorddiv) * 2 * FIXED_ROOMTEX_SIZE_2
                     );
                     const uint8_t *readptr = &srcpixels[srcoffset];
                     assert(srcoffset >= 0 &&
-                        srcoffset < srfw * srfh * srccopylen);
-                    *(writepointer + alphapixoffset) = 255;
-                    *writepointer = gammat[_assert_pix256(
-                        (*readptr) * rednonwhite /
+                        srcoffset < srfw * srfh * 2);
+                    *writepointer = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * rednonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * redwhite /
-                        LIGHT_COLOR_SCALAR)];
+                        15 * redwhite /
+                        LIGHT_COLOR_SCALAR)] + (
+                        gammat[_assert_pix16(
+                        (uint16_t)leftc(*readptr) * greennonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        15 * greenwhite /
+                        LIGHT_COLOR_SCALAR)] << 4);
                     readptr++;
                     writepointer++;
-                    *writepointer = gammat[_assert_pix256(
-                        (*readptr) * greennonwhite /
+                    *writepointer = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * bluenonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * greenwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    readptr++;
-                    writepointer++;
-                    *writepointer = gammat[_assert_pix256(
-                        (*readptr) * bluenonwhite /
-                        LIGHT_COLOR_SCALAR +
-                        255 * bluewhite /
-                        LIGHT_COLOR_SCALAR)];
-                    readptr++;
-                    writepointer++;
+                        15 * bluewhite /
+                        LIGHT_COLOR_SCALAR)] + (15 << 4);
                     #ifndef NDEBUG
                     updatecolorcounter++;
                     #endif
@@ -563,11 +547,10 @@ HOTSPOT int roomcam_DrawFloorCeilingSlice(
                     const int extratarget_past = imin(
                         innerrowoffset + extradups - 1, next_to) + 1;
                     while (likely(innerrowoffset != extratarget_past)) {
-                        *(writepointer + alphapixoffset) = 255;
                         memcpy(writepointer,
-                            writepointer - writepointerplus - 3,
-                            3);
-                        writepointer += writepointerplus_plus3;
+                            writepointer - writepointerplus - 1,
+                            2);
+                        writepointer += writepointerplus_plus1;
                         #ifndef NDEBUG
                         updatecolorcounter++;
                         #endif
@@ -1071,16 +1054,16 @@ HOTSPOT static int roomcam_DrawWallSlice(
     assert(cr >= 0);
     assert(cg >= 0);
     assert(cb >= 0);
-    int crnonwhite = imin(cr, LIGHT_COLOR_SCALAR);
-    int cgnonwhite = imin(cg, LIGHT_COLOR_SCALAR);
-    int cbnonwhite = imin(cb, LIGHT_COLOR_SCALAR);
-    int crwhite = imin(imax(0, cr - LIGHT_COLOR_SCALAR),
+    uint16_t crnonwhite = imin(cr, LIGHT_COLOR_SCALAR);
+    uint16_t cgnonwhite = imin(cg, LIGHT_COLOR_SCALAR);
+    uint16_t cbnonwhite = imin(cb, LIGHT_COLOR_SCALAR);
+    uint16_t crwhite = imin(imax(0, cr - LIGHT_COLOR_SCALAR),
         LIGHT_COLOR_SCALAR);
     crnonwhite = imin(crnonwhite, LIGHT_COLOR_SCALAR - crwhite);
-    int cgwhite = imin(imax(0, cg - LIGHT_COLOR_SCALAR),
+    uint16_t cgwhite = imin(imax(0, cg - LIGHT_COLOR_SCALAR),
         LIGHT_COLOR_SCALAR);
     cgnonwhite = imin(cgnonwhite, LIGHT_COLOR_SCALAR - cgwhite);
-    int cbwhite = imin(imax(0, cb - LIGHT_COLOR_SCALAR),
+    uint16_t cbwhite = imin(imax(0, cb - LIGHT_COLOR_SCALAR),
         LIGHT_COLOR_SCALAR);
     cbnonwhite = imin(cbnonwhite, LIGHT_COLOR_SCALAR - cbwhite);
     assert(crwhite + crnonwhite <= LIGHT_COLOR_SCALAR);
@@ -1140,12 +1123,6 @@ HOTSPOT static int roomcam_DrawWallSlice(
         const int targetw = rendertarget->w;
         uint8_t *tgpixels = rendertarget->pixels;
         const uint8_t *srcpixels = srf->pixels;
-        const int rendertargetcopylen = (
-            rendertarget->hasalpha ? 4 : 3
-        );
-        const int srccopylen = (
-            srf->hasalpha ? 4 : 3
-        );
         assert(tx >= 0 && tx < TEX_COORD_SCALER);
         int sourcey = srf->h - 1 - (
             (srf->h * tx) / TEX_COORD_SCALER
@@ -1153,7 +1130,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
         if (sourcey < 0) sourcey = 0;
         if (sourcey >= srf->h) sourcey = srf->h - 1;
         int sourcey_multiplied_w_copylen = (
-            sourcey * srf->w * srccopylen
+            sourcey * srf->w * 2
         );
         assert(screenbottom >= screentop);
         assert(screenbottom <= h);
@@ -1165,15 +1142,15 @@ HOTSPOT static int roomcam_DrawWallSlice(
         }
         assert(screentop < h);
         const int writeoffsetplus = (
-            targetw * rendertargetcopylen
-        ) - (rendertarget->hasalpha ? 3 : 2);
+            targetw * 2
+        ) - 1;
         const int srfw = srf->w;
         uint8_t *targetwriteptr = &tgpixels[
-            (x + (y + screentop) * targetw) * rendertargetcopylen
+            (x + (y + screentop) * targetw) * 2
         ];
         uint8_t *targetwriteptrend = (
             targetwriteptr + ((screenbottom - screentop) + 1) *
-            rendertargetcopylen * targetw
+            2 * targetw
         );
         const int tghasalpha = rendertarget->hasalpha;
         // Prepare positive-only, reversed texture coordinates:
@@ -1230,7 +1207,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
                     ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                     // Remember, we're using the sideways tex.
                     const int sourcex = (
-                        (ty / coorddiv) * srccopylen
+                        (ty / coorddiv) * 2
                     );
                     const int srcoffset = (
                         sourcex + sourcey_multiplied_w_copylen
@@ -1239,25 +1216,23 @@ HOTSPOT static int roomcam_DrawWallSlice(
                         (uint8_t *)&srcpixels[srcoffset]
                     );
                     assert(srcoffset >= 0 &&
-                        srcoffset < srf->w * srf->h * srccopylen);
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * crnonwhite /
+                        srcoffset < srf->w * srf->h * 2);
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * crnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * crwhite /
-                        LIGHT_COLOR_SCALAR)];
+                        15 * crwhite /
+                        LIGHT_COLOR_SCALAR)] + (
+                        gammat[_assert_pix16(
+                        (uint16_t)leftc(*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        15 * cgwhite /
+                        LIGHT_COLOR_SCALAR)] << 4);
                     targetwriteptr++;
                     readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cgnonwhite /
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * cbnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * cgwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    targetwriteptr++;
-                    readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cbnonwhite /
-                        LIGHT_COLOR_SCALAR +
-                        255 * cbwhite /
+                        15 * cbwhite /
                         LIGHT_COLOR_SCALAR)];
                     targetwriteptr += writeoffsetplus;
                 }
@@ -1268,7 +1243,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
                     ty_nomod_shift += tystep_shift;
                     ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                     const int sourcex = (
-                        (ty / coorddiv) * srccopylen
+                        (ty / coorddiv) * 2
                     );
                     const int srcoffset = (
                         sourcex + sourcey_multiplied_w_copylen
@@ -1277,28 +1252,24 @@ HOTSPOT static int roomcam_DrawWallSlice(
                         (uint8_t *)&srcpixels[srcoffset]
                     );
                     assert(srcoffset >= 0 &&
-                        srcoffset < srf->w * srf->h * srccopylen);
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * crnonwhite /
+                        srcoffset < srf->w * srf->h * 2);
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * crnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * crwhite /
-                        LIGHT_COLOR_SCALAR)];
+                        15 * crwhite /
+                        LIGHT_COLOR_SCALAR)] + (
+                        gammat[_assert_pix256(
+                        (uint16_t)leftc(*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        15 * cgwhite /
+                        LIGHT_COLOR_SCALAR)] << 4);
                     targetwriteptr++;
                     readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cgnonwhite /
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * cbnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * cgwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    targetwriteptr++;
-                    readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cbnonwhite /
-                        LIGHT_COLOR_SCALAR +
-                        255 * cbwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    targetwriteptr++;
-                    *targetwriteptr = 255;
+                        15 * cbwhite /
+                        LIGHT_COLOR_SCALAR)] + (15 << 4);
                     targetwriteptr += writeoffsetplus;
                 }
             } else {
@@ -1325,7 +1296,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
                     ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                     // Remember, we're using the sideways tex.
                     const int sourcex = (
-                        (ty / coorddiv) * srccopylen
+                        (ty / coorddiv) * 2
                     );
                     const int srcoffset = (
                         sourcex + sourcey_multiplied_w_copylen
@@ -1334,25 +1305,23 @@ HOTSPOT static int roomcam_DrawWallSlice(
                         (uint8_t *)&srcpixels[srcoffset]
                     );
                     assert(srcoffset >= 0 &&
-                        srcoffset < srf->w * srf->h * srccopylen);
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * crnonwhite /
+                        srcoffset < srf->w * srf->h * 2);
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * crnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * crwhite /
-                        LIGHT_COLOR_SCALAR)];
+                        15 * crwhite /
+                        LIGHT_COLOR_SCALAR)] + (
+                        gammat[_assert_pix16(
+                        (uint16_t)leftc(*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        15 * cgwhite /
+                        LIGHT_COLOR_SCALAR)] << 4);
                     targetwriteptr++;
                     readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cgnonwhite /
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * cbnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * cgwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    targetwriteptr++;
-                    readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cbnonwhite /
-                        LIGHT_COLOR_SCALAR +
-                        255 * cbwhite /
+                        15 * cbwhite /
                         LIGHT_COLOR_SCALAR)];
                     targetwriteptr += writeoffsetplus;
                 }
@@ -1364,7 +1333,7 @@ HOTSPOT static int roomcam_DrawWallSlice(
                     ty = (ty_nomod_shift >> 5) & texcoord_modulo_mask;
                     // Remember, we're using the sideways tex.
                     const int sourcex = (
-                        (ty / coorddiv) * srccopylen
+                        (ty / coorddiv) * 2
                     );
                     const int srcoffset = (
                         sourcex + sourcey_multiplied_w_copylen
@@ -1373,28 +1342,24 @@ HOTSPOT static int roomcam_DrawWallSlice(
                         (uint8_t *)&srcpixels[srcoffset]
                     );
                     assert(srcoffset >= 0 &&
-                        srcoffset < srf->w * srf->h * srccopylen);
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * crnonwhite /
+                        srcoffset < srf->w * srf->h * 2);
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * crnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * crwhite /
-                        LIGHT_COLOR_SCALAR)];
+                        15 * crwhite /
+                        LIGHT_COLOR_SCALAR)] + (
+                        gammat[_assert_pix16(
+                        (uint16_t)leftc(*readptr) * cgnonwhite /
+                        LIGHT_COLOR_SCALAR +
+                        15 * cgwhite /
+                        LIGHT_COLOR_SCALAR)] << 4);
                     targetwriteptr++;
                     readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cgnonwhite /
+                    *targetwriteptr = gammat[_assert_pix16(
+                        (uint16_t)rightc(*readptr) * cbnonwhite /
                         LIGHT_COLOR_SCALAR +
-                        255 * cgwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    targetwriteptr++;
-                    readptr++;
-                    *targetwriteptr = gammat[_assert_pix256(
-                        (*readptr) * cbnonwhite /
-                        LIGHT_COLOR_SCALAR +
-                        255 * cbwhite /
-                        LIGHT_COLOR_SCALAR)];
-                    targetwriteptr++;
-                    *targetwriteptr = 255;
+                        15 * cbwhite /
+                        LIGHT_COLOR_SCALAR)] + (15 << 4);
                     targetwriteptr += writeoffsetplus;
                 }
             } else {
@@ -1587,30 +1552,36 @@ int roomcam_DrawFloorCeiling(
                     imax(0, imin(h - 1, topoffset)))
                 topoffset = imax(0, topoffset - 2);
             if (bottomoffset >= topoffset) {
-                int64_t dyntopr = (
-                    dynlightstarttop_r + ((dynlightendtop_r -
-                    dynlightstarttop_r) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dyntopg = (
-                    dynlightstarttop_g + ((dynlightendtop_g -
-                    dynlightstarttop_g) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dyntopb = (
-                    dynlightstarttop_b + ((dynlightendtop_b -
-                    dynlightstarttop_b) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dynbottomr = (
-                    dynlightstartbottom_r + ((dynlightendbottom_r -
-                    dynlightstartbottom_r) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dynbottomg = (
-                    dynlightstartbottom_g + ((dynlightendbottom_g -
-                    dynlightstartbottom_g) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dynbottomb = (
-                    dynlightstartbottom_b + ((dynlightendbottom_b -
-                    dynlightstartbottom_b) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dyntopr = round((
+                        dynlightstarttop_r + ((dynlightendtop_r -
+                        dynlightstarttop_r) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dyntopg = round((
+                        dynlightstarttop_g + ((dynlightendtop_g -
+                        dynlightstarttop_g) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dyntopb = round((
+                        dynlightstarttop_b + ((dynlightendtop_b -
+                        dynlightstarttop_b) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dynbottomr = round((
+                        dynlightstartbottom_r + ((dynlightendbottom_r -
+                        dynlightstartbottom_r) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dynbottomg = round((
+                        dynlightstartbottom_g + ((dynlightendbottom_g -
+                        dynlightstartbottom_g) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dynbottomb = round((
+                        dynlightstartbottom_b + ((dynlightendbottom_b -
+                        dynlightstartbottom_b) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
                 int cr = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
                     r->sector_light_r + dyntopr * 2));
                 int cg = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
@@ -1794,30 +1765,36 @@ int roomcam_DrawFloorCeiling(
                     imax(0, imin(h - 1, topoffset)))
                 bottomoffset = imin(h, bottomoffset + 2);
             if (bottomoffset >= topoffset) {
-                int64_t dyntopr = (
-                    dynlightstarttop_r + ((dynlightendtop_r -
-                    dynlightstarttop_r) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dyntopg = (
-                    dynlightstarttop_g + ((dynlightendtop_g -
-                    dynlightstarttop_g) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dyntopb = (
-                    dynlightstarttop_b + ((dynlightendtop_b -
-                    dynlightstarttop_b) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dynbottomr = (
-                    dynlightstartbottom_r + ((dynlightendbottom_r -
-                    dynlightstartbottom_r) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dynbottomg = (
-                    dynlightstartbottom_g + ((dynlightendbottom_g -
-                    dynlightstartbottom_g) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-                int64_t dynbottomb = (
-                    dynlightstartbottom_b + ((dynlightendbottom_b -
-                    dynlightstartbottom_b) * scalar) / scalarrange
-                ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+                int64_t dyntopr = round((
+                        dynlightstarttop_r + ((dynlightendtop_r -
+                        dynlightstarttop_r) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dyntopg = round((
+                        dynlightstarttop_g + ((dynlightendtop_g -
+                        dynlightstarttop_g) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dyntopb = round((
+                        dynlightstarttop_b + ((dynlightendtop_b -
+                        dynlightstarttop_b) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dynbottomr = round((
+                        dynlightstartbottom_r + ((dynlightendbottom_r -
+                        dynlightstartbottom_r) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dynbottomg = round((
+                        dynlightstartbottom_g + ((dynlightendbottom_g -
+                        dynlightstartbottom_g) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
+                int64_t dynbottomb = round((
+                        dynlightstartbottom_b + ((dynlightendbottom_b -
+                        dynlightstartbottom_b) * scalar) / scalarrange
+                    ) * (int64_t)LIGHT_COLOR_SCALAR /
+                    (double)lightsamplevaluerange);
                 int cr = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
                     r->sector_light_r + dyntopr * 2));
                 int cg = imax(0, imin(LIGHT_COLOR_SCALAR * 2,
@@ -2101,21 +2078,24 @@ int roomcam_DrawWall(
             int64_t iy = (
                 start_hity + ((end_hity - start_hity) *
                 (z - xcol)) / imax(1, max_render_ahead));
-            int64_t dynr = (
-                dynlightstart_r + ((dynlightend_r -
-                dynlightstart_r) * (z - xcol)) /
-                imax(1, max_render_ahead)
-            ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-            int64_t dyng = (
-                dynlightstart_g + ((dynlightend_g -
-                dynlightstart_g) * (z - xcol)) /
-                imax(1, max_render_ahead)
-            ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
-            int64_t dynb = (
-                dynlightstart_b + ((dynlightend_b -
-                dynlightstart_b) * (z - xcol)) /
-                imax(1, max_render_ahead)
-            ) * LIGHT_COLOR_SCALAR / lightsamplevaluerange;
+            int64_t dynr = round((
+                    dynlightstart_r + ((dynlightend_r -
+                    dynlightstart_r) * (z - xcol)) /
+                    imax(1, max_render_ahead)
+                ) * (int64_t)LIGHT_COLOR_SCALAR /
+                (double)lightsamplevaluerange);
+            int64_t dyng = round((
+                    dynlightstart_g + ((dynlightend_g -
+                    dynlightstart_g) * (z - xcol)) /
+                    imax(1, max_render_ahead)
+                ) * (int64_t)LIGHT_COLOR_SCALAR /
+                (double)lightsamplevaluerange);
+            int64_t dynb = round((
+                    dynlightstart_b + ((dynlightend_b -
+                    dynlightstart_b) * (z - xcol)) /
+                    imax(1, max_render_ahead)
+                ) * (int64_t)LIGHT_COLOR_SCALAR /
+                (double)lightsamplevaluerange);
 
             // Calculate above wall slice height:
             int32_t top, bottom;
@@ -2184,41 +2164,26 @@ int roomcam_DrawWall(
                         (bottom + canvasy) :
                         (canvasy + h - 1)
                     );
-                    const int copylen = (rendertarget->hasalpha ? 4 : 3);
                     const int xbyteoffsetnew = (
-                        copylen * (canvasx + z));
+                        2 * (canvasx + z));
                     const int xbyteoffsetold = (
-                        copylen * (canvasx + (z - 1)));
+                        2 * (canvasx + (z - 1)));
                     int ybyteoffset = (
-                        copylen * rendertarget->w * (imax(0, top) + canvasy)
+                        2 * rendertarget->w * (imax(0, top) + canvasy)
                     );
                     const int ybyteposttarget = (
-                        copylen * rendertarget->w * (imin(rendertarget->h - 1,
+                        2 * rendertarget->w * (imin(rendertarget->h - 1,
                             bottom + 1 + canvasy))
                     );
-                    const int ybyteshift = copylen * rendertarget->w;
-                    if (rendertarget->hasalpha) {
-                        // With alpha:
-                        while (ybyteoffset != ybyteposttarget) {
-                            memcpy(&rendertarget->pixels[
-                                xbyteoffsetnew + ybyteoffset
-                            ], &rendertarget->pixels[
-                                xbyteoffsetold + ybyteoffset
-                            ], 4);
-                            row++;
-                            ybyteoffset += ybyteshift;
-                        }
-                    } else {
-                        // Without alpha:
-                        while (ybyteoffset != ybyteposttarget) {
-                            memcpy(&rendertarget->pixels[
-                                xbyteoffsetnew + ybyteoffset
-                            ], &rendertarget->pixels[
-                                xbyteoffsetold + ybyteoffset
-                            ], 3);
-                            row++;
-                            ybyteoffset += ybyteshift;
-                        }
+                    const int ybyteshift = 2 * rendertarget->w;
+                    while (ybyteoffset != ybyteposttarget) {
+                        memcpy(&rendertarget->pixels[
+                            xbyteoffsetnew + ybyteoffset
+                        ], &rendertarget->pixels[
+                            xbyteoffsetold + ybyteoffset
+                        ], 2);
+                        row++;
+                        ybyteoffset += ybyteshift;
                     }
                     stats->base_geometry_slices_rendered++;
                     z++;

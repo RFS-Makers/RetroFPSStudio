@@ -5,6 +5,7 @@
 
 #include "compileconfig.h"
 
+#include <assert.h>
 #include <inttypes.h>
 #include <stdio.h>
 #define STBI_NO_STDIO
@@ -66,6 +67,7 @@ static void _texture_RemoveGlobalTexture(rfs2tex *tex) {
     free(tex);
 }
 
+
 rfs2tex *graphics_GetTexById(int32_t id) {
     uintptr_t hashptrval = 0;
     if (texture_by_id_cache == NULL)
@@ -95,7 +97,7 @@ int _texture_SetPixData(
     if (!srforig) {
         return 0;
     }
-    memcpy(srforig->pixels, data, width * height * 4);
+    memcpy(srforig->pixels, data, width * height * 2);
 
     // Create converted surfaces:
     rfssurf *srf = rfssurf_DuplicateNoAlpha(srforig);
@@ -273,12 +275,6 @@ rfssurf *graphics_GetTexSideways(rfs2tex *tex) {
     tex->_internal_srfsideways = rfssurf_Create(
         src->h, src->w, 0
     );
-    const int targetpixellen = (
-        tex->_internal_srfsideways->hasalpha ? 4 : 3
-    );
-    const int srcpixellen = (
-        src->hasalpha ? 4 : 3
-    );
     int y = 0;
     while (y < src->w) {
         int x = 0;
@@ -287,29 +283,30 @@ rfssurf *graphics_GetTexSideways(rfs2tex *tex) {
             assert(y < tex->_internal_srfsideways->h);
             assert(y >= 0 && y < src->w && src->w - y - 1 < src->w);
             int srcoffset = (
-                ((src->w - y - 1) + x * src->w) * srcpixellen
+                ((src->w - y - 1) + x * src->w) * 2
             );
             assert(srcoffset >= 0 && srcoffset <
-                src->w * src->h * srcpixellen);
+                src->w * src->h * 2);
             int targetoffset = (
-                (x + y * tex->_internal_srfsideways->w) *
-                    targetpixellen
+                (x + y * tex->_internal_srfsideways->w) * 2
             );
             assert(targetoffset <
                 tex->_internal_srfsideways->w *
-                tex->_internal_srfsideways->h * targetpixellen);
+                tex->_internal_srfsideways->h * 2);
             memcpy(&tex->_internal_srfsideways->pixels[targetoffset],
                 &src->pixels[srcoffset],
-                3);
-            if (targetpixellen == 4)
-                tex->_internal_srfsideways->pixels[targetoffset + 3] =
-                    255;
+                2);
+            if (!src->hasalpha)
+                tex->_internal_srfsideways->pixels[targetoffset + 1] =
+                    (0x0F) & (int)tex->_internal_srfsideways->
+                        pixels[targetoffset + 1];
             x++;
         }
         y++;
     }
     return tex->_internal_srfsideways;
 }
+
 
 char *graphics_FixTexturePath(const char *path) {
     char *p = filesys_Normalize(path);
@@ -362,6 +359,7 @@ char *graphics_FixTexturePath(const char *path) {
     free(joined_1); free(joined_2); free(joined_3);
     return p;
 }
+
 
 rfs2tex *graphics_LoadTexEx(const char *path, int usecache) {
     if (usecache) {
@@ -491,14 +489,24 @@ rfs2tex *graphics_LoadTexEx(const char *path, int usecache) {
     }
     if (f)
         vfs_fclose(f);
-    unsigned char *data = stbi_load_from_memory(
+    unsigned char *data32 = stbi_load_from_memory(
         (unsigned char *)imgencodedfile, size, &w, &h, &n, 4
     );
     free(imgencodedfile);
-    if (!data) {
+    if (!data32) {
         _texture_RemoveGlobalTexture(tex);
         return NULL;
     }
+    unsigned char *data = malloc(w * h * 2);
+    if (!data) {
+        free(data32);
+        _texture_RemoveGlobalTexture(tex);
+        return NULL;
+    }
+    imgalter_32BitRawTo16Raw(
+        data32, w * h * 4, 1, data
+    );
+    free(data32);
 
     // Create texture:
     int result = _texture_SetPixData(
@@ -516,9 +524,11 @@ rfs2tex *graphics_LoadTexEx(const char *path, int usecache) {
     return tex;
 }
 
+
 rfs2tex *graphics_LoadTex(const char *path) {
     return graphics_LoadTexEx(path, 1);
 }
+
 
 int graphics_ResizeTarget(rfs2tex *tex, int w, int h) {
     if (!tex || w < 0 || h < 0 || !tex->isrendertarget)
@@ -561,6 +571,7 @@ int graphics_ResizeTarget(rfs2tex *tex, int w, int h) {
     return 1;
 }
 
+
 int graphics_SetTarget(rfs2tex *tex) {
     if (!tex) {
         _current_rt = NULL;
@@ -585,9 +596,11 @@ int graphics_SetTarget(rfs2tex *tex) {
     return 1;
 }
 
+
 rfs2tex *graphics_GetTarget() {
     return _current_rt;
 }
+
 
 int graphics_ClearTarget() {
     if (_current_rt_is_void)
@@ -604,6 +617,7 @@ int graphics_ClearTarget() {
     return 1;
 }
 
+
 int graphics_PresentTarget() {
     if (_current_rt_is_void)
         return 1;
@@ -612,12 +626,14 @@ int graphics_PresentTarget() {
     return outputwindow_PresentSurface();
 }
 
+
 int graphics_DrawLine(
         double r, double g, double b, double a,
         int x1, int y1, int x2, int y2, int thickness
         ) {
     return 1;
 }
+
 
 int graphics_DrawRectangle(
         double r, double g, double b, double a,
@@ -635,6 +651,7 @@ int graphics_DrawRectangle(
     rfssurf_Rect(target, x, y, w, h, r, g, b, a);
     return 1;
 }
+
 
 int graphics_DrawTex(rfs2tex *tex, int withalpha,
         int cropx, int cropy, int cropw, int croph,
@@ -735,6 +752,7 @@ void _applyscissorstack(int *_x, int *_y, int *_w, int *_h) {
     *_w = w;
     *_h = h;
 }
+
  
 int graphics_PushRenderScissors(int x, int y, int w, int h) {
     if (w < 0)
@@ -761,6 +779,7 @@ int graphics_PushRenderScissors(int x, int y, int w, int h) {
     return 1;
 }
 
+
 void graphics_PopRenderScissors() {
     if (scissorscount > 1) {
         int x, y, w, h;
@@ -783,6 +802,7 @@ void graphics_PopRenderScissors() {
     return;
 }
 
+
 int graphics_DeleteTex(rfs2tex *tex) {
     if (!tex || (!tex->isrendertarget && !tex->iswritecopy))
         return 0;
@@ -791,6 +811,7 @@ int graphics_DeleteTex(rfs2tex *tex) {
     _texture_RemoveGlobalTexture(tex);
     return 1;
 }
+
 
 rfssurf *graphics_GetTargetSrf() {
     rfssurf *target = NULL;

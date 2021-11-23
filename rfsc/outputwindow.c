@@ -157,7 +157,7 @@ void outputwindow_EnsureOpenWindow(int forceno3d) {
             #endif
             rfs2tex *tex = graphics_LoadTex("rfslua/res/ui/icon");
             SDL_Surface *srf = (
-                tex ? rfssurf_AsSrf(tex->srfalpha, 1) : NULL
+                tex ? rfssurf_AsSrf32(tex->srfalpha, 1) : NULL
             );
             if (!tex || !srf) {
                 fprintf(stderr, "rfsc/outputwindow.c: debug: "
@@ -319,7 +319,7 @@ int outputwindow_PresentSurface() {
     if (!current_winsrf || !rfswindow ||
             !rfsrenderer)
         return 0;
-    current_wintex = rfssurf_AsTex_Update(
+    current_wintex = rfssurf_AsTex16_Update(
         rfsrenderer, current_winsrf,
         current_winsrf->hasalpha,
         current_wintex

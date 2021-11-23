@@ -21,7 +21,7 @@ typedef struct roomcam {
     roomobj *obj;
     int32_t vangle, fov;  // degrees * ANGLE_SCALAR
     double vanglef, fovf;
-    uint8_t gamma;  // default: 128, 0 to 255
+    uint8_t gamma;  // default: 8, 0 to 15
 
     roomcamcache *cache;
 } roomcam;
