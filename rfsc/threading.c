@@ -82,6 +82,7 @@ typedef struct threadinfo {
 #endif
 } thread;
 
+
 #if defined(__APPLE__) || defined(__OSX__)
 uint64_t _last_sem_id = 0;
 mutex *synchronize_sem_id = NULL;
@@ -252,6 +253,26 @@ int mutex_TryLock(mutex* m) {
     return 0;
 #else
     if (pthread_mutex_trylock(&m->m) != 0) {
+        return 0;
+    }
+    return 1;
+#endif
+}
+
+
+int mutex_TryLockWithTimeout(mutex* m, int32_t timeoutms) {
+    if (timeoutms <= 0)
+        return mutex_TryLock(m);
+#ifdef WINDOWS
+    if (WaitForSingleObject(m->m, (DWORD)timeoutms) == WAIT_OBJECT_0) {
+        return 1;
+    }
+    return 0;
+#else
+    struct timespec msspec;
+    clock_gettime(CLOCK_REALTIME, &msspec);
+    msspec.tv_nsec += (int32_t)1000 * timeoutms;
+    if (pthread_mutex_timedlock(&m->m, &msspec) != 0) {
         return 0;
     }
     return 1;

@@ -66,6 +66,7 @@ static int _assert_pix16(int v) {
 }
 #else
 #define _assert_pix256(x) x
+#define _assert_pix16(x) x
 #endif
 
 

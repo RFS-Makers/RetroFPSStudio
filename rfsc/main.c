@@ -12,7 +12,13 @@
 #include <stdio.h>
 #include <string.h>
 #if defined(_WIN32) || defined(_WIN64)
+#define _O_RDONLY 0x0000
+#define _O_WRONLY 0x0001
+#define _O_TEXT 0x4000
 #include <windows.h>
+#if defined(HAVE_SDL)
+#include <SDL2/SDL.h>  // for SDL_main()
+#endif
 #endif
 
 #include "filesys.h"
@@ -48,13 +54,68 @@ int main_ConsoleWasSpawned() {return 0;}
 static int main_havewinconsole = 0;
 static int main_triedconsolealloc = 0;
 
+int main_WinEnsureStdoutStderr() {
+    HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (handle == INVALID_HANDLE_VALUE)
+        return 0;
+    int fd = _open_osfhandle((intptr_t)handle, _O_WRONLY | _O_TEXT);
+    if (fd < 0) {
+        CloseHandle(handle);
+        return 0;
+    }
+    FILE *fresult = _fdopen(fd, "w");
+    if (!fresult) {
+        _close(fd);
+        return 0;
+    }
+    *stdout = *fresult;
+    handle = GetStdHandle(STD_ERROR_HANDLE);
+    if (handle == INVALID_HANDLE_VALUE)
+        return 0;
+    fd = _open_osfhandle((intptr_t)handle, _O_WRONLY | _O_TEXT);
+    if (fd < 0) {
+        CloseHandle(handle);
+        return 0;
+    }
+    fresult = _fdopen(fd, "w");
+    if (!fresult) {
+        _close(fd);
+        return 0;
+    }
+    *stderr = *fresult;
+    handle = GetStdHandle(STD_INPUT_HANDLE);
+    if (handle == INVALID_HANDLE_VALUE)
+        return 0;
+    fd = _open_osfhandle((intptr_t)handle, _O_RDONLY | _O_TEXT);
+    if (fd < 0) {
+        CloseHandle(handle);
+        return 0;
+    }
+    fresult = _fdopen(fd, "r");
+    if (!fresult) {
+        _close(fd);
+        return 0;
+    }
+    *stdin = *fresult;
+
+    setvbuf(stdin, (char *)NULL, _IONBF, 0);
+    fflush(stdin);
+    setvbuf(stderr, (char *)NULL, _IONBF, 0);
+    fflush(stderr);
+    setvbuf(stdout, (char *)NULL, _IONBF, 0);
+    fflush(stdout);
+    return 1;
+}
+
+
 int main_EnsureConsole() {
     if (main_havewinconsole)
         return 1;
     if (main_triedconsolealloc)
         return 0;
-    main_triedconsolealloc();
+    main_triedconsolealloc = 1;
     if (AllocConsole()) {
+        main_WinEnsureStdoutStderr();
         main_consolewasspawned = 1;
         main_havewinconsole = 1;
     }
@@ -116,8 +177,10 @@ static int str_is_spaces(const char *s) {
 int WINAPI WinMain(
         ATTR_UNUSED HINSTANCE hInst, ATTR_UNUSED HINSTANCE hPrev,
         ATTR_UNUSED LPSTR szCmdLine, ATTR_UNUSED int sw) {
-    if (AttachConsole(ATTACH_PARENT_PROCESS))
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        main_WinEnsureStdoutStderr();
         main_havewinconsole = 1;
+    }
     #if defined(DEBUG_STARTUP)
     printf("rfsc/main.c: debug: WinMain() entered, "
         "doing argument reformatting...\n");

@@ -49,7 +49,7 @@ function rfs.ui.dlg.on_keydown(t)
     if type(t) ~= "string" then
         error("expected arg of type string")
     end
-    if not rfs.ui.dlg.isactive() then
+    if not rfs.ui.dlg.isactive() or t == "f11" then
         return false
     end
     if rfs.ui.dlg.widget ~= nil and

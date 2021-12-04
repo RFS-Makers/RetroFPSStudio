@@ -54,13 +54,13 @@ void imgalter_32BitRawTo16Raw(
         uint8_t *endwritep = writep + (datalen / 3) * 2;
         while (writep != endwritep) {
             assert(writep < endwritep);
-            uint16_t new_r = ((*readp * 256) / 16) / 256;
+            uint16_t new_r = round(*readp / 17.0);
             assert(new_r < 16);
             readp++;
-            uint16_t new_g = ((*readp * 256) / 16) / 256;
+            uint16_t new_g = round(*readp / 17.0);
             assert(new_g < 16);
             readp++;
-            uint16_t new_b = ((*readp * 256) / 16) / 256;
+            uint16_t new_b = round(*readp / 17.0);
             assert(new_b < 16);
             readp++;
             *writep = (new_g << (uint16_t)4) + new_b;
@@ -83,12 +83,12 @@ void imgalter_16BitRawTo32Raw(
         (withalpha ? 4 : 3);
     while (writep != endwritep) {
         assert(writep < endwritep);
-        uint8_t new_r = rightc(*readp) * 16;
-        uint8_t new_g = leftc(*readp) * 16;
+        uint8_t new_r = rightc(*readp) * (uint16_t)17;
+        uint8_t new_g = leftc(*readp) * (uint16_t)17;
         readp++;
-        uint8_t new_b = rightc(*readp) * 16;
+        uint8_t new_b = rightc(*readp) * (uint16_t)17;
         uint8_t new_a = ((!withalpha) ?
-            (uint8_t)255 : leftc(*readp) * 16);
+            (uint8_t)255 : leftc(*readp) * (uint16_t)17);
         readp++;
         *writep = new_r;
         writep++;

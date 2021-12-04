@@ -22,8 +22,10 @@ typedef struct midmussong midmussong;
 
 enum midnusmodifier {
     MIDMUSMODIFY_UNKNOWN = 0,
-    MIDMUSMODIFY_VOL = 1,
-    MIDMUSMODIFY_PAN = 2
+    MIDMUSMODIFY_VOL,
+    MIDMUSMODIFY_PAN,
+    MIDMUSMODIFY_PITCH,
+    _MIDMUSMODIFY_TEMP_MIDIEXPR
 };
 
 typedef struct midmusmodify {

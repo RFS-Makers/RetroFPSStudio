@@ -35,6 +35,9 @@ void mutex_Lock(mutex* m);
 int mutex_TryLock(mutex* m);
 
 
+int mutex_TryLockWithTimeout(mutex* m, int32_t timeoutms);
+
+
 void mutex_Release(mutex* m);
 
 

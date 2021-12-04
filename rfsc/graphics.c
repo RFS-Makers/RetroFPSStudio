@@ -15,6 +15,7 @@
 #include "filesys.h"
 #include "graphics.h"
 #include "hash.h"
+#include "imgalter.h"
 #include "math2d.h"
 #include "outputwindow.h"
 #include "rfssurf.h"
@@ -36,6 +37,115 @@ static int texturelist_count = 0;
 static rfs2tex **texturelist_entry = NULL;
 static rfs2tex *_current_rt = NULL;
 static int _current_rt_is_void = 0;
+
+
+static struct renderscissors *scissorsstack = NULL;
+static int scissorscount = 0;
+
+void _applyscissorstack_ex(
+        int *_x, int *_y, int *_cropx, int *_cropy,
+        int *_cropw, int *_croph,
+        double *_scalex, double *_scaley,
+        int sourcew, int sourceh) {
+    int x = *_x;
+    int y = *_y;
+    int cropx = (_cropx != NULL ? *_cropx : 0);
+    int cropy = (_cropy != NULL ? *_cropy : 0);
+    int cropw = (_cropw != NULL ? *_cropw : 0);
+    int croph = (_croph != NULL ? *_croph : 0);
+    double scalex = (_scalex != NULL ? *_scalex : 1);
+    double scaley = (_scaley != NULL ? *_scaley : 1);
+
+    /*printf("rfsc/graphics: debug: "
+        "_applyscissorstack_ex in: "
+        "x,y,cropx,cropy,cropw,croph,scalex,scaley: "
+        "%d,%d,%d,%d,%d,%d,%f,%f\n",
+        x, y, cropx, cropy, cropw, croph, scalex, scaley);*/
+
+    int i = scissorscount - 1;
+    while (i >= 0) {
+        /*printf("rfsc/graphics: debug: "
+            "_applyscissorstack_ex clip to: "
+            "%d, %d, %d, %d\n",
+            scissorsstack[i].x,
+            scissorsstack[i].y,
+            scissorsstack[i].w,
+            scissorsstack[i].h);*/
+        if (scissorsstack[i].x > x) {
+            int d = (scissorsstack[i].x - x);
+            x += d;
+            cropw -= floor(d / fmax(0.001, scalex));
+            if (cropw <= 0)
+                cropw = 0;
+        }
+        if (scissorsstack[i].y > y) {
+            int d = (scissorsstack[i].y - y);
+            y += d;
+            croph -= floor(d / fmax(0.001, scaley));
+            if (croph <= 0)
+                croph = 0;
+        }
+        if (scissorsstack[i].x +
+                scissorsstack[i].w <
+                x + floor(cropw * scalex) && 0) {
+            int d = ((x + floor(cropw * scalex)) - (
+                scissorsstack[i].x +
+                scissorsstack[i].w)) /
+                fmax(0.001, scalex);
+            cropw -= d;
+            if (cropw <= 0)
+                cropw = 0;
+        }
+        if (scissorsstack[i].y +
+                scissorsstack[i].h <
+                y + floor(croph * scaley)) {
+            int d = ((y + floor(croph * scaley)) - (
+                scissorsstack[i].y +
+                scissorsstack[i].h)) /
+                fmax(0.001, scaley);
+            croph -= d;
+            if (croph <= 0)
+                croph = 0;
+        }
+        i--;
+    }
+    if (sourcew >= 0 &&
+            ceil(cropx + cropw) > sourcew) {
+        cropw = (sourcew - (cropx + cropw));
+        if (cropw <= 0) {
+            cropw = 0;
+        }
+    }
+    if (sourceh >= 0 &&
+            ceil(cropy + croph) > sourceh) {
+        croph = (sourceh - (cropy + croph));
+        if (croph <= 0) {
+            croph = 0;
+        }
+    }
+    *_x = x;
+    *_y = y;
+    if (_cropw) *_cropw = cropw;
+    if (_croph) *_croph = croph;
+    if (_cropx) *_cropx = cropx;
+    if (_cropy) *_cropy = cropy;
+    if (_scalex) *_scalex = scalex;
+    if (_scaley) *_scaley = scaley;
+
+    /*printf("rfsc/graphics: debug: "
+        "_applyscissorstack_ex out: "
+        "x,y,cropx,cropy,cropw,croph,scalex,scaley: "
+        "%d,%d,%d,%d,%d,%d,%f,%f\n",
+        x, y, cropx, cropy, cropw, croph, scalex, scaley);*/
+}
+
+
+void _applyscissorstack(
+        int *_x, int *_y, int *_w, int *_h) {
+    return _applyscissorstack_ex(
+        _x, _y, NULL, NULL, _w, _h, NULL, NULL, -1, -1
+    );
+}
 
 
 static void _texture_RemoveGlobalTexture(rfs2tex *tex) {
@@ -648,6 +758,7 @@ int graphics_DrawRectangle(
         target = outputwindow_GetSurface();
     if (target == NULL)
         return 0;
+    _applyscissorstack(&x, &y, &w, &h);
     rfssurf_Rect(target, x, y, w, h, r, g, b, a);
     return 1;
 }
@@ -673,16 +784,21 @@ int graphics_DrawTex(rfs2tex *tex, int withalpha,
         return 1;
     if (_current_rt_is_void)
         return 1;
+    _applyscissorstack_ex(
+        &x, &y, &cropx, &cropy,
+        &cropw, &croph,
+        &scalex, &scaley,
+        tex->w, tex->h);
     if (cropx >= tex->w || cropy >= tex->h ||
             cropx + cropw <= 0 || cropy + croph <= 0 ||
             cropw <= 0 || croph <= 0 || a * 255.0 < 1.0)
         return 1;
     if (cropx < 0) {
-        cropw += -cropx;
+        cropw += ceil(cropx / scalex);  // (negative)
         cropx = 0;
     }
     if (cropy < 0) {
-        croph += -cropy;
+        croph += ceil(cropy / scaley);  // (negative)
         cropy = 0;
     }
     if (cropw + cropx > tex->w) cropw = tex->w - cropx;
@@ -702,55 +818,6 @@ int graphics_DrawTex(rfs2tex *tex, int withalpha,
         r, g, b, a
     );
     return 1;
-}
-
-
-static struct renderscissors *scissorsstack = NULL;
-static int scissorscount = 0;
-
-void _applyscissorstack(int *_x, int *_y, int *_w, int *_h) {
-    int x = *_x;
-    int y = *_y;
-    int w = *_w;
-    int h = *_h;
-    int i = scissorscount - 1;
-    while (i >= 0) {
-        if (scissorsstack[scissorscount].x > x) {
-            int d = (scissorsstack[scissorscount].x - x);
-            x += d;
-            w -= d;
-            if (w < 0)
-                w = 0;
-        }
-        if (scissorsstack[scissorscount].y > y) {
-            int d = (scissorsstack[scissorscount].y - y);
-            y += d;
-            h -= d;
-            if (h < 0)
-                w = 0;
-        }
-        if (scissorsstack[scissorscount].x +
-                scissorsstack[scissorscount].w < x + w) {
-            int d = (x + w) - (scissorsstack[scissorscount].x + 
-                scissorsstack[scissorscount].w);
-            w -= d;
-            if (w < 0)
-                w = 0;
-        }
-        if (scissorsstack[scissorscount].y + 
-                scissorsstack[scissorscount].h < y + h) {
-            int d = (y + h) - (scissorsstack[scissorscount].y +
-                scissorsstack[scissorscount].h);
-            h -= d;
-            if (h < 0)
-                h = 0;
-        }
-        i--;
-    }
-    *_x = x;
-    *_y = y;
-    *_w = w;
-    *_h = h;
 }
 
  

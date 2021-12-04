@@ -993,6 +993,171 @@ void midmussong_MeasureTimeSig(
 }
 
 
+
+static int _midmus_MidiSourceModifierValueAtMUnit(
+        midmussong_midiinfo *minfo,
+        int type, int sourcetrack, int sourcechan,
+        int64_t munit, int64_t *out_lastmodmunitoffset
+        ) {
+    assert(sourcetrack >= 0 &&
+        sourcetrack < minfo->sourcetrackcount);
+    assert(sourcechan >= 0 && sourcechan < SMF_MAX_CHANNELS);
+    midmussong_midiinfosourcechannel *c = &(
+        minfo->sourcetrackinfo[sourcetrack].channel[sourcechan]);
+    int val = -1;
+    int k = 0;
+    while (k < c->modeventcount) {
+        if (c->modevent[k].type != type) {
+            k++;
+            continue;
+        }
+        if (c->modevent[k].munitoffset <= munit) {
+            *out_lastmodmunitoffset = (
+                c->modevent[k].munitoffset);
+            if (*out_lastmodmunitoffset < 0)
+                *out_lastmodmunitoffset = 0;
+            val = c->modevent[k].value;
+            val = (val < 0 ? 0 : val);
+        } else if (c->modevent[k].munitoffset >
+                munit) {
+            break;
+        }
+        k++;
+    }
+    if (val >= 0)
+        return val;
+    *out_lastmodmunitoffset = -1;
+    if (type == MIDMUSMODIFY_VOL)
+        return 100;  // Note: General MIDI 2 default value.
+                     // If changed, midi importer needs adjustment.
+    if (type == MIDMUSMODIFY_PAN)
+        return 64;
+    if (type == MIDMUSMODIFY_PITCH)
+        return 64;
+    return 127;
+}
+
+
+int _midmus_FinalizeMidiSourceModifiers(
+        midmussong_midiinfo *minfo) {
+    // Ensure every _MIDMUSMODIFY_TEMP_MIDIEXPR has a
+    // corresponding MIDMUSMODIFY_VOL event:
+    int track = 0;
+    while (track < minfo->sourcetrackcount) {
+        midmussong_midiinfosourcetrack *t = &(
+            minfo->sourcetrackinfo[track]);
+        int channel = 0;
+        while (channel < SMF_MAX_CHANNELS) {
+            midmussong_midiinfosourcechannel *c = &(
+                t->channel[channel]);
+            int i = 0;
+            while (i < c->modeventcount) {
+                if (c->modevent[i].type !=
+                        _MIDMUSMODIFY_TEMP_MIDIEXPR) {
+                    i++;
+                    continue;
+                }
+                int64_t munit = -1;
+                int val = _midmus_MidiSourceModifierValueAtMUnit(
+                    minfo, MIDMUSMODIFY_VOL, track, channel,
+                    c->modevent[i].munitoffset, &munit);
+                if (munit == c->modevent[i].munitoffset && munit >= 0) {
+                    // We already have 1+ corresponding VOL event(s)
+                    i++;
+                    continue;
+                }
+                assert(munit < c->modevent[i].munitoffset);
+                int32_t oldmodcount = c->modeventcount;
+                midmusmodify *modeventnew = realloc(
+                    c->modevent,
+                    sizeof(*modeventnew) * (oldmodcount + 1));
+                if (!modeventnew)
+                    return 0;
+                c->modevent = modeventnew;
+                c->modeventcount++;
+                memmove(&c->modevent[i + 1],
+                    &c->modevent[i],
+                    sizeof(*c->modevent) * (oldmodcount - i));
+                memset(&c->modevent[i], 0, sizeof(*c->modevent));
+                c->modevent[i].type = MIDMUSMODIFY_VOL;
+                c->modevent[i].value = val;
+                c->modevent[i].munitoffset =
+                    c->modevent[i + 1].munitoffset;
+                i += 2;
+            }
+            channel++;
+        }
+        track++;
+    }
+
+    // Adjust every MIDMUSMODIFY_VOL event by the
+    // applicable _MIDMUSMODIFY_TEMP_MIDIEXPR value:
+    track = 0;
+    while (track < minfo->sourcetrackcount) {
+        midmussong_midiinfosourcetrack *t = &(
+            minfo->sourcetrackinfo[track]);
+        int channel = 0;
+        while (channel < SMF_MAX_CHANNELS) {
+            midmussong_midiinfosourcechannel *c = &(
+                t->channel[channel]);
+            int i = 0;
+            while (i < c->modeventcount) {
+                if (c->modevent[i].type !=
+                        MIDMUSMODIFY_VOL) {
+                    i++;
+                    continue;
+                }
+                int64_t munit = -1;
+                int32_t expr = _midmus_MidiSourceModifierValueAtMUnit(
+                    minfo, _MIDMUSMODIFY_TEMP_MIDIEXPR, track,
+                    channel, c->modevent[i].munitoffset, &munit);
+                assert(munit <= c->modevent[i].munitoffset);
+                assert(expr >= 0 && expr <= 127);
+                int32_t val = (
+                    c->modevent[i].value * (expr * expr) / (127 * 127));
+                assert(val >= 0);
+                val = (val < 127 ? val : 127);
+                c->modevent[i].value = val;
+                i++;
+            }
+            channel++;
+        }
+        track++;
+    }
+
+    // Dump all _MIDMUSMODIFY_TEMP_MIDIEXPR events after baking:
+    track = 0;
+    while (track < minfo->sourcetrackcount) {
+        midmussong_midiinfosourcetrack *t = &(
+            minfo->sourcetrackinfo[track]);
+        int channel = 0;
+        while (channel < SMF_MAX_CHANNELS) {
+            midmussong_midiinfosourcechannel *c = &(
+                t->channel[channel]);
+            int i = 0;
+            while (i < c->modeventcount) {
+                if (c->modevent[i].type !=
+                        _MIDMUSMODIFY_TEMP_MIDIEXPR) {
+                    i++;
+                    continue;
+                }
+                if (i + 1 < c->modeventcount)
+                    memmove(&c->modevent[i],
+                        &c->modevent[i + 1],
+                        sizeof(*c->modevent) * (
+                        c->modeventcount - i - 1));
+                c->modeventcount--;
+                // No i++ here.
+                continue;
+            }
+            channel++;
+        }
+        track++;
+    }
+    return 1;
+}
+
+
 midmussong *midmussong_Load(
         const char *bytes, int64_t byteslen) {
     midmussong *song = malloc(sizeof(*song));
@@ -1264,8 +1429,12 @@ midmussong *midmussong_Load(
             assert(parser.midi.channel >= 0 &&
                 parser.midi.channel < 16);  // verified in time sig loop
             int channel = parser.midi.channel;
-            if (parser.midi.status == MIDI_STATUS_CC &&
-                    parser.midi.param1 == 7) {
+            if ((parser.midi.status == MIDI_STATUS_CC &&
+                    (parser.midi.param1 == 7 ||  // volume
+                    parser.midi.param1 == 10 ||  // pan
+                    parser.midi.param1 == 11)) ||  // midi expression
+                    parser.midi.status == MIDI_STATUS_PITCH_BEND
+                    ) {
                 if (!midmussong_EnsureSourceTrackInfo(&minfo,
                         current_track)) {
                     oommodevent: ;
@@ -1291,10 +1460,25 @@ midmussong *midmussong_Load(
                 memset(&modeventnew[oldmodcount], 0,
                     sizeof(*modeventnew));
                 modeventnew[oldmodcount].type =
-                    MIDMUSMODIFY_VOL;
-                int v = parser.midi.param2;
-                v = (v >= 0 ? (v <= 127 ? v : 127) : 0);
-                modeventnew[oldmodcount].value = v;
+                    (parser.midi.status == MIDI_STATUS_CC ? (
+                    (parser.midi.param1 == 7 ? MIDMUSMODIFY_VOL :
+                    (parser.midi.param1 == 10 ? MIDMUSMODIFY_PAN :
+                    (parser.midi.param1 == 11 ?
+                     _MIDMUSMODIFY_TEMP_MIDIEXPR : 0)))) :
+                    MIDMUSMODIFY_PITCH);
+                if (parser.midi.status == MIDI_STATUS_CC) {
+                    int v = (uint8_t)parser.midi.param2;
+                    v = (v >= 0 ? (v <= 127 ? v : 127) : 0);
+                    modeventnew[oldmodcount].value = v;
+                } else {
+                    assert(modeventnew[oldmodcount].type ==
+                        MIDMUSMODIFY_PITCH);
+                    int v = ((((uint16_t)parser.midi.param2) << 7) +
+                        (((uint16_t)parser.midi.param1) &
+                        (uint16_t)0x7F)) / 128;
+                    v = (v >= 0 ? (v <= 127 ? v : 127) : 0);
+                    modeventnew[oldmodcount].value = v;
+                }
                 modeventnew[oldmodcount].munitoffset =
                     (int64_t)measure * (int64_t)MIDMUS_MEASUREUNITS +
                     (int64_t)roundl((double)MIDMUS_MEASUREUNITS *
@@ -1333,6 +1517,18 @@ midmussong *midmussong_Load(
         default:
             break;
         }
+    }
+
+    // Clean up modifier events, and process midi expression:
+    if (!_midmus_FinalizeMidiSourceModifiers(&minfo)) {
+        #ifdef DEBUG_MIDIPARSER
+        printf("rfsc/midi/midmus.c: error: "
+            "out of memory finalizing modifiers\n",
+            current_track, parser.midi.channel);
+        #endif
+        midmussong_FreeMidiInfoContents(&minfo);
+        midmussong_Free(song);
+        return NULL;
     }
 
     // Actual main parse run for everything else (notes, etc.):

@@ -96,60 +96,6 @@ function rfseditor.titlescene.on_debugstr()
 end
 
 
-function rfseditor.titlescene.show_titlegammasettings()
-    rfseditor.state = "titlemenu"
-    local scaler = rfs.ui.scaler
-    rfseditor.titlescene._menu = (
-        rfs.ui.menuwidget.new(nil, 17 * scaler, 50)
-    )
-    rfseditor.titlescene._menu:set_focus()
-    rfseditor.titlescene._menu:set_centered(true)
-    rfseditor.titlescene._menu.id = "titlesettings"
-    rfseditor.titlescene._menu:add_entry(
-        "BRIGHTNESS")
-    rfseditor.titlescene._menu:add_entry(
-        "Brighter", nil, function()
-            rfseditor.settings.gamma = math.min(15,
-                rfseditor.settings.gamma + 1
-            )
-            if rfseditor._democam ~= nil then
-                rfseditor._democam:set_gamma(
-                    rfseditor.settings.gamma)
-            end
-            rfseditor.settings.save()
-        end
-    )
-    rfseditor.titlescene._menu:add_entry(
-        "Darker", nil, function()
-            rfseditor.settings.gamma = math.max(0,
-                rfseditor.settings.gamma - 1
-            )
-            if rfseditor._democam ~= nil then
-                rfseditor._democam:set_gamma(
-                    rfseditor.settings.gamma)
-            end
-            rfseditor.settings.save()
-        end
-    )
-    rfseditor.titlescene._menu:add_entry(
-        "Reset", nil, function()
-            rfseditor.settings.gamma = 8
-            if rfseditor._democam ~= nil then
-                rfseditor._democam:set_gamma(
-                    rfseditor.settings.gamma)
-            end
-            rfseditor.settings.save()
-        end
-    )
-    rfseditor.titlescene._menu:add_entry(
-        "Back", nil,
-        rfseditor.titlescene.show_titledisplaysettings
-    )
-    rfseditor.titlescene._menu:disable_entry(1)
-    rfseditor.titlescene.update_menu()
-end
-
-
 function rfseditor.titlescene.show_titledisplaysettings()
     rfseditor.state = "titlemenu"
     local scaler = rfs.ui.scaler
@@ -162,15 +108,45 @@ function rfseditor.titlescene.show_titledisplaysettings()
     rfseditor.titlescene._menu:add_entry(
         "DISPLAY")
     rfseditor.titlescene._menu:add_entry(
-        "Brightness...", nil,
-        rfseditor.titlescene.show_titlegammasettings
-    )
-    rfseditor.titlescene._menu:add_entry(
         "Toggle Fullscreen", nil,
         function()
             rfs.window.toggle_fullscreen()
             rfseditor.settings.fullscreen = (
                 rfs.window.is_fullscreen())
+            rfseditor.settings.save()
+        end
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Brightness Up", nil, function()
+            rfseditor.settings.gamma = math.min(15,
+                rfseditor.settings.gamma + 1
+            )
+            if rfseditor._democam ~= nil then
+                rfseditor._democam:set_gamma(
+                    rfseditor.settings.gamma)
+            end
+            rfseditor.settings.save()
+        end
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Brightness Down", nil, function()
+            rfseditor.settings.gamma = math.max(0,
+                rfseditor.settings.gamma - 1
+            )
+            if rfseditor._democam ~= nil then
+                rfseditor._democam:set_gamma(
+                    rfseditor.settings.gamma)
+            end
+            rfseditor.settings.save()
+        end
+    )
+    rfseditor.titlescene._menu:add_entry(
+        "Brightness Reset", nil, function()
+            rfseditor.settings.gamma = 8
+            if rfseditor._democam ~= nil then
+                rfseditor._democam:set_gamma(
+                    rfseditor.settings.gamma)
+            end
             rfseditor.settings.save()
         end
     )
@@ -259,12 +235,18 @@ function rfseditor.titlescene.update_menu()
                     rfs.window.renderh * 0.5 -
                     rfseditor.titlescene._menu.height * 0.5
                 )))
+            rfseditor.titlescene._menu:set_height(
+                math.max(1, math.round(rfs.window.renderh * 0.9))
+            )
         else
             rfseditor.titlescene._menu.x = (
                 rfs.window.renderw * 0.35
             )
             rfseditor.titlescene._menu.y = (
                 rfs.window.renderh * 0.4
+            )
+            rfseditor.titlescene._menu:set_height(
+                math.max(1, math.round(rfs.window.renderh * 0.55))
             )
         end
     end

@@ -23,26 +23,66 @@ while argno + 1 <= #pargs do
     local v = pargs[argno]
     local optionknown = false
 
-    if v == "--miditest" then
+    if v == "--midiplay" then
+        optionknown = true
         if argno + 1 > #pargs then
-            error("--miditest needs midi file argument")
+            error("--midiplay needs midi file argument")
         end
         local path = os.normpath(pargs[argno + 1])
         if not os.exists(path) then
             error("no such file: " .. path)
         end
+        local songpaths = {path}
+        local midiloop = false
+        local innerargno = 0
+        while innerargno + 1 <= #pargs do
+            innerargno = innerargno + 1
+            if pargs[innerargno] == "--midirepeat" then
+                midiloop = true
+            end
+            if pargs[innerargno] == "--midiplay" and
+                    innerargno ~= argno then
+                if innerargno + 1 > #pargs then
+                    error("--midiplay needs midi file argument")
+                end
+                local path = pargs[innerargno + 1]
+                if not os.exists(path) then
+                    error("no such file: " .. path)
+                end
+                table.insert(songpaths, path)
+                innerargno = innerargno + 1
+            end
+        end
         os.ensureconsole()
-        local song = rfs.song.load(path)
-        print("Playing song of " .. song:length() ..
-            " seconds length...")
-        song:play()
-        while song:isplaying() and not os.hadendsignal() do
-            rfs.time.sleepms(50)
+        while true do
+            local k = 1
+            while k <= #songpaths do
+                local song = rfs.song.load(songpaths[k])
+                print("Playing song #" .. k .. "/" .. #songpaths ..
+                    ": " .. songpaths[k] ..
+                    " (length: " .. song:length() ..
+                    " seconds)")
+                song:play()
+                while song:isplaying() and not os.hadendsignal() do
+                    rfs.time.sleepms(50)
+                end
+                if os.hadendsignal() then
+                    break
+                end
+                k = k + 1
+            end
+            if not midiloop or os.hadendsignal() then
+                break
+            end
         end
         if os.consolewasspawned() then
             os.anykeytocontinue()
         end
         os.exit(0)
+    end
+    if v == "--midirepeat" then
+        optionknown = true
+        -- Only handled by --midirepeat, so we ignore it here.
     end
     if v == "--version" or v == "-version" or v == "-v" or
             string.lower(v) == "/version" then
@@ -178,10 +218,13 @@ while argno + 1 <= #pargs do
         print("  --aspect-ratio ...  Enforce a fixed output aspect ")
         print("                      ratio.")
         print("  --help              Print this help text.")
-        print("  --miditest ...      Play back given .midi file for ")
-        print("                      testing.")
-        print("  --no-mouse          Disable physical mice. Useful")
-        print("                      when touch input bugs out.")
+        print("  --midiplay ...      Play back given .midi file ")
+        print("                      directly on the command line.")
+        print("                      Use multiple times for a playlist.")
+        print("  --midirepeat        Repeat the --midiplay playback ")
+        print("                      infinitely.")
+        print("  --no-mouse          Disable physical mice. Can fix")
+        print("                      touch input breakages.")
         print("  --render-stats      Print out render statistics.")
         print("  --resolution ...    Enforce a fixed output resolution.")
         print("  --software          Force-disable any 3d acceleration.")

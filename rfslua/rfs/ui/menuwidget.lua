@@ -10,6 +10,7 @@ if rfs.ui.menuwidget == nil then
     rfs.ui.menuwidget.classtable = {}
 end
 
+
 function rfs.ui.menuwidget.new(font, pt_size, width, centered)
     if font == nil then
         font = rfs.font.load(rfs.ui.default_font)
@@ -29,6 +30,7 @@ function rfs.ui.menuwidget.new(font, pt_size, width, centered)
         selected=-1,
         entries={},
         blink_ts=rfs.time.ticks(),
+        custom_height=false,
         outline_size=2,
         pt_size=math.max(1, math.round(pt_size)),
         border_size=math.max(1, math.round(pt_size * 1.5)),
@@ -41,6 +43,7 @@ function rfs.ui.menuwidget.new(font, pt_size, width, centered)
     self:update_size()
     return self
 end
+
 
 function rfs.ui.menuwidget.classtable.outline_px(self, no)
     assert(self.entries[no] ~= nil)
@@ -58,12 +61,14 @@ function rfs.ui.menuwidget.classtable.outline_px(self, no)
     end
 end
 
+
 function rfs.ui.menuwidget.classtable.set_centered(
         self, centered
         )
     self.centered = (centered == true)
     self:update_size()
 end
+
 
 function rfs.ui.menuwidget.classtable.disable_entry(self, no)
     if no < 1 or no > #self.entries then
@@ -86,6 +91,7 @@ function rfs.ui.menuwidget.classtable.disable_entry(self, no)
         end
     end
 end
+
 
 function rfs.ui.menuwidget.classtable.add_entry(
         self, text, icon, func, red, green, blue,
@@ -160,8 +166,10 @@ function rfs.ui.menuwidget.classtable.add_entry(
     self:update_size()
 end
 
+
 function rfs.ui.menuwidget.classtable.on_text(self, t)
 end
+
 
 function rfs.ui.menuwidget.classtable.on_keydown(self, k)
     if not self.focused then
@@ -220,6 +228,7 @@ function rfs.ui.menuwidget.classtable.on_keydown(self, k)
     end
 end
 
+
 function rfs.ui.menuwidget.classtable.on_click(
         self, x, y, button)
     local i = 1
@@ -243,6 +252,7 @@ function rfs.ui.menuwidget.classtable.on_click(
     end
 end
 
+
 function rfs.ui.menuwidget.classtable.on_mousemove(self, x, y)
     local i = 1
     while i <= #self.entries do
@@ -264,23 +274,46 @@ function rfs.ui.menuwidget.classtable.on_mousemove(self, x, y)
     end
 end
 
+
 function rfs.ui.menuwidget.classtable.set_focus(self)
     self.focused = true
 end
+
 
 function rfs.ui.menuwidget.classtable.unset_focus(self)
     self.focused = false
 end
 
+
 function rfs.ui.menuwidget.classtable.set_width(self, w)
-    self.width = w
+    if type(w) ~= "number" then
+        error("width must be number")
+    end
+    self.width = math.max(0, w)
     self:update_size()
 end
+
+
+function rfs.ui.menuwidget.classtable.set_height(self, h)
+    if type(h) ~= "number" and h ~= nil then
+        error("height must be number or nil")
+    end
+    if h == nil then
+        self.custom_height = false
+        self.height = self.natural_height
+    else
+        self.height = math.max(0, h)
+        self.custom_height = true
+    end
+    self:update_size()
+end
+
 
 function rfs.ui.menuwidget.classtable.set_pt(self, pt_size)
     self.pt_size = math.max(1, math.round(pt_size))
     self:update_size()
 end
+
 
 function rfs.ui.menuwidget.classtable.calculate_entry_size(
         self, no
@@ -367,6 +400,7 @@ function rfs.ui.menuwidget.classtable.calculate_entry_size(
     return self.entries[no].width, self.entries[no].height
 end
 
+
 function rfs.ui.menuwidget.classtable.update_size(self)
     -- Update border size:
     self.border_size=math.max(
@@ -394,13 +428,21 @@ function rfs.ui.menuwidget.classtable.update_size(self)
         height = height + h
         i = i + 1
     end
-    self.height = height
+    self.natural_height = height
+    if not self.custom_height then
+        self.height = self.natural_height
+    end
 end
+
 
 function rfs.ui.menuwidget.classtable.draw(self, x, y)
     local now = rfs.time.ticks()
     local animf = (now - self.blink_ts) % 1200
     animf = math.round(animf / 1200)
+
+    rfs.gfx.push_scissors(
+        x, y, self.width, self.height
+    )
 
     local i = 1
     while i <= #self.entries do
@@ -463,4 +505,6 @@ function rfs.ui.menuwidget.classtable.draw(self, x, y)
         end
         i = i + 1
     end
+
+    rfs.gfx.pop_scissors()
 end

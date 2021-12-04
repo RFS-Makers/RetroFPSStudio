@@ -487,7 +487,7 @@ int _h3daudio_opendevice(lua_State *l) {
 
     char *error = NULL;
     h3daudiodevice *dev = h3daudio_OpenDeviceEx(
-        48000, 2048, backend, devicename, &error
+        48000, 4096, backend, devicename, &error
     );
     if (!dev) {
         if (error) {

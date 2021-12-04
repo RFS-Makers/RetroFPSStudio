@@ -13,6 +13,8 @@
 #include <lualib.h>
 #include <lauxlib.h>
 #include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #include "threading.h"
 
